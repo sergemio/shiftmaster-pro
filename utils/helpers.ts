@@ -70,7 +70,7 @@ export const getNowInTimezone = (timeZone: string): { hour: number, minute: numb
   const minute = parseInt(getPart('minute'));
   const weekday = getPart('weekday'); // Mon, Tue...
   
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const dayIndex = days.indexOf(weekday);
   
   return {
