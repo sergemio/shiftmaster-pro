@@ -1,0 +1,8 @@
+{
+  "name": "ShiftMaster Pro - Weekly Scheduler",
+  "description": "A high-performance vertical drag-and-drop calendar for weekly shift management, featuring real-time stats, AI-powered optimization via Gemini, and a multi-language UI.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

@@ -1,0 +1,124 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: weeks
+    // Document ID: weekId (ISO Monday date)
+    // Fields:
+    //   - shifts: array of Shift objects
+    //   - updatedAt: string (ISO date-time)
+    //
+    // Collection: settings
+    // Document ID: staff
+    // Fields:
+    //   - list: array of Staff objects
+    //   - guests: array of strings (emails)
+    //
+    // Collection: settings
+    // Document ID: global
+    // Fields:
+    //   - timezone: string
+    //   - language: string
+    //
+    // Collection: logs
+    // Document ID: logId
+    // Fields:
+    //   - id: string
+    //   - userId: string
+    //   - userName: string
+    //   - action: string
+    //   - details: string
+    //   - timestamp: string (ISO date-time)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          (exists(/databases/$(database)/documents/settings/staff) && 
+           request.auth.token.email in get(/databases/$(database)/documents/settings/staff).data.admins) ||
+          (request.auth.token.email == "sergemenassa@gmail.com" && request.auth.token.email_verified == true)
+        );
+    }
+    
+    // Note: Checking nested objects in arrays is limited in rules.
+    // For this prototype, we'll allow read access to authenticated users
+    // but restrict writes to admins.
+    
+    function isStaffOrGuest() {
+      return isAuthenticated() && 
+        (
+          exists(/databases/$(database)/documents/settings/staff) && 
+          (
+            request.auth.token.email in get(/databases/$(database)/documents/settings/staff).data.guests ||
+            // Fallback for staff list - in a real app we'd use a separate collection for faster lookups
+            get(/databases/$(database)/documents/settings/staff).data.list.size() > 0
+          )
+        );
+    }
+
+    function isValidShift(shift) {
+      return shift.id is string &&
+             shift.staffId is string &&
+             shift.dayIndex is int &&
+             shift.startTime is number &&
+             shift.endTime is number;
+    }
+
+    function isValidWeeklyData(data) {
+      return data.shifts is list &&
+             (data.shifts.size() == 0 || isValidShift(data.shifts[0])) &&
+             data.updatedAt is string;
+    }
+
+    function isValidLog(data) {
+      return data.id is string &&
+             data.userId is string &&
+             data.userName is string &&
+             data.action is string &&
+             data.details is string &&
+             data.timestamp is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /weeks/{weekId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidWeeklyData(request.resource.data);
+    }
+
+    match /settings/staff {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /settings/global {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && isValidLog(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+    
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

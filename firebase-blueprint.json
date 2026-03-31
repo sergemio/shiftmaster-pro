@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "Staff": {
+      "title": "Staff",
+      "description": "A staff member of the organization",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "name": { "type": "string", "description": "Full name" },
+        "email": { "type": "string", "format": "email", "description": "Google email for auth" },
+        "color": { "type": "string", "description": "Hex color code" },
+        "targetHours": { "type": "number", "description": "Weekly target hours" },
+        "role": { "type": "string", "enum": ["admin", "staff"], "description": "User role" },
+        "jobTitle": { "type": "string", "description": "Job title or position" }
+      },
+      "required": ["id", "name", "email", "color", "targetHours", "role"]
+    },
+    "Shift": {
+      "title": "Shift",
+      "description": "A scheduled shift for a staff member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "staffId": { "type": "string", "description": "ID of the staff member" },
+        "dayIndex": { "type": "integer", "description": "0 (Mon) to 6 (Sun)" },
+        "startTime": { "type": "number", "description": "Decimal hours" },
+        "endTime": { "type": "number", "description": "Decimal hours" },
+        "coverageBy": { "type": "string", "description": "ID of staff covering" },
+        "notes": { "type": "string", "description": "Optional notes" }
+      },
+      "required": ["id", "staffId", "dayIndex", "startTime", "endTime"]
+    },
+    "WeeklyData": {
+      "title": "WeeklyData",
+      "description": "Shifts for a specific week",
+      "type": "object",
+      "properties": {
+        "shifts": {
+          "type": "array",
+          "items": { "$ref": "Shift" }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shifts"]
+    },
+    "LogEntry": {
+      "title": "LogEntry",
+      "description": "A log of an action taken in the app",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userName", "action", "details", "timestamp"]
+    },
+    "StaffSettings": {
+      "title": "StaffSettings",
+      "description": "Global staff list and guest emails",
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": { "$ref": "Staff" }
+        },
+        "guests": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "GlobalSettings": {
+      "title": "GlobalSettings",
+      "description": "Global application settings",
+      "type": "object",
+      "properties": {
+        "timezone": { "type": "string" },
+        "language": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/weeks/{weekId}": {
+      "schema": "WeeklyData",
+      "description": "Collection of weekly shift data"
+    },
+    "/settings/staff": {
+      "schema": "StaffSettings",
+      "description": "Global staff list and guest access"
+    },
+    "/settings/global": {
+      "schema": "GlobalSettings",
+      "description": "Global app settings"
+    },
+    "/logs/{logId}": {
+      "schema": "LogEntry",
+      "description": "Activity logs"
+    }
+  }
+}
