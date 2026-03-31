@@ -33,7 +33,7 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
 
   return (
     <div className="min-w-[1000px] bg-white border rounded-xl overflow-hidden shadow-sm animate-in fade-in duration-500">
-      <table className="w-full border-collapse">
+      <table className="w-full border-collapse table-fixed">
         <thead>
           <tr className="bg-slate-50 border-b">
             <th className="p-4 text-left border-r w-[200px] sticky left-0 bg-slate-50 z-10">

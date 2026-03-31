@@ -256,7 +256,7 @@ const Calendar: React.FC<CalendarProps> = ({
 
   if (viewType === 'employee') {
     return (
-      <div className="p-4 md:p-6 bg-slate-50 min-h-full overflow-x-auto">
+      <div className="p-4 md:p-6 bg-slate-50 min-h-full overflow-auto">
         <EmployeeView 
           shifts={shifts} 
           staff={staff} 

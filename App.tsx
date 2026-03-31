@@ -520,6 +520,7 @@ const App: React.FC = () => {
     createLog('DELETE WEEK', `Removed all shifts for week ${getWeekRangeString(currentWeek)}`);
   }, [handleUpdateShifts, isReadOnly, currentWeek]);
 
+
   const handleExportSnapshot = async () => {
     const element = document.getElementById('calendar-grid-capture');
     if (!element) return;
@@ -746,7 +747,7 @@ const App: React.FC = () => {
             </div>
           </div>
         </header>
-        <div className="flex-1 overflow-x-auto md:overflow-y-auto relative bg-white hide-scrollbar">
+        <div className="flex-1 overflow-auto relative bg-white hide-scrollbar">
           <Calendar 
             shifts={shifts} 
             staff={staffList} 

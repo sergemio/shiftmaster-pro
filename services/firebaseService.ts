@@ -298,6 +298,18 @@ export const loadShiftsFromFirebase = async (weekId: string): Promise<Shift[] | 
   return null;
 };
 
+export const exportWeeksData = async (weekIds: string[]): Promise<Record<string, any>> => {
+  if (!auth.currentUser) return {};
+  const result: Record<string, any> = {};
+  for (const wid of weekIds) {
+    try {
+      const snap = await getDoc(doc(db, 'weeks', wid));
+      if (snap.exists()) result[wid] = snap.data();
+    } catch (e) { /* skip */ }
+  }
+  return result;
+};
+
 export const loadStaffFromFirebase = async (): Promise<{ staff: Staff[], guests: string[] } | null> => {
   if (!auth.currentUser) return null;
   const path = 'settings/staff';
