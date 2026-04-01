@@ -28,7 +28,7 @@ interface LayoutShift extends Shift {
   totalColumns: number;
 }
 
-const CurrentTimeIndicator: React.FC<{ timezone?: string }> = ({ timezone = 'UTC' }) => {
+const CurrentTimeIndicator: React.FC<{ timezone?: string }> = ({ timezone = 'Europe/Paris' }) => {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -100,7 +100,7 @@ const Calendar: React.FC<CalendarProps> = ({
   isLoading = false,
   isExporting = false,
   language = 'en',
-  timezone = 'UTC',
+  timezone = 'Europe/Paris',
   viewType = 'day'
 }) => {
   const [dragState, setDragState] = useState<DragState | null>(null);
