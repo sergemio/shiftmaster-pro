@@ -7,7 +7,7 @@ service cloud.firestore {
     // ===============================================================
     //
     // Collection: weeks
-    // Document ID: weekId (ISO Monday date)
+    // Document ID: weekId (ISO Sunday date)
     // Fields:
     //   - shifts: array of Shift objects
     //   - updatedAt: string (ISO date-time)

@@ -28,7 +28,7 @@ export interface Shift {
 }
 
 export interface WeeklyData {
-  weekStart: string; // ISO string for the Monday
+  weekStart: string; // ISO string for the Sunday (week start)
   shifts: Shift[];
 }
 
