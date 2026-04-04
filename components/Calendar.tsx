@@ -291,7 +291,7 @@ const Calendar: React.FC<CalendarProps> = ({
         <div className="w-[40px] md:w-[60px] border-r bg-slate-50/50 flex-shrink-0" />
         {localizedDays.map((day, idx) => {
           const date = new Date(currentWeek);
-          date.setDate(date.getDate() + idx);
+          date.setDate(date.getDate() + idx + 1); // +1: weekStart is Sunday, dayIndex 0 = Monday
           const dayNum = date.getDate();
           const today = new Date();
           const isToday = 

@@ -44,7 +44,7 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
             </th>
             {localizedDays.map((day, idx) => {
               const date = new Date(currentWeek);
-              date.setDate(date.getDate() + idx);
+              date.setDate(date.getDate() + idx + 1); // +1: weekStart is Sunday, dayIndex 0 = Monday
               return (
                 <th key={day} className="p-4 text-center border-r last:border-r-0 min-w-[120px]">
                   <div className="flex flex-col items-center">

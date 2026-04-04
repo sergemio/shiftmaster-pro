@@ -9,7 +9,8 @@ export const formatTime = (hours: number): string => {
 
 export const getWeekRangeString = (date: Date, lang: Language = 'en'): string => {
   const start = new Date(date);
-  const end = new Date(date);
+  start.setDate(start.getDate() + 1); // +1: weekStart is Sunday, display starts Monday
+  const end = new Date(start);
   end.setDate(end.getDate() + 6);
   
   const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
@@ -70,7 +71,7 @@ export const getNowInTimezone = (timeZone: string): { hour: number, minute: numb
   const minute = parseInt(getPart('minute'));
   const weekday = getPart('weekday'); // Mon, Tue...
   
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const dayIndex = days.indexOf(weekday);
   
   return {
@@ -83,7 +84,7 @@ export const getNowInTimezone = (timeZone: string): { hour: number, minute: numb
 
 export const getShiftDate = (weekStartIso: string, dayIndex: number, lang: Language = 'en'): string => {
   const d = new Date(weekStartIso);
-  d.setDate(d.getDate() + dayIndex);
+  d.setDate(d.getDate() + dayIndex + 1); // +1 because weekStart is Sunday, dayIndex 0 = Monday
   const locale = lang === 'fr' ? 'fr-FR' : 'en-US';
   return d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
 };
