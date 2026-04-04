@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, LogEntry, Language } from './types';
 import { getMonday, getWeekRangeString, getShiftDate, formatTime } from './utils/helpers';
-import { INITIAL_STAFF } from './constants';
+import { INITIAL_STAFF, DAYS_EN, DAYS_FR } from './constants';
 import Calendar from './components/Calendar';
 import Sidebar from './components/Sidebar';
 import ShiftModal from './components/ShiftModal';
@@ -293,7 +293,8 @@ const App: React.FC = () => {
     const newShift: Shift = { id: Math.random().toString(36).substr(2, 9), staffId, dayIndex, startTime, endTime };
     handleUpdateShifts([...shifts, newShift]);
     const name = staffList.find(s => s.id === staffId)?.name || 'Unknown';
-    createLog('CREATE SHIFT', `Added shift for ${name} at ${formatTime(startTime)}-${formatTime(endTime)}`);
+    const dayName = (language === 'fr' ? DAYS_FR : DAYS_EN)[dayIndex];
+    createLog('CREATE SHIFT', `Added shift for ${name} on ${dayName} (${formatTime(startTime)}-${formatTime(endTime)})`);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
   const updateShift = useCallback((updatedShift: Shift) => {
@@ -310,7 +311,8 @@ const App: React.FC = () => {
     }
     handleUpdateShifts(shifts.map(s => s.id === updatedShift.id ? updatedShift : s));
     const name = staffList.find(s => s.id === updatedShift.staffId)?.name || 'Unknown';
-    createLog('UPDATE SHIFT', `Updated shift for ${name} (${formatTime(updatedShift.startTime)}-${formatTime(updatedShift.endTime)})`);
+    const dayName = (language === 'fr' ? DAYS_FR : DAYS_EN)[updatedShift.dayIndex];
+    createLog('UPDATE SHIFT', `Updated shift for ${name} on ${dayName} (${formatTime(updatedShift.startTime)}-${formatTime(updatedShift.endTime)})`);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
   const deleteShift = useCallback((id: string) => {
@@ -320,7 +322,8 @@ const App: React.FC = () => {
     
     const staffName = staffList.find(s => s.id === shift.staffId)?.name || 'Unknown';
     handleUpdateShifts(shifts.filter(s => s.id !== id));
-    createLog('DELETE SHIFT', `Removed shift for ${staffName}`);
+    const dayName = (language === 'fr' ? DAYS_FR : DAYS_EN)[shift.dayIndex];
+    createLog('DELETE SHIFT', `Removed shift for ${staffName} on ${dayName}`);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
   const handleUpdateStaffList = async (newList: Staff[], newGuests: string[] = guestEmails) => {
