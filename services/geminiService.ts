@@ -105,7 +105,7 @@ export const generateAutoSchedule = async (
         
         Input Data:
         - Staff: ${JSON.stringify(staff.map(s => ({ id: s.id, name: s.name, targetHours: s.targetHours })))}
-        - Operating Hours (per day index 0-6): ${JSON.stringify(constraints.operatingHours)}
+        - Operating Hours (per day index 0-6, where 0=Monday, 6=Sunday): ${JSON.stringify(constraints.operatingHours)}
         - Target Shift Length: ${constraints.avgShiftLength} hours
         - Special User Instructions: "${constraints.instructions}"
 
@@ -114,7 +114,7 @@ export const generateAutoSchedule = async (
         2. Respect the operating hours for each day.
         3. Aim for the "Target Shift Length" but adjust to fit totals.
         4. Output MUST be a valid JSON array of Shift objects.
-        5. Shift Interface: { id: string, staffId: string, dayIndex: number, startTime: number, endTime: number }
+        5. Shift Interface: { id: string, staffId: string, dayIndex: number (0=Monday to 6=Sunday), startTime: number, endTime: number }
         6. Do not include coverageBy or notes in the output.
         7. Generate random 9-character alphanumeric strings for IDs.
         8. RETURN ONLY THE JSON ARRAY. NO MARKDOWN, NO EXPLANATION.

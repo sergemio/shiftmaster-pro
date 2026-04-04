@@ -69,9 +69,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const { worked, extra } = getStats();
 
-  const getDateForDay = (monday: Date, dayIndex: number) => {
-    const d = new Date(monday);
-    d.setDate(d.getDate() + dayIndex);
+  const getDateForDay = (weekStart: Date, dayIndex: number) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + dayIndex + 1); // +1: weekStart is Sunday, dayIndex 0 = Monday
     const locale = language === 'fr' ? 'fr-FR' : 'en-US';
     return d.toLocaleDateString(locale, { weekday: 'short', day: 'numeric' });
   };

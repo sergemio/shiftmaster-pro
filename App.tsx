@@ -400,7 +400,7 @@ const App: React.FC = () => {
         }
         return weeklyShifts.map(s => {
           const d = new Date(wid);
-          d.setDate(d.getDate() + s.dayIndex);
+          d.setDate(d.getDate() + s.dayIndex + 1); // +1: weekId is Sunday, dayIndex 0 = Monday
           const isInMonth = d.getMonth() === month && d.getFullYear() === year;
           const dateLabel = d.toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' });
           const weekRangeLabel = getWeekRangeString(new Date(wid));

@@ -5,6 +5,36 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-04-04 — Fix day labels off-by-one + full audit (session 2)
+
+### Fix day labels shifted by one
+- **Quoi** : Tous les jours etaient decales d'un cran : Friday affichait les shifts de Saturday, etc. La semaine affichait Sunday-Saturday au lieu de Monday-Sunday.
+- **Pourquoi** : Le fix de session 1 avait change DAYS arrays et getNowInTimezone pour commencer par Sunday, en assumant que dayIndex 0 = Sunday. En realite, dayIndex 0 = **Monday** dans la data Firebase. Le weekId est un dimanche, mais c'est juste la veille du vrai debut de semaine.
+- **Convention finale (definitif)** :
+  - `weekId` = date ISO du dimanche precedant le lundi de la semaine
+  - `dayIndex 0` = **Monday**, `dayIndex 6` = **Sunday**
+  - `DAYS_EN/DAYS_FR` = Monday-first
+  - Tous les calculs de date font `weekStart + dayIndex + 1` pour compenser
+- **Fix** : Revert DAYS arrays a Monday-first, revert getNowInTimezone a Mon=0, ajouter `+1` partout dans les date headers
+- **Fichiers modifies** : `constants.ts`, `utils/helpers.ts`, `components/Calendar.tsx`, `components/EmployeeView.tsx`
+
+### Audit complet dayIndex consistency
+- **Quoi** : Audit de tous les fichiers pour trouver les endroits ou `dayIndex` est utilise sans le `+1` offset
+- **Bugs trouves et fixes** :
+  - `components/Sidebar.tsx` `getDateForDay` — manquait le `+1` (dates de coverage events decalees)
+  - `App.tsx` line ~403 — filtrage mensuel des shifts manquait le `+1` (shifts mis sur le mauvais jour pour les rapports mensuels)
+  - `services/geminiService.ts` — prompt Gemini ne documentait pas la convention dayIndex. Ajoute `0=Monday, 6=Sunday` dans le prompt
+- **Fichiers modifies** : `components/Sidebar.tsx`, `App.tsx`, `services/geminiService.ts`
+- **Si ca casse** : La regle d'or : `date = weekStart + dayIndex + 1`. Le weekStart est un dimanche, dayIndex 0 = lundi, donc il faut toujours ajouter 1.
+
+### Add day name + date to log messages
+- **Quoi** : Les System Logs affichent maintenant le jour complet : "Updated shift for Parthavi on Saturday, April 4 (20:00-23:30)" au lieu de juste les heures
+- **Pourquoi** : Impossible de savoir quel jour etait concerne dans les anciens logs
+- **Note** : Les anciens logs en Firebase ne sont pas retroactivement modifies
+- **Fichiers modifies** : `App.tsx`
+
+---
+
 ## 2026-04-01 — Setup initial + Reconnexion Firebase + Bugfixes (session 1)
 
 ### Setup projet local
@@ -87,9 +117,10 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 | ti2jukwg1 | Harshil |
 
 ### Convention semaine
-- **Debut** : Dimanche (dayIndex 0)
-- **Fin** : Samedi (dayIndex 6)
-- **WeekId** : date ISO du dimanche (ex: `2026-03-29`)
+- **WeekId** : date ISO du dimanche precedant la semaine (ex: `2026-03-29` pour la semaine du lundi 30 mars)
+- **dayIndex 0** = Monday, **dayIndex 6** = Sunday
+- **Calcul date** : `date = weekStart + dayIndex + 1` (toujours ajouter 1)
+- Ne JAMAIS modifier la data Firebase — le code s'adapte a la data
 
 ---
 
