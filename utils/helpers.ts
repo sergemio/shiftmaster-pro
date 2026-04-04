@@ -34,7 +34,7 @@ export const getIsoDateString = (date: Date, timeZone: string = 'Europe/Paris'):
   }
 };
 
-export const getMonday = (d: Date, timeZone: string = 'Europe/Paris'): Date => {
+export const getWeekStart = (d: Date, timeZone: string = 'Europe/Paris'): Date => {
   const iso = getIsoDateString(d, timeZone);
   const [y, m, day] = iso.split('-').map(Number);
   const date = new Date(y, m - 1, day, 12, 0, 0);

@@ -5,7 +5,7 @@ import { DAYS_EN, DAYS_FR, START_HOUR, END_HOUR, HOUR_HEIGHT, TOTAL_HOURS } from
 import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getMonday } from '../utils/helpers';
+import { getIsoDateString, getNowInTimezone, getWeekStart } from '../utils/helpers';
 
 interface CalendarProps {
   shifts: Shift[];
@@ -113,7 +113,7 @@ const Calendar: React.FC<CalendarProps> = ({
 
   const todayIndex = useMemo(() => {
     const { isoDate, dayIndex } = getNowInTimezone(timezone);
-    const weekStartOfNow = getMonday(new Date(isoDate));
+    const weekStartOfNow = getWeekStart(new Date(isoDate));
     if (getIsoDateString(weekStartOfNow) === getIsoDateString(currentWeek)) {
       return dayIndex;
     }

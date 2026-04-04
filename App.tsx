@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, LogEntry, Language } from './types';
-import { getMonday, getWeekRangeString, getShiftDate, formatTime } from './utils/helpers';
+import { getWeekStart, getWeekRangeString, getShiftDate, formatTime } from './utils/helpers';
 import { INITIAL_STAFF, DAYS_EN, DAYS_FR } from './constants';
 import Calendar from './components/Calendar';
 import Sidebar from './components/Sidebar';
@@ -104,7 +104,7 @@ const App: React.FC = () => {
   });
   const t = useMemo(() => getTranslation(language), [language]);
 
-  const [currentWeek, setCurrentWeek] = useState<Date>(getMonday(new Date()));
+  const [currentWeek, setCurrentWeek] = useState<Date>(getWeekStart(new Date()));
   const [navDirection, setNavDirection] = useState<'forward' | 'backward' | 'none'>('none');
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [guestEmails, setGuestEmails] = useState<string[]>([]);
@@ -361,14 +361,14 @@ const App: React.FC = () => {
   const handleJumpToMonth = (month: number, year: number) => {
     setNavDirection('none');
     const firstDay = new Date(year, month, 1);
-    setCurrentWeek(getMonday(firstDay));
+    setCurrentWeek(getWeekStart(firstDay));
     setIsMonthPickerOpen(false);
     setAiInsight("");
   };
 
   const handleJumpToToday = () => {
     setNavDirection('none');
-    setCurrentWeek(getMonday(new Date()));
+    setCurrentWeek(getWeekStart(new Date()));
     setIsMonthPickerOpen(false);
     setAiInsight("");
   };
@@ -383,7 +383,7 @@ const App: React.FC = () => {
     const month = currentWeek.getMonth();
     const firstOfMonth = new Date(year, month, 1);
     const lastOfMonth = new Date(year, month + 1, 0);
-    let runner = getMonday(firstOfMonth);
+    let runner = getWeekStart(firstOfMonth);
     const weekIds: string[] = [];
     while (runner <= lastOfMonth) {
       weekIds.push(runner.toISOString().split('T')[0]);
