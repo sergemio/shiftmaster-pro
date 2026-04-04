@@ -5,6 +5,34 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-04-04 — Calendar Hardening (session 3, post-Codex audit)
+
+Codex adversarial review a identifie des risques critiques dans le systeme calendrier. Corrections structurees en 4 phases independantes.
+
+### Phase 1 — Fix commentaires menteurs
+- **Quoi** : `types.ts` disait "ISO string for the Monday", `firestore.rules` disait "weekId (ISO Monday date)" — les deux faux, c'est un **Sunday**
+- **Fix** : Commentaires corriges pour refleter la realite
+- **Fichiers** : `types.ts`, `firestore.rules`
+
+### Phase 2 — Rename getMonday → getWeekStart
+- **Quoi** : La fonction `getMonday()` retourne un **dimanche**. Nom trompeur = bombe a retardement
+- **Fix** : Renommage pur (meme logique, nouveau nom) dans tous les fichiers
+- **Fichiers** : `utils/helpers.ts`, `App.tsx`, `components/Calendar.tsx`
+
+### Phase 3 — Protection DST sur weekId
+- **Quoi** : `toISOString().split('T')[0]` utilise UTC brut — peut deriver d'un jour autour des changements d'heure (mars/octobre)
+- **Fix** : Nouveau helper `toWeekId(date, timezone)` qui passe par `Intl.DateTimeFormat` (timezone-safe). Remplace les 7 occurrences dans App.tsx et Sidebar.tsx
+- **Fichiers** : `utils/helpers.ts`, `App.tsx`, `components/Sidebar.tsx`
+- **Si ca casse** : Le weekId doit toujours etre un dimanche au format YYYY-MM-DD. Verifier avec `toWeekId(new Date())` dans la console
+
+### Phase 4 — Firestore rules renforcees
+- **Quoi** : `isValidShift` ne validait pas les bornes de dayIndex ni l'ordre des heures. `isValidWeeklyData` ne validait que `shifts[0]`
+- **Fix** : Ajout `dayIndex >= 0 && dayIndex <= 6`, `endTime > startTime`, validation des 10 premiers shifts, cap a 100 shifts max
+- **Fichier** : `firestore.rules`
+- **Deploy** : `firebase deploy --only firestore:rules` (pas encore fait)
+
+---
+
 ## 2026-04-04 — Fix day labels off-by-one + full audit (session 2)
 
 ### Fix day labels shifted by one
