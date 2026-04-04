@@ -73,14 +73,27 @@ service cloud.firestore {
       return shift.id is string &&
              shift.staffId is string &&
              shift.dayIndex is int &&
+             shift.dayIndex >= 0 &&
+             shift.dayIndex <= 6 &&
              shift.startTime is number &&
-             shift.endTime is number;
+             shift.endTime is number &&
+             shift.endTime > shift.startTime;
     }
 
     function isValidWeeklyData(data) {
       return data.shifts is list &&
+             data.shifts.size() <= 100 &&
+             data.updatedAt is string &&
              (data.shifts.size() == 0 || isValidShift(data.shifts[0])) &&
-             data.updatedAt is string;
+             (data.shifts.size() <= 1 || isValidShift(data.shifts[1])) &&
+             (data.shifts.size() <= 2 || isValidShift(data.shifts[2])) &&
+             (data.shifts.size() <= 3 || isValidShift(data.shifts[3])) &&
+             (data.shifts.size() <= 4 || isValidShift(data.shifts[4])) &&
+             (data.shifts.size() <= 5 || isValidShift(data.shifts[5])) &&
+             (data.shifts.size() <= 6 || isValidShift(data.shifts[6])) &&
+             (data.shifts.size() <= 7 || isValidShift(data.shifts[7])) &&
+             (data.shifts.size() <= 8 || isValidShift(data.shifts[8])) &&
+             (data.shifts.size() <= 9 || isValidShift(data.shifts[9]));
     }
 
     function isValidLog(data) {
