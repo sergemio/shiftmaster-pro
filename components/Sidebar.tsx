@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Shift, Staff, Language } from '../types';
 import { getTranslation } from '../utils/translations';
 import { exportWeeksData, loadStaffFromFirebase } from '../services/firebaseService';
+import { toWeekId } from '../utils/helpers';
 
 interface SidebarProps {
   shifts: Shift[];
@@ -106,7 +107,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       const lastDay = new Date(Date.UTC(year, month, 0)); // last day of month
       const runner = new Date(startSunday);
       while (runner <= lastDay) {
-        weekIds.push(runner.toISOString().split('T')[0]);
+        weekIds.push(toWeekId(runner));
         runner.setUTCDate(runner.getUTCDate() + 7);
       }
 

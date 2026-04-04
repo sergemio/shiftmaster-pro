@@ -46,6 +46,15 @@ export const getWeekStart = (d: Date, timeZone: string = 'Europe/Paris'): Date =
 };
 
 /**
+ * Converts a Date (expected to be a week-start Sunday from getWeekStart)
+ * into a timezone-safe ISO date string for use as Firestore weekId.
+ * Avoids toISOString() which uses UTC and can drift around DST transitions.
+ */
+export const toWeekId = (date: Date, timeZone: string = 'Europe/Paris'): string => {
+  return getIsoDateString(date, timeZone);
+};
+
+/**
  * Returns the current time and day index in a specific timezone
  */
 export const getNowInTimezone = (timeZone: string): { hour: number, minute: number, dayIndex: number, isoDate: string } => {

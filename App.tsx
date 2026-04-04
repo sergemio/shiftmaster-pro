@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, LogEntry, Language } from './types';
-import { getWeekStart, getWeekRangeString, getShiftDate, formatTime } from './utils/helpers';
+import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId } from './utils/helpers';
 import { INITIAL_STAFF, DAYS_EN, DAYS_FR } from './constants';
 import Calendar from './components/Calendar';
 import Sidebar from './components/Sidebar';
@@ -140,7 +140,7 @@ const App: React.FC = () => {
 
   const monthPickerRef = useRef<HTMLDivElement>(null);
   const aiMenuRef = useRef<HTMLDivElement>(null);
-  const weekId = currentWeek.toISOString().split('T')[0];
+  const weekId = toWeekId(currentWeek);
 
   useEffect(() => {
     localStorage.setItem('shiftmaster_lang', language);
@@ -293,7 +293,7 @@ const App: React.FC = () => {
     const newShift: Shift = { id: Math.random().toString(36).substr(2, 9), staffId, dayIndex, startTime, endTime };
     handleUpdateShifts([...shifts, newShift]);
     const name = staffList.find(s => s.id === staffId)?.name || 'Unknown';
-    const dayLabel = getShiftDate(currentWeek.toISOString().split('T')[0], dayIndex, language);
+    const dayLabel = getShiftDate(toWeekId(currentWeek), dayIndex, language);
     createLog('CREATE SHIFT', `Added shift for ${name} on ${dayLabel} (${formatTime(startTime)}-${formatTime(endTime)})`);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
@@ -311,7 +311,7 @@ const App: React.FC = () => {
     }
     handleUpdateShifts(shifts.map(s => s.id === updatedShift.id ? updatedShift : s));
     const name = staffList.find(s => s.id === updatedShift.staffId)?.name || 'Unknown';
-    const dayLabel = getShiftDate(currentWeek.toISOString().split('T')[0], updatedShift.dayIndex, language);
+    const dayLabel = getShiftDate(toWeekId(currentWeek), updatedShift.dayIndex, language);
     createLog('UPDATE SHIFT', `Updated shift for ${name} on ${dayLabel} (${formatTime(updatedShift.startTime)}-${formatTime(updatedShift.endTime)})`);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
@@ -322,7 +322,7 @@ const App: React.FC = () => {
     
     const staffName = staffList.find(s => s.id === shift.staffId)?.name || 'Unknown';
     handleUpdateShifts(shifts.filter(s => s.id !== id));
-    const dayLabel = getShiftDate(currentWeek.toISOString().split('T')[0], shift.dayIndex, language);
+    const dayLabel = getShiftDate(toWeekId(currentWeek), shift.dayIndex, language);
     createLog('DELETE SHIFT', `Removed shift for ${staffName} on ${dayLabel}`);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
@@ -386,7 +386,7 @@ const App: React.FC = () => {
     let runner = getWeekStart(firstOfMonth);
     const weekIds: string[] = [];
     while (runner <= lastOfMonth) {
-      weekIds.push(runner.toISOString().split('T')[0]);
+      weekIds.push(toWeekId(runner));
       runner.setDate(runner.getDate() + 7);
     }
     const results = await Promise.all(
@@ -503,7 +503,7 @@ const App: React.FC = () => {
     if (isReadOnly) return;
     const prevWeek = new Date(currentWeek);
     prevWeek.setDate(prevWeek.getDate() - 7);
-    const prevWeekId = prevWeek.toISOString().split('T')[0];
+    const prevWeekId = toWeekId(prevWeek);
     let prevShifts: Shift[] | null = [];
     if (isGuest) {
       const cached = localStorage.getItem(`sandbox_shifts_${prevWeekId}`);
