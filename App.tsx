@@ -293,8 +293,8 @@ const App: React.FC = () => {
     const newShift: Shift = { id: Math.random().toString(36).substr(2, 9), staffId, dayIndex, startTime, endTime };
     handleUpdateShifts([...shifts, newShift]);
     const name = staffList.find(s => s.id === staffId)?.name || 'Unknown';
-    const dayName = (language === 'fr' ? DAYS_FR : DAYS_EN)[dayIndex];
-    createLog('CREATE SHIFT', `Added shift for ${name} on ${dayName} (${formatTime(startTime)}-${formatTime(endTime)})`);
+    const dayLabel = getShiftDate(currentWeek.toISOString().split('T')[0], dayIndex, language);
+    createLog('CREATE SHIFT', `Added shift for ${name} on ${dayLabel} (${formatTime(startTime)}-${formatTime(endTime)})`);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
   const updateShift = useCallback((updatedShift: Shift) => {
@@ -311,8 +311,8 @@ const App: React.FC = () => {
     }
     handleUpdateShifts(shifts.map(s => s.id === updatedShift.id ? updatedShift : s));
     const name = staffList.find(s => s.id === updatedShift.staffId)?.name || 'Unknown';
-    const dayName = (language === 'fr' ? DAYS_FR : DAYS_EN)[updatedShift.dayIndex];
-    createLog('UPDATE SHIFT', `Updated shift for ${name} on ${dayName} (${formatTime(updatedShift.startTime)}-${formatTime(updatedShift.endTime)})`);
+    const dayLabel = getShiftDate(currentWeek.toISOString().split('T')[0], updatedShift.dayIndex, language);
+    createLog('UPDATE SHIFT', `Updated shift for ${name} on ${dayLabel} (${formatTime(updatedShift.startTime)}-${formatTime(updatedShift.endTime)})`);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
   const deleteShift = useCallback((id: string) => {
@@ -322,8 +322,8 @@ const App: React.FC = () => {
     
     const staffName = staffList.find(s => s.id === shift.staffId)?.name || 'Unknown';
     handleUpdateShifts(shifts.filter(s => s.id !== id));
-    const dayName = (language === 'fr' ? DAYS_FR : DAYS_EN)[shift.dayIndex];
-    createLog('DELETE SHIFT', `Removed shift for ${staffName} on ${dayName}`);
+    const dayLabel = getShiftDate(currentWeek.toISOString().split('T')[0], shift.dayIndex, language);
+    createLog('DELETE SHIFT', `Removed shift for ${staffName} on ${dayLabel}`);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
   const handleUpdateStaffList = async (newList: Staff[], newGuests: string[] = guestEmails) => {
