@@ -582,7 +582,7 @@ const App: React.FC = () => {
           <h1 className="text-7xl font-black mb-4 tracking-tighter drop-shadow-2xl">{t('appName')}</h1>
           <p className="text-emerald-100/60 font-bold text-xl uppercase tracking-[0.3em]">Enterprise Weekly Scheduling</p>
         </div>
-        <div className="flex flex-col gap-5 w-full max-sm relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
+        <div className="flex flex-col gap-5 w-full max-w-sm relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
           <button onClick={handleLogin} className="bg-white text-emerald-950 px-8 py-6 rounded-[2.5rem] font-black hover:bg-lime-50 transition-all flex items-center justify-center gap-4 shadow-2xl active:scale-[0.98] group relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:animate-shimmer" />
             <svg className="w-6 h-6" viewBox="0 0 48 48">
