@@ -39,8 +39,9 @@ export const getWeekStart = (d: Date, timeZone: string = 'Europe/Paris'): Date =
   const [y, m, day] = iso.split('-').map(Number);
   const date = new Date(y, m - 1, day, 12, 0, 0);
   const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon...
-  // Use Sunday as week start to match existing Firebase data
-  const diff = date.getDate() - dayOfWeek;
+  // WeekId = Sunday before the Monday. If today IS Sunday, it belongs to
+  // the previous display week (Mon-Sun), so go back 7 days.
+  const diff = date.getDate() - dayOfWeek - (dayOfWeek === 0 ? 7 : 0);
   const sunday = new Date(y, m - 1, diff, 12, 0, 0);
   return new Date(Date.UTC(sunday.getFullYear(), sunday.getMonth(), sunday.getDate()));
 };

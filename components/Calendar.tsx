@@ -133,7 +133,7 @@ const Calendar: React.FC<CalendarProps> = ({
     if (todayIndex !== -1) {
       setActiveDayIndex(todayIndex);
     } else {
-      setActiveDayIndex(0);
+      setActiveDayIndex(-1);
     }
   }, [todayIndex]);
 
