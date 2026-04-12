@@ -5,6 +5,33 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-04-12 — Fix dimanche : highlight + navigation (session 4)
+
+### Fix getWeekStart pour dimanche
+- **Quoi** : Quand on etait dimanche, l'app naviguait vers la semaine **suivante** au lieu de la semaine courante. Le highlight "today" et la fleche rose apparaissaient sur le mauvais jour.
+- **Pourquoi** : `getWeekStart(dimanche 12)` retournait dimanche 12 (weekId de la semaine Apr 13-19) au lieu de dimanche 5 (weekId de la semaine Apr 6-12 qui contient le dimanche 12).
+- **Fix** : Si le jour est dimanche (`dayOfWeek === 0`), reculer de 7 jours pour retourner le dimanche precedent.
+- **Fichiers modifies** : `utils/helpers.ts`
+
+### Fix faux highlight Monday
+- **Quoi** : Sur toutes les semaines qui ne contenaient pas "aujourd'hui", le lundi etait highlight par defaut.
+- **Pourquoi** : `activeDayIndex` etait mis a 0 (Monday) quand `todayIndex = -1`. L'app se sentait obligee de highlight un jour.
+- **Fix** : `activeDayIndex = -1` quand on n'est pas dans la semaine → aucun jour highlight.
+- **Fichiers modifies** : `components/Calendar.tsx`
+
+---
+
+## 2026-04-06 — Acces Firebase Admin SDK operationnel
+
+### Service account key installee
+- **Quoi** : Service account key generee et stockee dans `scripts/service-account.json` (dans .gitignore)
+- **Pourquoi** : Permet a Claude de lire la DB Firestore en direct sans passer par l'app ni demander un export a Serge
+- **Usage** : `node scripts/read-firebase.js --month 2026-03` / `--week 2026-03-29` / `--staff`
+- **Fix** : Corrige bug DST dans le script (`toISOString()` → format local) qui generait des weekIds decales d'un jour
+- **Fichiers modifies** : `scripts/read-firebase.js`
+
+---
+
 ## 2026-04-04 — Calendar Hardening (session 3, post-Codex audit)
 
 Codex adversarial review a identifie des risques critiques dans le systeme calendrier. Corrections structurees en 4 phases independantes.
