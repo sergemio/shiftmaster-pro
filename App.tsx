@@ -195,10 +195,15 @@ const App: React.FC = () => {
   useEffect(() => {
     if (user && !isGuest) {
       const unsubscribe = subscribeToStaff((updatedStaff, updatedGuests) => {
-        if (updatedStaff && updatedStaff.length > 0) setStaffList(updatedStaff);
-        else if (staffList.length === 0) {
-          setStaffList(INITIAL_STAFF);
-          saveStaffToFirebase(INITIAL_STAFF);
+        // Only update local state from Firebase data. NEVER write INITIAL_STAFF
+        // back to the DB — that caused a production incident on 2026-05-04
+        // where the real roster was overwritten with defaults at login when
+        // the first snapshot fired empty (cache cold).
+        // If Firebase has no staff doc yet, use INITIAL_STAFF locally only.
+        if (updatedStaff && updatedStaff.length > 0) {
+          setStaffList(updatedStaff);
+        } else {
+          setStaffList(prev => prev.length === 0 ? INITIAL_STAFF : prev);
         }
         if (updatedGuests) setGuestEmails(updatedGuests);
       });

@@ -5,6 +5,33 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-05-04 — Incident : staff list ecrasee par INITIAL_STAFF + fix
+
+### Quoi
+Au login de Serge a 13:59:59 UTC, la doc `settings/staff` a ete ecrasee avec INITIAL_STAFF (8 staff defauts du code). Resultat :
+- 3 staff supprimes du roster : Parthavi (l0kb2u4vb), Sepand (oa6mu6n1z), Harshil (ti2jukwg1)
+- Tous les emails effaces
+- Couleurs custom remplacees par defauts
+- Sinar repassee admin → staff
+
+Les **shifts dans `weeks/` etaient intacts** — ils referencent toujours les vrais staffIds. L'app n'arrivait juste plus a afficher les noms.
+
+### Cause
+Bug dans `App.tsx` subscribeToStaff callback : si le 1er snapshot arrivait vide (cache Firestore froid au login), le code ecrivait `INITIAL_STAFF` en DB via `saveStaffToFirebase(INITIAL_STAFF)`. Race condition latente depuis le debut.
+
+### Fix
+1. **Restauration** : `node scripts/restore-staff.js tmp-april-raw.json` — restaure les 11 staff depuis le snapshot du 3 mai (extraction April raw).
+2. **Code** : suppression du `saveStaffToFirebase(INITIAL_STAFF)` dans le subscribe. INITIAL_STAFF reste utilise comme fallback **local uniquement** si la DB est vraiment vide. Aucune ecriture auto en DB.
+
+### Detection
+Logs Firestore (`logs/` collection) → `UPDATE STAFF | Modified staff roster details` par Serge a 2026-05-04T13:59:59.288Z.
+
+### Fichiers modifies
+- `App.tsx` (subscribeToStaff callback)
+- `scripts/restore-staff.js` (nouveau)
+
+---
+
 ## 2026-04-12 — Fix dimanche : highlight + navigation (session 4)
 
 ### Fix getWeekStart pour dimanche
