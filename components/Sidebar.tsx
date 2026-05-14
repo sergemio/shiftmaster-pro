@@ -13,10 +13,8 @@ interface SidebarProps {
   onManageStaffClick: () => void;
   onCopyLastWeek: () => void;
   onDeleteWeek: () => void;
-  onViewAiReport: () => void;
   onOpenHistory: () => void;
   onExportSnapshot: () => void;
-  aiInsight: string;
   isReadOnly?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
@@ -35,10 +33,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onManageStaffClick, 
   onCopyLastWeek,
   onDeleteWeek,
-  onViewAiReport,
   onOpenHistory,
   onExportSnapshot,
-  aiInsight,
   isReadOnly = false,
   onUndo,
   onRedo,
@@ -210,7 +206,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
       <div className="space-y-3 mb-6">
-        {staff.map(person => {
+        {[...staff].sort((a, b) => {
+          const aTotal = (worked[a.id] || 0) + (extra[a.id] || 0);
+          const bTotal = (worked[b.id] || 0) + (extra[b.id] || 0);
+          return bTotal - aTotal; // desc
+        }).map(person => {
           const workedHours = worked[person.id] || 0;
           const extraHours = extra[person.id] || 0;
           const totalWorked = workedHours + extraHours;
@@ -287,25 +287,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       </div>
-
-      {aiInsight && (
-        <div 
-          onClick={onViewAiReport}
-          className="mb-8 p-5 bg-[linear-gradient(135deg,#ffffff,#f8faff)] border border-indigo-100 rounded-2xl shadow-md relative overflow-hidden group cursor-pointer hover:shadow-lg hover:border-indigo-200 transition-all active:scale-[0.98]"
-        >
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-600" />
-          <div className="font-black text-[10px] text-indigo-600 uppercase tracking-[0.2em] mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-              {language === 'fr' ? 'Synthèse IA' : 'AI Insights'}
-            </div>
-            <div className="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[8px] group-hover:bg-indigo-600 group-hover:text-white transition-colors">VIEW</div>
-          </div>
-          <div className="text-[12px] text-slate-700 leading-relaxed line-clamp-3 font-medium italic">
-            {aiInsight}
-          </div>
-        </div>
-      )}
 
       <div className="mt-auto pt-6 border-t border-slate-100 space-y-4">
         {!isReadOnly && (

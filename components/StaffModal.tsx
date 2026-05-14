@@ -191,16 +191,6 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       </div>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">Job Title / Position</label>
-                      <input 
-                        type="text"
-                        value={editJobTitle}
-                        onChange={(e) => setEditJobTitle(e.target.value)}
-                        className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="e.g. Server, Chef..."
-                      />
-                    </div>
-                    <div>
                       <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">Google Email Address</label>
                       <input 
                         type="email"
@@ -395,16 +385,6 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       <option value="staff">Regular Staff</option>
                       <option value="admin">Admin</option>
                     </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Job Title / Position</label>
-                    <input 
-                      type="text" 
-                      value={newJobTitle}
-                      onChange={(e) => setNewJobTitle(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
-                      placeholder="e.g. Server, Chef..."
-                    />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Brand Color</label>

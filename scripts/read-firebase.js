@@ -57,9 +57,12 @@ function sundayOf(d) {
   return s;
 }
 
-/** Format date as YYYY-MM-DD */
+/** Format date as YYYY-MM-DD (local, not UTC — avoids DST drift) */
 function iso(d) {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /** Return all Sunday-start weekIds that overlap with a given month */

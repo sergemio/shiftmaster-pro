@@ -8,14 +8,10 @@ import Sidebar from './components/Sidebar';
 import ShiftModal from './components/ShiftModal';
 import StaffModal from './components/StaffModal';
 import EditShiftModal from './components/EditShiftModal';
-import AiReportModal from './components/AiReportModal';
-import AskAiModal from './components/AskAiModal';
 import MonthYearPicker from './components/MonthYearPicker';
 import LogHistoryModal from './components/LogHistoryModal';
-import AutoScheduleModal from './components/AutoScheduleModal';
 import SettingsModal from './components/SettingsModal';
 import { getTranslation } from './utils/translations';
-import { getScheduleInsights, interrogateData, generateAutoSchedule } from './services/geminiService';
 import { 
   saveShiftsToFirebase, 
   saveStaffToFirebase,
@@ -117,29 +113,18 @@ const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [authError, setAuthError] = useState<AuthResult['error'] | null>(null);
-  const [aiInsight, setAiInsight] = useState<string>("");
-  const [reportLabel, setReportLabel] = useState<string>("");
-  const [isMonthlyAiLoading, setIsMonthlyAiLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
-  const [isAiReportModalOpen, setIsAiReportModalOpen] = useState(false);
-  const [isAskAiModalOpen, setIsAskAiModalOpen] = useState(false);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [isAiMenuOpen, setIsAiMenuOpen] = useState(false);
-  const [isAutoScheduleModalOpen, setIsAutoScheduleModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
 
-  // AI Cancellation Support
-  const aiRequestActive = useRef<boolean>(false);
-
   const monthPickerRef = useRef<HTMLDivElement>(null);
-  const aiMenuRef = useRef<HTMLDivElement>(null);
   const weekId = toWeekId(currentWeek);
 
   useEffect(() => {
@@ -154,9 +139,6 @@ const App: React.FC = () => {
     const handleClickOutside = (event: MouseEvent) => {
       if (monthPickerRef.current && !monthPickerRef.current.contains(event.target as Node)) {
         setIsMonthPickerOpen(false);
-      }
-      if (aiMenuRef.current && !aiMenuRef.current.contains(event.target as Node)) {
-        setIsAiMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -360,7 +342,6 @@ const App: React.FC = () => {
     const next = new Date(currentWeek);
     next.setDate(next.getDate() + direction * 7);
     setCurrentWeek(next);
-    setAiInsight("");
   };
 
   const handleJumpToMonth = (month: number, year: number) => {
@@ -368,140 +349,12 @@ const App: React.FC = () => {
     const firstDay = new Date(year, month, 1);
     setCurrentWeek(getWeekStart(firstDay));
     setIsMonthPickerOpen(false);
-    setAiInsight("");
   };
 
   const handleJumpToToday = () => {
     setNavDirection('none');
     setCurrentWeek(getWeekStart(new Date()));
     setIsMonthPickerOpen(false);
-    setAiInsight("");
-  };
-
-  const stopAiGeneration = () => {
-    aiRequestActive.current = false;
-    setIsMonthlyAiLoading(false);
-  };
-
-  const fetchMonthlyDataStrictlyFiltered = async () => {
-    const year = currentWeek.getFullYear();
-    const month = currentWeek.getMonth();
-    const firstOfMonth = new Date(year, month, 1);
-    const lastOfMonth = new Date(year, month + 1, 0);
-    let runner = getWeekStart(firstOfMonth);
-    const weekIds: string[] = [];
-    while (runner <= lastOfMonth) {
-      weekIds.push(toWeekId(runner));
-      runner.setDate(runner.getDate() + 7);
-    }
-    const results = await Promise.all(
-      weekIds.map(async (wid) => {
-        let weeklyShifts: Shift[] = [];
-        if (isGuest) {
-          const cached = localStorage.getItem(`sandbox_shifts_${wid}`);
-          weeklyShifts = cached ? JSON.parse(cached) : [];
-        } else {
-          weeklyShifts = (await loadShiftsFromFirebase(wid) || []);
-        }
-        return weeklyShifts.map(s => {
-          const d = new Date(wid);
-          d.setDate(d.getDate() + s.dayIndex + 1); // +1: weekId is Sunday, dayIndex 0 = Monday
-          const isInMonth = d.getMonth() === month && d.getFullYear() === year;
-          const dateLabel = d.toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' });
-          const weekRangeLabel = getWeekRangeString(new Date(wid));
-          return { ...s, dateLabel, weekRangeLabel, isInMonth };
-        });
-      })
-    );
-    return results.flat().filter(s => s.isInMonth);
-  };
-
-  const handleAskAi = async (question: string) => {
-    aiRequestActive.current = true;
-    const filteredShifts = await fetchMonthlyDataStrictlyFiltered();
-    const monthLabel = currentWeek.toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { month: 'long', year: 'numeric' });
-    const response = await interrogateData(question, filteredShifts as any, staffList, monthLabel);
-    if (!aiRequestActive.current) return "Request cancelled.";
-    return response || "Aucune réponse trouvée.";
-  };
-
-  const handleAutoSchedule = async (constraints: {
-    operatingHours: { day: number, start: number, end: number }[],
-    avgShiftLength: number,
-    instructions: string
-  }) => {
-    aiRequestActive.current = true;
-    const weekLabel = getWeekRangeString(currentWeek);
-    const generatedShifts = await generateAutoSchedule(staffList, constraints, weekLabel);
-    if (!aiRequestActive.current) return;
-    handleUpdateShifts(generatedShifts);
-    createLog('AUTO SCHEDULE', `AI generated ${generatedShifts.length} shifts for ${weekLabel}`);
-  };
-
-  const askGeminiMonthly = async () => {
-    setIsMonthlyAiLoading(true);
-    setIsAiMenuOpen(false);
-    aiRequestActive.current = true;
-    try {
-      const filteredShifts = await fetchMonthlyDataStrictlyFiltered();
-      if (!aiRequestActive.current) return;
-
-      const firstOfMonth = new Date(currentWeek.getFullYear(), currentWeek.getMonth(), 1);
-      const staffSummaries: Record<string, any> = {};
-      staffList.forEach(p => {
-        staffSummaries[p.id] = { name: p.name, weeklyTarget: p.targetHours, weeks: {}, monthlyTotal: 0 };
-      });
-      filteredShifts.forEach(s => {
-        const hours = s.endTime - s.startTime;
-        const actualWorkerId = s.coverageBy ? s.coverageBy : s.staffId;
-        const originalId = s.staffId;
-        const summary = staffSummaries[actualWorkerId];
-        if (summary) {
-          if (!summary.weeks[s.weekRangeLabel]) {
-            summary.weeks[s.weekRangeLabel] = { label: s.weekRangeLabel, total: 0, days: [] };
-          }
-          summary.weeks[s.weekRangeLabel].total += hours;
-          summary.weeks[s.weekRangeLabel].days.push({ 
-            date: s.dateLabel, 
-            hours: hours,
-            type: s.coverageBy ? (language === 'fr' ? `Remplacement (${staffList.find(st => st.id === originalId)?.name})` : `Covering (${staffList.find(st => st.id === originalId)?.name})`) : (language === 'fr' ? 'Normal' : 'Normal')
-          });
-          summary.monthlyTotal += hours;
-        }
-        if (s.coverageBy) {
-          const originalSummary = staffSummaries[originalId];
-          if (originalSummary) {
-            if (!originalSummary.weeks[s.weekRangeLabel]) {
-              originalSummary.weeks[s.weekRangeLabel] = { label: s.weekRangeLabel, total: 0, days: [] };
-            }
-            originalSummary.weeks[s.weekRangeLabel].days.push({ 
-              date: s.dateLabel, 
-              hours: 0,
-              type: language === 'fr' ? `Absence (Couvert par ${staffList.find(st => st.id === s.coverageBy)?.name})` : `Leave (Covered by ${staffList.find(st => st.id === s.coverageBy)?.name})`
-            });
-          }
-        }
-      });
-      const numWeeksInReport = Array.from(new Set(filteredShifts.map(s => s.weekRangeLabel))).length;
-      const finalSummary = Object.values(staffSummaries).map(s => ({
-        ...s,
-        weeks: Object.values(s.weeks),
-        monthlyObjective: s.weeklyTarget * numWeeksInReport
-      }));
-      const result = await getScheduleInsights(finalSummary as any, staffList, firstOfMonth, 'mensuel');
-      
-      if (!aiRequestActive.current) return;
-
-      setAiInsight(result || "Erreur de génération.");
-      setReportLabel(firstOfMonth.toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { month: 'long', year: 'numeric' }));
-      setIsAiReportModalOpen(true);
-      createLog('AI REPORT', `Generated monthly report for ${reportLabel}`);
-    } catch (err) {
-      console.error(err);
-      if (aiRequestActive.current) alert("Erreur lors de la récupération des données.");
-    } finally {
-      setIsMonthlyAiLoading(false);
-    }
   };
 
   const handleCopyLastWeek = async () => {
@@ -611,24 +464,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-white">
-      {isMonthlyAiLoading && (
-        <div className="fixed inset-0 z-[300] bg-slate-900/40 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300">
-           <div className="bg-white p-12 rounded-[3rem] shadow-2xl flex flex-col items-center gap-6 max-w-sm text-center">
-              <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
-              <div>
-                <h3 className="text-xl font-black text-slate-800 mb-2">Génération du Rapport IA</h3>
-                <p className="text-slate-500 font-medium">Analyse des données de paie en cours pour tout le mois...</p>
-              </div>
-              <button 
-                onClick={stopAiGeneration}
-                className="mt-4 px-8 py-3 bg-red-50 text-red-600 font-bold rounded-2xl hover:bg-red-100 transition-all flex items-center gap-2 active:scale-95"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-                Arrêter l'analyse
-              </button>
-           </div>
-        </div>
-      )}
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 border-b flex items-center justify-between px-4 md:px-6 bg-white sticky top-0 z-30">
           <div className="flex items-center gap-2 md:gap-4">
@@ -691,52 +526,7 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-2 md:gap-3 relative">
-            <div className="relative flex items-center" ref={aiMenuRef}>
-              <div className={`
-                absolute right-0 flex items-center gap-2 bg-white/80 backdrop-blur-xl border border-indigo-100 shadow-xl rounded-full px-3 py-1.5 pr-14 transition-all duration-300 origin-right overflow-hidden
-                ${isAiMenuOpen ? 'w-[280px] md:w-[420px] opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-4 pointer-events-none'}
-              `}>
-                <button 
-                  onClick={() => { setIsAskAiModalOpen(true); setIsAiMenuOpen(false); }}
-                  className="flex-shrink-0 flex items-center gap-2 bg-indigo-50 text-indigo-700 px-2 md:px-3 py-1.5 rounded-full font-bold text-[10px] md:text-xs hover:bg-indigo-100 transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  <span className="hidden xs:inline">{t('askAi')}</span>
-                </button>
-                <button 
-                  onClick={askGeminiMonthly}
-                  disabled={isMonthlyAiLoading}
-                  className="flex-shrink-0 flex items-center gap-2 bg-emerald-50 text-emerald-700 px-2 md:px-3 py-1.5 rounded-full font-bold text-[10px] md:text-xs hover:bg-emerald-100 transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                  <span className="hidden xs:inline">{isMonthlyAiLoading ? '...' : t('aiReport')}</span>
-                </button>
-                <button 
-                  onClick={() => { setIsAutoScheduleModalOpen(true); setIsAiMenuOpen(false); }}
-                  className="flex-shrink-0 flex items-center gap-2 bg-violet-50 text-violet-700 px-2 md:px-3 py-1.5 rounded-full font-bold text-[10px] md:text-xs hover:bg-violet-100 transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  <span className="hidden xs:inline">{t('autoSchedule')}</span>
-                </button>
-              </div>
-              <button 
-                onClick={() => setIsAiMenuOpen(!isAiMenuOpen)}
-                className={`
-                  z-10 w-9 h-9 md:w-9 md:h-9 flex items-center justify-center rounded-full transition-all duration-300 shadow-lg active:scale-95
-                  ${isAiMenuOpen ? 'bg-indigo-600 text-white rotate-90 scale-110' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:scale-105'}
-                `}
-              >
-                {isAiMenuOpen ? (
-                   <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-                ) : (
-                   <span className="font-black text-[8px] md:text-[10px] tracking-tighter flex flex-col items-center leading-none">
-                     <span className="text-[12px] md:text-[14px]">✨</span>AI
-                   </span>
-                )}
-              </button>
-            </div>
-
-            <button 
+            <button
               onClick={() => setIsSettingsModalOpen(true)}
               className="w-9 h-9 md:w-9 md:h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
               title={t('settings')}
@@ -772,16 +562,14 @@ const App: React.FC = () => {
           />
         </div>
       </div>
-      <Sidebar 
-        shifts={shifts} 
-        staff={staffList} 
-        currentWeek={currentWeek} 
-        aiInsight={aiInsight} 
-        onAddClick={() => setIsShiftModalOpen(true)} 
-        onManageStaffClick={() => setIsStaffModalOpen(true)} 
-        onCopyLastWeek={handleCopyLastWeek} 
+      <Sidebar
+        shifts={shifts}
+        staff={staffList}
+        currentWeek={currentWeek}
+        onAddClick={() => setIsShiftModalOpen(true)}
+        onManageStaffClick={() => setIsStaffModalOpen(true)}
+        onCopyLastWeek={handleCopyLastWeek}
         onDeleteWeek={handleDeleteWeek}
-        onViewAiReport={() => setIsAiReportModalOpen(true)} 
         onOpenHistory={() => setIsHistoryModalOpen(true)}
         onExportSnapshot={handleExportSnapshot}
         isReadOnly={isReadOnly}
@@ -807,10 +595,7 @@ const App: React.FC = () => {
         language={language} 
       />
       <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} onUpdate={updateShift} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
-      <AiReportModal isOpen={isAiReportModalOpen} onClose={() => setIsAiReportModalOpen(false)} report={aiInsight} weekRange={reportLabel} language={language} />
-      <AskAiModal isOpen={isAskAiModalOpen} onClose={() => setIsAskAiModalOpen(false)} onSubmit={handleAskAi} onStop={stopAiGeneration} language={language} />
       <LogHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} logs={logs} language={language} />
-      <AutoScheduleModal isOpen={isAutoScheduleModalOpen} onClose={() => setIsAutoScheduleModalOpen(false)} staff={staffList} onGenerate={handleAutoSchedule} onStop={stopAiGeneration} language={language} />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} />
     </div>
   );
