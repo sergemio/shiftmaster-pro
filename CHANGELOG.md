@@ -5,6 +5,59 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-08-09 — Backup automatique quotidien (Phase 0 de l'audit)
+
+### Quoi
+Sauvegarde complete quotidienne de la base Firestore vers Google Drive.
+`scripts/backup-firebase.js` + `scripts/run-backup.cmd` + tache planifiee Windows
+« ShiftMaster Backup » a **03:30** tous les jours.
+
+### Pourquoi
+Firestore en plan Spark n'a **ni PITR, ni export automatique, ni corbeille**. Un `setDoc`
+malheureux ou un « Delete Week » de trop etait definitif. L'incident du 2026-05-04 n'a ete
+reparable que parce qu'un dump JSON trainait **par hasard** en local. Le filet etait un
+accident, pas un dispositif.
+
+### Ou vont les fichiers
+`G:\My Drive\2 - RH - SALAIRES EMPLOYÉS & Documents\ShiftMaster - Backups\`
+- `daily/shiftmaster-YYYY-MM-DD.json` — garde 30 jours puis purge
+- `monthly/shiftmaster-YYYY-MM.json` — premier backup du mois, **garde indefiniment**
+
+Le Drive etant synchronise en local, chaque backup existe en local ET dans le cloud.
+
+### Commandes
+```
+node scripts/backup-firebase.js             # backup du jour
+node scripts/backup-firebase.js --dry-run   # simulation, n'ecrit rien
+node scripts/backup-firebase.js --verify    # compare le dernier backup a la base live
+node scripts/backup-firebase.js --dest "X"  # destination alternative
+```
+
+### Garde-fous integres
+- **Refus d'ecrire un backup tronque** : si moins d'1 semaine ou moins d'1 employe est lu, le
+  script s'arrete. Un backup qui enregistre une base vide est pire que pas de backup — il a
+  l'air d'un succes et il fait tourner un bon backup hors retention.
+- **Ecriture atomique** : ecriture dans `.tmp` puis renommage, donc une execution interrompue
+  ne laisse jamais un fichier a moitie ecrit la ou on attend un backup valide.
+- **Purge chirurgicale** : ne touche que les fichiers correspondant exactement au motif de
+  nommage du script, uniquement dans `daily/`. Les archives mensuelles ne sont jamais purgees.
+- **Log** : `scripts/backup.log` (dans .gitignore) avec le code de sortie de chaque execution.
+
+### Verifie le jour meme
+- Premier backup reel ecrit : 1 049 Ko (38 semaines / 964 shifts / 3 671 logs / 9 employes)
+- `--verify` : **3 711 documents compares, 0 difference** — le backup est une copie fidele
+- Tache planifiee declenchee manuellement de bout en bout : `exit=0`, fichier ecrit
+- Aucun dossier parasite cree malgre l'accent dans le chemin (le log console affiche
+  « EMPLOYÃ‰S » a cause du codepage de cmd, mais le disque est correct)
+
+### Reste a faire
+Le **test de restauration reelle** (reecrire un backup vers une base) n'a pas ete fait : il
+suppose d'ecrire en base, ce qui ne se fait pas sans accord explicite et de preference sur un
+projet de test. Tant qu'il n'est pas fait, on sait que le backup est fidele mais pas que la
+procedure de remise en place fonctionne.
+
+---
+
 ## 2026-08-09 — Header de marque sur l'export PNG + securisation .gitignore
 
 ### Header sur l'export PNG
