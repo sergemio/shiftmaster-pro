@@ -25,3 +25,10 @@ dist-ssr
 
 # Firebase service account key
 scripts/service-account.json
+
+# Personal / HR documents — this repo is PUBLIC, never commit these
+attachments/
+
+# Local Firestore dumps (staff names, emails, schedules) — public repo
+tmp-*.json
+scripts/*.json
