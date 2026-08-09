@@ -32,3 +32,6 @@ attachments/
 # Local Firestore dumps (staff names, emails, schedules) — public repo
 tmp-*.json
 scripts/*.json
+
+# One-shot maintenance scripts with staff emails hardcoded
+scripts/fix-emails.js
