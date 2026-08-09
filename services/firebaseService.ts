@@ -2,7 +2,7 @@ import { Shift, Staff, LogEntry } from '../types';
 
 // Use the Official Google Firebase ESM CDN to ensure total compatibility
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, limit, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, limit, runTransaction, where, getDocs } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 
 // Import the Firebase configuration
@@ -19,19 +19,6 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || '(default)');
 export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
-
-// Validate Connection to Firestore
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. ");
-    }
-    // Skip logging for other errors, as this is simply a connection test.
-  }
-}
-testConnection();
 
 export enum OperationType {
   CREATE = 'create',
@@ -61,6 +48,26 @@ interface FirestoreErrorInfo {
   }
 }
 
+/** Set by the app to show a real message instead of failing silently. */
+let errorReporter: ((message: string, detail: string) => void) | null = null;
+export const setFirestoreErrorReporter = (fn: typeof errorReporter) => { errorReporter = fn; };
+
+function describe(error: unknown): string {
+  const code = (error as any)?.code as string | undefined;
+  if (code === 'permission-denied') return "You do not have permission to make this change.";
+  if (code === 'unavailable' || code === 'failed-precondition') return "No connection to the server. Your change was not saved.";
+  if (code === 'unauthenticated') return "Your session expired. Sign in again.";
+  return "The change could not be saved.";
+}
+
+/**
+ * Logs a Firestore failure and tells the app about it.
+ *
+ * Deliberately does NOT throw: it is called from onSnapshot error callbacks,
+ * where a throw can be caught by nobody and becomes an unhandled rejection.
+ * The auth details stay in the console object and are never serialised into an
+ * Error message, which used to leak the signed-in user's email up the stack.
+ */
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
@@ -79,9 +86,9 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     },
     operationType,
     path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  };
+  console.error('Firestore Error:', errInfo);
+  errorReporter?.(describe(error), `${operationType} ${path ?? ''}`.trim());
 }
 
 export interface AuthResult {
@@ -149,18 +156,50 @@ export const subscribeToAuth = (callback: (user: any) => void) => {
 /**
  * FIRESTORE DATA METHODS (WRITE)
  */
-export const saveShiftsToFirebase = async (weekId: string, shifts: Shift[]): Promise<void> => {
-  if (!auth.currentUser) return;
+/** Thrown when someone else saved the same week while you were editing it. */
+export class WeekConflictError extends Error {
+  constructor(public readonly weekId: string, public readonly theirUpdatedAt: string) {
+    super(`Week ${weekId} was modified by someone else`);
+    this.name = 'WeekConflictError';
+  }
+}
+
+/**
+ * Saves a week's shifts.
+ *
+ * The whole `shifts` array is replaced, so a plain setDoc means last-write-wins:
+ * with three admins, one person's afternoon of work could vanish under another's
+ * save, silently. The transaction compares `updatedAt` against what the caller
+ * last saw and refuses the write if the document moved underneath them.
+ *
+ * @param baseUpdatedAt the `updatedAt` the caller loaded, or null when the week
+ *                      did not exist yet. Pass undefined to force the write.
+ */
+export const saveShiftsToFirebase = async (
+  weekId: string,
+  shifts: Shift[],
+  baseUpdatedAt?: string | null
+): Promise<string> => {
+  if (!auth.currentUser) return '';
   const path = `weeks/${weekId}`;
+  const weekRef = doc(db, 'weeks', weekId);
+  const cleanShifts = sanitizeData(shifts);
+  const stamp = new Date().toISOString();
+
   try {
-    const weekRef = doc(db, 'weeks', weekId);
-    const cleanShifts = sanitizeData(shifts);
-    await setDoc(weekRef, { 
-      shifts: cleanShifts, 
-      updatedAt: new Date().toISOString() 
+    await runTransaction(db, async (tx) => {
+      if (baseUpdatedAt !== undefined) {
+        const snap = await tx.get(weekRef);
+        const theirs = snap.exists() ? (snap.data().updatedAt ?? null) : null;
+        if (theirs !== baseUpdatedAt) throw new WeekConflictError(weekId, theirs);
+      }
+      tx.set(weekRef, { shifts: cleanShifts, updatedAt: stamp });
     });
+    return stamp;
   } catch (e) {
+    if (e instanceof WeekConflictError) throw e;
     handleFirestoreError(e, OperationType.WRITE, path);
+    return '';
   }
 };
 
@@ -222,16 +261,23 @@ export const saveLogToFirebase = async (log: Omit<LogEntry, 'id'>): Promise<void
 /**
  * FIRESTORE DATA METHODS (READ-TIME SUBSCRIPTIONS)
  */
-export const subscribeToShifts = (weekId: string, callback: (shifts: Shift[]) => void) => {
+/**
+ * @param callback receives the shifts and the document's `updatedAt`, which the
+ *                 caller must hand back to saveShiftsToFirebase for conflict
+ *                 detection. null means the week does not exist yet.
+ */
+export const subscribeToShifts = (
+  weekId: string,
+  callback: (shifts: Shift[], updatedAt: string | null) => void
+) => {
   if (!auth.currentUser) return () => {};
   const path = `weeks/${weekId}`;
   const weekRef = doc(db, 'weeks', weekId);
   return onSnapshot(weekRef, (snap) => {
-    if (snap.exists()) {
-      callback(snap.data().shifts as Shift[]);
-    } else {
-      callback([]);
-    }
+    if (!snap.exists()) return callback([], null);
+    const data = snap.data();
+    // `as Shift[]` would be a lie if the field were missing or malformed.
+    callback(Array.isArray(data.shifts) ? data.shifts as Shift[] : [], data.updatedAt ?? null);
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, path);
   });

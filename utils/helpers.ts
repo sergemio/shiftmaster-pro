@@ -128,6 +128,14 @@ export const isStaffActiveInWeek = (staff: Staff, weekStart: Date): boolean => {
   return true;
 };
 
+/** Today as YYYY-MM-DD in the app's timezone. */
+export const todayIso = (timeZone: string = 'Europe/Paris'): string =>
+  getIsoDateString(new Date(), timeZone);
+
+/** Someone whose last day is already behind us. They keep their history. */
+export const isFormerStaff = (staff: Staff, today: string = todayIso()): boolean =>
+  !!staff.endDate && staff.endDate < today;
+
 /**
  * Long, unambiguous week range for the PNG export header. Always English,
  * always with the year — the exported image travels without the app around it.

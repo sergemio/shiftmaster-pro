@@ -8,13 +8,15 @@ interface EditShiftModalProps {
   onClose: () => void;
   shift: Shift | null;
   staffList: Staff[];
+  /** People still employed on the week being viewed. Defaults to everyone. */
+  assignableStaff?: Staff[];
   onUpdate: (updatedShift: Shift) => void;
   onDelete: (id: string) => void;
   isReadOnly?: boolean;
   language: string;
 }
 
-const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, onUpdate, onDelete, isReadOnly = false, language }) => {
+const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onDelete, isReadOnly = false, language }) => {
   if (!isOpen || !shift) return null;
 
   const [staffId, setStaffId] = useState(shift.staffId);
@@ -88,6 +90,15 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
 
   const assignedStaff = staffList.find(s => s.id === staffId);
 
+  // Only currently-employed people can be picked — but whoever is already on
+  // this shift stays in the list even if they have left, otherwise an old shift
+  // could not be opened and edited at all.
+  const pickable = useMemo(() => {
+    const base = assignableStaff ?? staffList;
+    const current = staffList.find(s => s.id === shift.staffId);
+    return current && !base.some(s => s.id === current.id) ? [current, ...base] : base;
+  }, [assignableStaff, staffList, shift.staffId]);
+
   return (
     <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
@@ -113,7 +124,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                     onChange={(e) => setStaffId(e.target.value)}
                     className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all disabled:opacity-80"
                   >
-                    {staffList.map(s => (
+                    {pickable.map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
@@ -168,7 +179,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                     className={`w-full bg-slate-50/50 border rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all disabled:opacity-80 ${coverageBy ? 'border-indigo-300 bg-indigo-50/30 text-indigo-900' : 'border-slate-200'}`}
                   >
                     <option value="">No coverage (Normal shift)</option>
-                    {staffList.filter(s => s.id !== staffId).map(s => (
+                    {pickable.filter(s => s.id !== staffId).map(s => (
                       <option key={s.id} value={s.id}>Covered by {s.name}</option>
                     ))}
                   </select>

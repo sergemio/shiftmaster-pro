@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Staff } from '../types';
+import { isFormerStaff, todayIso } from '../utils/helpers';
 
 interface StaffModalProps {
   isOpen: boolean;
@@ -8,20 +9,18 @@ interface StaffModalProps {
   guestEmails: string[];
   onAdd: (staff: Staff) => void;
   onUpdate: (staff: Staff) => void;
-  onRemove: (id: string) => void;
   onAddGuest: (email: string) => void;
   onRemoveGuest: (email: string) => void;
   language: string;
 }
 
-const StaffModal: React.FC<StaffModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  staffList, 
-  guestEmails = [], 
-  onAdd, 
-  onUpdate, 
-  onRemove,
+const StaffModal: React.FC<StaffModalProps> = ({
+  isOpen,
+  onClose,
+  staffList,
+  guestEmails = [],
+  onAdd,
+  onUpdate,
   onAddGuest,
   onRemoveGuest,
   language
@@ -49,6 +48,24 @@ const StaffModal: React.FC<StaffModalProps> = ({
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
   const [showSavedId, setShowSavedId] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<{ staff: Staff; action: 'leave' | 'reinstate' } | null>(null);
+
+  // Active people first, then former ones (most recently gone at the top).
+  const orderedStaff = useMemo(() => {
+    return [...staffList].sort((a, b) => {
+      const fa = isFormerStaff(a), fb = isFormerStaff(b);
+      if (fa !== fb) return fa ? 1 : -1;
+      if (fa && fb) return (b.endDate || '').localeCompare(a.endDate || '');
+      return 0;
+    });
+  }, [staffList]);
+
+  const applyConfirmed = () => {
+    if (!confirming) return;
+    const { staff, action } = confirming;
+    onUpdate({ ...staff, endDate: action === 'leave' ? todayIso() : null });
+    setConfirming(null);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,6 +139,45 @@ const StaffModal: React.FC<StaffModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+      {confirming && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 animate-in zoom-in-95 duration-150">
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${confirming.action === 'leave' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={confirming.action === 'leave' ? 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1' : 'M3 8l4-4m0 0l4 4M7 4v9a3 3 0 003 3h8'} />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 text-center">
+              {confirming.action === 'leave'
+                ? `Mark ${confirming.staff.name} as having left?`
+                : `Bring ${confirming.staff.name} back?`}
+            </h3>
+            <p className="text-sm text-slate-500 text-center mt-2 leading-relaxed">
+              {confirming.action === 'leave' ? (
+                <>Their last day will be set to <b className="text-slate-700">{todayIso()}</b>. They disappear from
+                the weeks that follow, but <b className="text-slate-700">every shift they already worked stays
+                visible</b> and their hours remain usable for payroll.</>
+              ) : (
+                <>Their end date will be cleared and they will appear again on the current and upcoming weeks.</>
+              )}
+            </p>
+            <div className="flex flex-col gap-2.5 mt-6">
+              <button
+                onClick={applyConfirmed}
+                className={`w-full py-3.5 rounded-2xl font-bold text-white transition-all active:scale-95 shadow-lg ${confirming.action === 'leave' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'}`}
+              >
+                {confirming.action === 'leave' ? 'Yes, they have left' : 'Yes, bring them back'}
+              </button>
+              <button
+                onClick={() => setConfirming(null)}
+                className="w-full py-3.5 rounded-2xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all active:scale-95"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bg-white rounded-t-[2rem] sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col h-[85vh] sm:h-auto sm:max-h-[90vh] animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
         <div className="p-4 md:p-6 border-b border-slate-100 flex justify-between items-center">
           <div>
@@ -135,14 +191,27 @@ const StaffModal: React.FC<StaffModalProps> = ({
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-white">
           <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
-            <span>Current Team ({staffList.length})</span>
+            <span>Current Team ({orderedStaff.filter(s => !isFormerStaff(s)).length})</span>
           </h3>
           <div className="space-y-2">
-            {staffList.map((staff) => (
-              <div 
-                key={staff.id} 
+            {orderedStaff.map((staff, idx) => {
+              const isFormer = isFormerStaff(staff);
+              // One list, sorted, with a divider before the first former member —
+              // simpler than two lists and it keeps a single row rendering.
+              const startsFormerSection = isFormer && !isFormerStaff(orderedStaff[idx - 1] ?? staff);
+              return (
+              <React.Fragment key={staff.id}>
+              {startsFormerSection && (
+                <div className="flex items-center gap-3 pt-4 pb-1">
+                  <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                    Former Team ({orderedStaff.filter(s => isFormerStaff(s)).length})
+                  </span>
+                  <span className="h-px flex-1 bg-slate-100" />
+                </div>
+              )}
+              <div
                 onClick={() => startEditing(staff)}
-                className={`flex flex-col p-3 transition-all rounded-xl border group relative cursor-pointer ${editingId === staff.id ? 'bg-indigo-50 border-indigo-200 shadow-inner' : 'bg-slate-50 border-slate-100 hover:bg-slate-100 hover:border-slate-200'}`}
+                className={`flex flex-col p-3 transition-all rounded-xl border group relative cursor-pointer ${editingId === staff.id ? 'bg-indigo-50 border-indigo-200 shadow-inner' : isFormer ? 'bg-white border-dashed border-slate-200 opacity-70 hover:opacity-100' : 'bg-slate-50 border-slate-100 hover:bg-slate-100 hover:border-slate-200'}`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -162,6 +231,11 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         </span>
                       </p>
                       <p className="text-[10px] text-slate-400 mt-1 font-medium truncate max-w-[200px]">{staff.email}</p>
+                      {isFormer && (
+                        <p className="text-[10px] text-amber-700 font-bold mt-0.5">
+                          Left on {staff.endDate} · history kept
+                        </p>
+                      )}
                     </div>
                   </div>
                   
@@ -170,15 +244,25 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       {showSavedId === staff.id && (
                         <span className="text-[10px] font-bold text-green-600 animate-in fade-in slide-in-from-right-2">Saved! ✓</span>
                       )}
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm(`Remove ${staff.name} from the roster?`)) onRemove(staff.id);
-                        }}
-                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      </button>
+                      {/* Nobody is ever deleted: an end date is set instead, so
+                          their past shifts and hours stay usable for payroll. */}
+                      {isFormer ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setConfirming({ staff, action: 'reinstate' }); }}
+                          title="Bring back to the active team"
+                          className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-all"
+                        >
+                          Reinstate
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setConfirming({ staff, action: 'leave' }); }}
+                          title="Mark as having left — keeps their history"
+                          className="p-2 text-slate-300 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -273,7 +357,9 @@ const StaffModal: React.FC<StaffModalProps> = ({
                   </div>
                 )}
               </div>
-            ))}
+              </React.Fragment>
+              );
+            })}
           </div>
 
           {/* Guest Admins Section */}

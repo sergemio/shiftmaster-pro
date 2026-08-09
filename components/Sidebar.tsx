@@ -16,6 +16,7 @@ interface SidebarProps {
   onOpenHistory: () => void;
   onExportSnapshot: () => void;
   isReadOnly?: boolean;
+  isLoading?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -36,6 +37,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onOpenHistory,
   onExportSnapshot,
   isReadOnly = false,
+  isLoading = false,
   onUndo,
   onRedo,
   canUndo = false,
@@ -318,8 +320,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="mt-auto pt-6 border-t border-slate-100 space-y-4">
         {!isReadOnly && (
           <>
-            {isEmpty && (
-              <button 
+            {/* Only on a week that is genuinely empty — `shifts` is also [] while
+                a week loads, and offering the copy then would let one click
+                replace a week that does have shifts. */}
+            {isEmpty && !isLoading && (
+              <button
                 type="button"
                 onClick={onCopyLastWeek}
                 className="w-full py-3 border-2 border-dashed border-slate-200 text-slate-500 rounded-2xl font-semibold hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/50 transition-all flex flex-col items-center justify-center group active:scale-[0.98]"

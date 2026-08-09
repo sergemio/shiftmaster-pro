@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, LogEntry, Language } from './types';
-import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId } from './utils/helpers';
+import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffActiveInWeek } from './utils/helpers';
 import { INITIAL_STAFF, DAYS_EN, DAYS_FR } from './constants';
 import Calendar from './components/Calendar';
 import Sidebar from './components/Sidebar';
@@ -23,7 +23,9 @@ import {
   subscribeToStaff,
   subscribeToLogs,
   AuthResult,
-  loadShiftsFromFirebase
+  loadShiftsFromFirebase,
+  setFirestoreErrorReporter,
+  WeekConflictError
 } from './services/firebaseService';
 
 const FloatingBackground: React.FC = () => {
@@ -123,6 +125,14 @@ const App: React.FC = () => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // `updatedAt` of the week currently on screen, used to detect that another
+  // admin saved it while this one was editing.
+  const weekVersion = useRef<string | null | undefined>(undefined);
+  // Saves are chained rather than fired in parallel: two quick edits (a drag,
+  // then another) would otherwise both start from the same version and the
+  // second would be reported as someone else's conflict.
+  const writeQueue = useRef<Promise<void>>(Promise.resolve());
 
   const monthPickerRef = useRef<HTMLDivElement>(null);
   const weekId = toWeekId(currentWeek);
@@ -145,18 +155,33 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // "The roster has not arrived yet" and "the roster is genuinely empty" look
+  // identical from staffList alone. Treating the first as the second granted
+  // write access to any signed-in user for the first seconds after login — and
+  // right after a roster corruption, which is exactly the wrong moment.
+  const [staffLoaded, setStaffLoaded] = useState(false);
+
   const isBootstrapMode = useMemo(() => {
+    if (!staffLoaded) return false;
     if (!staffList || staffList.length === 0) return true;
     return !staffList.some(s => s.role === 'admin' && s.email && s.email.trim() !== '');
-  }, [staffList]);
+  }, [staffList, staffLoaded]);
 
   const isReadOnly = useMemo(() => {
-    if (isGuest || isBootstrapMode) return false; 
+    if (isGuest) return false;
+    if (!staffLoaded) return true;      // no rights until we know who is who
+    if (isBootstrapMode) return false;
     if (!user || !user.email) return true;
     const currentUserEmail = user.email.trim().toLowerCase();
     const staffMember = staffList.find(s => (s.email || '').trim().toLowerCase() === currentUserEmail);
     return !staffMember || staffMember.role !== 'admin';
   }, [user, staffList, isGuest, isBootstrapMode]);
+
+  // A failed write used to be invisible: the badge said "Saved" regardless.
+  useEffect(() => {
+    setFirestoreErrorReporter((message) => setSaveError(message));
+    return () => setFirestoreErrorReporter(null);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = subscribeToAuth((firebaseUser) => {
@@ -188,6 +213,7 @@ const App: React.FC = () => {
           setStaffList(prev => prev.length === 0 ? INITIAL_STAFF : prev);
         }
         if (updatedGuests) setGuestEmails(updatedGuests);
+        setStaffLoaded(true);
       });
       return () => unsubscribe();
     } else if (isGuest) {
@@ -197,13 +223,23 @@ const App: React.FC = () => {
       } else {
         setStaffList(INITIAL_STAFF);
       }
+      setStaffLoaded(true);
     }
   }, [user, isGuest]);
+
+  // Undo/redo history belongs to ONE week. Carrying it across a week change
+  // meant Undo wrote the previous week's shifts onto the week now on screen,
+  // wiping it. Clearing on every weekId change is what keeps undo scoped.
+  useEffect(() => {
+    setPast([]);
+    setFuture([]);
+  }, [weekId]);
 
   useEffect(() => {
     if (user && !isGuest) {
       setIsLoading(true);
-      const unsubscribe = subscribeToShifts(weekId, (updatedShifts) => {
+      const unsubscribe = subscribeToShifts(weekId, (updatedShifts, updatedAt) => {
+        weekVersion.current = updatedAt;
         setShifts(updatedShifts);
         setIsLoading(false);
       });
@@ -245,10 +281,26 @@ const App: React.FC = () => {
       setFuture([]);
     }
     setShifts(newShifts);
-    
+
     if (user && !isGuest) {
-      await saveShiftsToFirebase(weekId, newShifts);
-      triggerSyncFeedback();
+      writeQueue.current = writeQueue.current.then(async () => {
+        try {
+          const stamp = await saveShiftsToFirebase(weekId, newShifts, weekVersion.current);
+          // Adopt the version we just wrote, so consecutive edits by the same
+          // person are not mistaken for someone else's changes.
+          if (stamp) weekVersion.current = stamp;
+          setSaveError(null);
+          triggerSyncFeedback();
+        } catch (e) {
+          if (e instanceof WeekConflictError) {
+            setSaveError('Someone else changed this week while you were editing it. Your change was not saved — what you see below is their version.');
+            // The live subscription already pushed their version into `shifts`.
+            setPast([]);
+            setFuture([]);
+          }
+        }
+      });
+      await writeQueue.current;
     } else if (isGuest) {
       localStorage.setItem(`sandbox_shifts_${weekId}`, JSON.stringify(newShifts));
       triggerSyncFeedback();
@@ -359,6 +411,10 @@ const App: React.FC = () => {
 
   const handleCopyLastWeek = async () => {
     if (isReadOnly) return;
+    // The button only renders on an empty week, but that guard lives in the UI
+    // and `shifts` is [] while a week is still loading. Refuse here too, so a
+    // click in that gap can never replace a week that actually has shifts.
+    if (shifts.length > 0 || isLoading) return;
     const prevWeek = new Date(currentWeek);
     prevWeek.setDate(prevWeek.getDate() - 7);
     const prevWeekId = toWeekId(prevWeek);
@@ -426,6 +482,14 @@ const App: React.FC = () => {
   };
 
   const editingShift = shifts.find(s => s.id === editingShiftId) || null;
+
+  // People you can still assign work to on the week being viewed. Someone who
+  // left in March must not be offered on a May week — but their past shifts stay
+  // on the calendar, flagged, rather than being hidden.
+  const assignableStaff = useMemo(
+    () => staffList.filter(s => isStaffActiveInWeek(s, currentWeek)),
+    [staffList, currentWeek]
+  );
 
   if (!user && !isGuest) {
     return (
@@ -508,7 +572,12 @@ const App: React.FC = () => {
                 <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
               </button>
               <div className="flex items-center gap-2 ml-1 md:ml-3">
-                {isLoading ? (
+                {saveError ? (
+                  <div className="bg-red-100 text-red-700 text-[8px] md:text-[10px] font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-red-200 flex items-center gap-1 md:gap-2">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                    <span className="hidden xs:inline">Not saved</span>
+                  </div>
+                ) : isLoading ? (
                   <div className="bg-indigo-50 text-indigo-600 text-[8px] md:text-[10px] font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-indigo-100 flex items-center gap-1 md:gap-2">
                     <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-ping" /> <span className="hidden xs:inline">{t('syncing')}</span>
                   </div>
@@ -545,8 +614,23 @@ const App: React.FC = () => {
             </div>
           </div>
         </header>
+        {saveError && (
+          <div className="bg-red-50 border-b-2 border-red-200 px-4 md:px-6 py-3 flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
+            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <p className="flex-1 text-sm text-red-800 font-medium leading-snug">{saveError}</p>
+            <button
+              onClick={() => setSaveError(null)}
+              className="text-red-400 hover:text-red-700 transition-colors flex-shrink-0 p-1"
+              title="Dismiss"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-auto relative bg-white hide-scrollbar">
-          <Calendar 
+          <Calendar
             shifts={shifts} 
             staff={staffList} 
             currentWeek={currentWeek} 
@@ -573,6 +657,7 @@ const App: React.FC = () => {
         onOpenHistory={() => setIsHistoryModalOpen(true)}
         onExportSnapshot={handleExportSnapshot}
         isReadOnly={isReadOnly}
+        isLoading={isLoading}
         onUndo={undo}
         onRedo={redo}
         canUndo={past.length > 0}
@@ -581,20 +666,19 @@ const App: React.FC = () => {
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
       />
-      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={staffList} onAdd={handleAddShift} language={language} />
+      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} onAdd={handleAddShift} language={language} />
       <StaffModal 
         isOpen={isStaffModalOpen} 
         onClose={() => setIsStaffModalOpen(false)} 
         staffList={staffList} 
         guestEmails={guestEmails}
         onAdd={(s) => handleUpdateStaffList([...staffList, s])} 
-        onUpdate={(s) => handleUpdateStaffList(staffList.map(item => item.id === s.id ? s : item))} 
-        onRemove={(id) => handleUpdateStaffList(staffList.filter(s => s.id !== id))} 
+        onUpdate={(s) => handleUpdateStaffList(staffList.map(item => item.id === s.id ? s : item))}
         onAddGuest={handleAddGuest}
         onRemoveGuest={handleRemoveGuest}
         language={language} 
       />
-      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} onUpdate={updateShift} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
+      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
       <LogHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} logs={logs} language={language} />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} />
     </div>
