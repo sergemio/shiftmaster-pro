@@ -72,6 +72,42 @@ Les 9 employes ont tous un email : personne ne perdra l'acces une fois l'etape 2
 
 ---
 
+## 2026-08-09 (soir) — La sauvegarde passe chez GitHub, la tache Windows est retiree
+
+### Quoi
+Nouveau depot **PRIVE** `sergemio/shiftmaster-backup` : workflow GitHub Actions quotidien a
+**02:15 UTC**, 30 sauvegardes glissantes dans `snapshots/`, un fichier JSON par collection.
+Meme principe que `sezam-prep-backup` (qui, lui, tourne depuis le 05/08 — verifie).
+
+### Pourquoi le changement
+La tache planifiee Windows ne s'executait **que les nuits ou le PC etait allume**. En
+verifiant ses reglages on a trouve deux trous : aucun rattrapage d'une execution manquee, et
+refus de demarrer sur batterie. Corriges d'abord, puis rendus inutiles : GitHub tourne quoi
+qu'il arrive. **La tache Windows a ete supprimee**, ainsi que `scripts/run-backup.cmd`.
+
+### Difference technique avec le Prep Manager
+Le Prep Manager est sur Realtime Database avec des noeuds lisibles sans authentification.
+ShiftMaster est sur **Firestore**, qui exige une identification : la cle de service est donc
+stockee en **secret GitHub chiffre** (`FIREBASE_SERVICE_ACCOUNT`). Cette cle contourne les
+regles de securite — d'ou le depot **prive**, obligatoire.
+
+### Verifie le jour meme
+- Execution reelle chez GitHub : 38 semaines / 964 shifts / 3672 logs / 2 reglages, commit
+  `2d34436` pousse par le bot
+- `restore.js` teste en mode simulation : 0 difference avec la base
+- `backup.js` **refuse d'ecrire** si la lecture parait tronquee
+
+### Ce qui reste en local
+`scripts/backup-firebase.js` est conserve pour deux usages : une copie a la demande avant une
+manipulation risquee, et `--verify` (comparer la derniere copie a la base). Le dossier Drive
+`ShiftMaster - Backups` garde les copies du 09/08 ; il n'est plus alimente.
+
+### A savoir
+Il a fallu accorder le scope `workflow` au jeton `gh` (`gh auth refresh -h github.com -s workflow`) :
+sans lui, GitHub refuse qu'un OAuth App cree un fichier dans `.github/workflows/`.
+
+---
+
 ## 2026-08-09 — Backup automatique quotidien (Phase 0 de l'audit)
 
 ### Quoi

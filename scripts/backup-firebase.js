@@ -8,8 +8,14 @@
  * staff roster overwritten) and was only recoverable because a stray JSON dump
  * happened to be lying around.
  *
+ * NOTE: the scheduled backup now runs on GitHub, not here — see the private
+ * repo sergemio/shiftmaster-backup. A Windows scheduled task only ran on the
+ * nights the PC happened to be on. This script stays for two things: taking a
+ * copy on demand before a risky change, and --verify.
+ *
  * Usage:
  *   node scripts/backup-firebase.js           # write today's backup
+ *   node scripts/backup-firebase.js --verify  # compare newest backup to the live DB
  *   node scripts/backup-firebase.js --dry-run # show what would happen, write nothing
  *   node scripts/backup-firebase.js --dest "D:\\somewhere"   # override destination
  *
