@@ -173,8 +173,12 @@ const App: React.FC = () => {
     if (isBootstrapMode) return false;
     if (!user || !user.email) return true;
     const currentUserEmail = user.email.trim().toLowerCase();
-    const staffMember = staffList.find(s => (s.email || '').trim().toLowerCase() === currentUserEmail);
-    return !staffMember || staffMember.role !== 'admin';
+    // One email can legitimately appear on several rows — the shared "Extra"
+    // entry used for one-off helpers carries Serge's address. Taking the FIRST
+    // match would demote a real admin to read-only the moment the generic row
+    // happened to come first in the list. Admin on any matching row wins.
+    const mine = staffList.filter(s => (s.email || '').trim().toLowerCase() === currentUserEmail);
+    return !mine.some(s => s.role === 'admin');
   }, [user, staffList, isGuest, isBootstrapMode]);
 
   // A failed write used to be invisible: the badge said "Saved" regardless.
