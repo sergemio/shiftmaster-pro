@@ -5,7 +5,12 @@ import { DAYS_EN, DAYS_FR, START_HOUR, END_HOUR, HOUR_HEIGHT, TOTAL_HOURS } from
 import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getWeekStart } from '../utils/helpers';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, isStaffActiveOnDate, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
+import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
+
+// Branded header stamped on top of the grid in the PNG export only.
+// Fixed height so it can be added to the capture container's height.
+const EXPORT_HEADER_HEIGHT = 76;
 
 interface CalendarProps {
   shifts: Shift[];
@@ -273,7 +278,7 @@ const Calendar: React.FC<CalendarProps> = ({
       id="calendar-grid-capture"
       ref={gridRef}
       className="relative select-none min-w-0 md:min-w-[1000px] transition-all duration-300 bg-white"
-      style={{ height: (TOTAL_HOURS + 1) * HOUR_HEIGHT + 64 }}
+      style={{ height: (TOTAL_HOURS + 1) * HOUR_HEIGHT + 64 + (isExporting ? EXPORT_HEADER_HEIGHT : 0) }}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
@@ -283,6 +288,26 @@ const Calendar: React.FC<CalendarProps> = ({
           <div className="flex flex-col items-center gap-3">
              <div className="w-8 h-8 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600/60">Updating...</span>
+          </div>
+        </div>
+      )}
+
+      {isExporting && (
+        <div
+          className="flex items-center gap-4 px-5 border-b-2"
+          style={{ height: EXPORT_HEADER_HEIGHT, backgroundColor: '#f3faec', borderBottomColor: '#d9edc4' }}
+        >
+          <img src={SEZAM_LOGO_DATA_URI} alt="Sezam&Co" className="block w-auto" style={{ height: 46 }} />
+          <div className="flex-1">
+            <div className="text-[9px] font-black uppercase tracking-[0.2em]" style={{ color: '#417f0a' }}>
+              Weekly Schedule
+            </div>
+            <div className="mt-0.5 text-[20px] font-extrabold tracking-tight text-slate-800">
+              {getWeekRangeLongEn(currentWeek)}
+            </div>
+          </div>
+          <div className="text-right text-[10px] font-extrabold uppercase tracking-[0.12em] leading-tight text-slate-400 whitespace-nowrap">
+            Sezam&amp;Co<br />Week {getIsoWeekNumber(currentWeek)}
           </div>
         </div>
       )}
@@ -346,8 +371,11 @@ const Calendar: React.FC<CalendarProps> = ({
 
             const isDraggingThis = dragState?.shiftId === shift.id;
             const staffMember = staff.find(s => s.id === shift.staffId);
-            
+
             if (!staffMember) return null;
+
+            const shiftIso = getShiftIsoDate(currentWeek, shift.dayIndex);
+            const isOrphan = !isStaffActiveOnDate(staffMember, shiftIso);
 
             const dayWidthPercentage = 100 / 7;
             const subColumnWidth = dayWidthPercentage / shift.totalColumns;
@@ -412,6 +440,7 @@ const Calendar: React.FC<CalendarProps> = ({
                   shift={shift}
                   staff={staffMember}
                   allStaff={staff}
+                  isOrphan={isOrphan}
                   isReadOnly={isReadOnly}
                   onEdit={() => !isReadOnly && onEditShift(shift.id)}
                   renderStartTime={isDraggingThis ? previewStartTime : undefined}

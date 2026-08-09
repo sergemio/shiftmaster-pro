@@ -490,7 +490,7 @@ const App: React.FC = () => {
               <div className="relative" ref={monthPickerRef}>
                 <button 
                   onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
-                  className={`font-semibold text-slate-700 text-center px-1 py-2 hover:bg-slate-50 rounded-xl transition-all flex items-center justify-center gap-1 border-2 ${isMonthPickerOpen ? 'border-indigo-500 bg-indigo-50/30' : 'border-transparent'}`}
+                  className={`font-semibold text-slate-700 text-center px-1 py-2 hover:bg-slate-50 rounded-xl transition-all flex items-center justify-center gap-1 border-2 sm:min-w-[220px] ${isMonthPickerOpen ? 'border-indigo-500 bg-indigo-50/30' : 'border-transparent'}`}
                 >
                   <span className="hidden sm:inline">{getWeekRangeString(currentWeek, language)}</span>
                   <span className="sm:hidden text-xs">{currentWeek.toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { month: 'short', day: 'numeric' })}</span>

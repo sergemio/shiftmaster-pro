@@ -1,5 +1,5 @@
 
-import { Language } from '../types';
+import { Language, Staff } from '../types';
 
 export const formatTime = (hours: number): string => {
   const h = Math.floor(hours);
@@ -97,4 +97,79 @@ export const getShiftDate = (weekStartIso: string, dayIndex: number, lang: Langu
   d.setDate(d.getDate() + dayIndex + 1); // +1 because weekStart is Sunday, dayIndex 0 = Monday
   const locale = lang === 'fr' ? 'fr-FR' : 'en-US';
   return d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
+};
+
+// ISO YYYY-MM-DD for shift's actual calendar day (weekStart is Sunday, dayIndex 0 = Monday => +1)
+export const getShiftIsoDate = (weekStart: Date, dayIndex: number): string => {
+  const d = new Date(weekStart);
+  d.setUTCDate(d.getUTCDate() + dayIndex + 1);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+// Employment lifecycle: is staff active on a given ISO date (YYYY-MM-DD)?
+// No startDate => treated as active forever in the past (legacy data).
+// No/null endDate => still employed (CDI).
+export const isStaffActiveOnDate = (staff: Staff, isoDate: string): boolean => {
+  if (staff.startDate && isoDate < staff.startDate) return false;
+  if (staff.endDate && isoDate > staff.endDate) return false;
+  return true;
+};
+
+// Active during any day of the week (Mon..Sun) starting at weekStart (Sunday).
+export const isStaffActiveInWeek = (staff: Staff, weekStart: Date): boolean => {
+  const monday = getShiftIsoDate(weekStart, 0);
+  const sunday = getShiftIsoDate(weekStart, 6);
+  // Range overlap: staff [startDate, endDate] ∩ [monday, sunday] non-empty
+  if (staff.startDate && staff.startDate > sunday) return false;
+  if (staff.endDate && staff.endDate < monday) return false;
+  return true;
+};
+
+/**
+ * Long, unambiguous week range for the PNG export header. Always English,
+ * always with the year — the exported image travels without the app around it.
+ * "Mon 10 Aug - Sun 16 Aug 2026", or "Mon 28 Dec 2026 - Sun 3 Jan 2027" when
+ * the week straddles two years.
+ * weekStart is the Sunday weekId; the displayed week runs Monday..Sunday.
+ */
+export const getWeekRangeLongEn = (weekStart: Date): string => {
+  const monday = new Date(weekStart);
+  monday.setUTCDate(monday.getUTCDate() + 1);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(sunday.getUTCDate() + 6);
+
+  // Parts are composed by hand rather than using a single toLocaleDateString
+  // call: en-GB puts the day first but renders September as "Sept" (4 letters,
+  // out of line with every other month), en-US keeps "Sep" but puts the month
+  // first. Taking the parts from en-US gives day-first order and 3-letter months.
+  const fmt = (d: Date, withYear: boolean) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).formatToParts(d);
+    const get = (type: string) => parts.find(p => p.type === type)?.value ?? '';
+    return `${get('weekday')} ${get('day')} ${get('month')}${withYear ? ` ${get('year')}` : ''}`;
+  };
+
+  const sameYear = monday.getUTCFullYear() === sunday.getUTCFullYear();
+  return `${fmt(monday, !sameYear)} - ${fmt(sunday, true)}`;
+};
+
+/**
+ * ISO 8601 week number of the Monday that opens the displayed week.
+ * weekStart is the Sunday weekId, so the Monday is weekStart + 1.
+ */
+export const getIsoWeekNumber = (weekStart: Date): number => {
+  const d = new Date(weekStart);
+  d.setUTCDate(d.getUTCDate() + 1); // Monday of the displayed week
+  // ISO: the week belongs to the year containing its Thursday.
+  d.setUTCDate(d.getUTCDate() + 3);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 };

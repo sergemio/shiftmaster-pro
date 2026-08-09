@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { Shift, Staff, Language } from '../types';
 import { DAYS_EN, DAYS_FR } from '../constants';
 import { getTranslation } from '../utils/translations';
-import { formatTime } from '../utils/helpers';
+import { formatTime, isStaffActiveInWeek } from '../utils/helpers';
 
 interface EmployeeViewProps {
   shifts: Shift[];
@@ -28,8 +28,11 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
       const staffShifts = shifts.filter(sh => sh.staffId === s.id);
       const totalHours = staffShifts.reduce((acc, sh) => acc + (sh.endTime - sh.startTime), 0);
       return { ...s, shifts: staffShifts, totalHours };
-    }).sort((a, b) => b.totalHours - a.totalHours);
-  }, [staff, shifts]);
+    })
+    // Option A: hide rows where the employee is not active this week AND has no shifts
+    .filter(m => m.totalHours > 0 || isStaffActiveInWeek(m, currentWeek))
+    .sort((a, b) => b.totalHours - a.totalHours);
+  }, [staff, shifts, currentWeek]);
 
   return (
     <div className="min-w-[1000px] bg-white border rounded-xl overflow-hidden shadow-sm animate-in fade-in duration-500">

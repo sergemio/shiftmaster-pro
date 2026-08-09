@@ -15,6 +15,7 @@ interface ShiftCardProps {
   renderStartTime?: number;
   renderEndTime?: number;
   language?: Language;
+  isOrphan?: boolean;
 }
 
 const ShiftCard: React.FC<ShiftCardProps> = ({ 
@@ -27,7 +28,8 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   isReadOnly = false,
   renderStartTime,
   renderEndTime,
-  language = 'en'
+  language = 'en',
+  isOrphan = false
 }) => {
   if (!staff) return null;
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
@@ -87,14 +89,22 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
           </span>
         </div>
         
-        <div className="flex flex-col gap-0.5 md:gap-1">
+        <div className="flex flex-col gap-1 md:gap-1.5">
           <span className="text-[9px] md:text-[11px] font-bold text-slate-600 leading-tight">
             {formatTime(startTime)} - {formatTime(endTime)}
           </span>
-          <div className="flex">
-            <span className="bg-slate-200/60 text-slate-600 text-[7px] md:text-[9px] font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-slate-300/30">
+          <div className="flex gap-1 flex-wrap">
+            <span className="bg-slate-200/60 text-slate-600 text-[10px] md:text-[12px] font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-slate-300/30">
               {duration.toFixed(duration % 1 === 0 ? 0 : 1)}H
             </span>
+            {isOrphan && (
+              <span
+                title="Shift outside this employee's contract dates"
+                className="bg-amber-100 text-amber-800 text-[9px] md:text-[10px] font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-amber-300"
+              >
+                ⚠ Ghost
+              </span>
+            )}
           </div>
         </div>
 

@@ -34,6 +34,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
   const [newColor, setNewColor] = useState('#6366f1');
   const [newRole, setNewRole] = useState<'admin' | 'staff'>('staff');
   const [newJobTitle, setNewJobTitle] = useState('');
+  const [newStartDate, setNewStartDate] = useState('');
+  const [newEndDate, setNewEndDate] = useState('');
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [newGuestEmail, setNewGuestEmail] = useState('');
   const [isAddingGuest, setIsAddingGuest] = useState(false);
@@ -44,6 +46,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
   const [editRole, setEditRole] = useState<'admin' | 'staff'>('staff');
   const [editJobTitle, setEditJobTitle] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
   const [showSavedId, setShowSavedId] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -53,6 +57,11 @@ const StaffModal: React.FC<StaffModalProps> = ({
       return;
     }
     
+    if (!newStartDate) {
+      alert("Start date is required");
+      return;
+    }
+
     const newStaff: Staff = {
       id: Math.random().toString(36).substr(2, 9),
       name: newName,
@@ -61,8 +70,10 @@ const StaffModal: React.FC<StaffModalProps> = ({
       targetHours: newTargetHours,
       role: newRole,
       jobTitle: newJobTitle,
+      startDate: newStartDate,
+      endDate: newEndDate || null,
     };
-    
+
     onAdd(newStaff);
     setNewName('');
     setNewEmail('');
@@ -70,6 +81,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
     setNewRole('staff');
     setNewJobTitle('');
     setNewColor('#6366f1');
+    setNewStartDate('');
+    setNewEndDate('');
     setIsAddingNew(false);
   };
 
@@ -80,6 +93,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
     setEditRole(staff.role);
     setEditJobTitle(staff.jobTitle || '');
     setEditColor(staff.color);
+    setEditStartDate(staff.startDate || '');
+    setEditEndDate(staff.endDate || '');
     setIsAddingNew(false); // Hide add form if we start editing someone
   };
 
@@ -93,6 +108,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
       role: editRole,
       jobTitle: editJobTitle,
       color: editColor,
+      startDate: editStartDate || undefined,
+      endDate: editEndDate || null,
     });
     
     setShowSavedId(staff.id);
@@ -199,6 +216,26 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
                         placeholder="Required for login permissions"
                       />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">First Day on the Job</label>
+                        <input
+                          type="date"
+                          value={editStartDate}
+                          onChange={(e) => setEditStartDate(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">Last Day on the Job <span className="text-slate-400 normal-case font-medium">(leave empty if still employed)</span></label>
+                        <input
+                          type="date"
+                          value={editEndDate}
+                          onChange={(e) => setEditEndDate(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">Brand Color</label>
@@ -385,6 +422,25 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       <option value="staff">Regular Staff</option>
                       <option value="admin">Admin</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">First Day on the Job</label>
+                    <input
+                      required
+                      type="date"
+                      value={newStartDate}
+                      onChange={(e) => setNewStartDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Last Day on the Job <span className="text-slate-400 normal-case font-medium">(leave empty if still employed)</span></label>
+                    <input
+                      type="date"
+                      value={newEndDate}
+                      onChange={(e) => setNewEndDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+                    />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Brand Color</label>

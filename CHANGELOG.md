@@ -5,6 +5,36 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-08-09 — Header de marque sur l'export PNG + securisation .gitignore
+
+### Header sur l'export PNG
+- **Quoi** : Le PNG exporte (bouton "Export PNG" de la Sidebar) porte maintenant un bandeau en haut : logo Sezam&Co, surtitre "WEEKLY SCHEDULE", plage de dates complete, et "Sezam&Co / Week NN" a droite.
+- **Pourquoi** : Le PNG ne contenait que les numeros de jour (10, 11, 12...). Sans mois ni annee, une capture partagee ou imprimee etait ambigue.
+- **Texte toujours en anglais**, meme quand l'app est en francais — decision de Serge (le PNG circule hors de l'app).
+- **Fichiers** :
+  - `utils/brandLogo.ts` (nouveau) — logo en data URI base64 (160px, 26 Ko)
+  - `utils/helpers.ts` — ajout `getWeekRangeLongEn()` et `getIsoWeekNumber()`. Aucune fonction existante modifiee.
+  - `components/Calendar.tsx` — bandeau rendu si `isExporting`, hauteur ajoutee au conteneur capture
+- **Deux pieges a connaitre si ca casse** :
+  1. Le logo est **inline en base64**, pas un fichier de `public/`. `html-to-image` resout les `<img>` au moment de la capture : une requete reseau peut arriver apres le snapshot et produire un PNG sans logo. Ne pas "optimiser" en le sortant vers `public/`.
+  2. Le conteneur `#calendar-grid-capture` a une **hauteur fixe** (`(TOTAL_HOURS + 1) * HOUR_HEIGHT + 64`). `EXPORT_HEADER_HEIGHT` (76) lui est ajoute quand `isExporting`. Changer la hauteur du bandeau sans mettre a jour cette constante rogne le bas de la grille.
+- **Verifie** : `tsc --noEmit` + `npm run build` OK. Format de dates teste sur les cas limites — chevauchement de mois (`Mon 31 Aug - Sun 6 Sep 2026`), chevauchement d'annee (`Mon 28 Dec 2026 - Sun 3 Jan 2027`), et les semaines de changement d'heure (mars / octobre) : pas de derive.
+
+### Securisation .gitignore (repo PUBLIC)
+- **Quoi** : Ajout de `attachments/`, `tmp-*.json`, `scripts/*.json`, `scripts/fix-emails.js` au `.gitignore`.
+- **Pourquoi** : Le repo est public et ces fichiers n'etaient pas ignores. `attachments/` contenait une convention de stage signee, les dumps JSON contiennent noms/emails/plannings du staff, `fix-emails.js` a trois emails employes en dur. Un seul `git add .` les publiait.
+- **Rien n'a jamais ete pousse** — verifie avant le commit.
+
+### Cycle de vie employe (travail local de Serge, non documente jusqu'ici, inclus dans le meme commit)
+- `startDate` / `endDate` sur `Staff` (`types.ts`), helpers `getShiftIsoDate` / `isStaffActiveOnDate` / `isStaffActiveInWeek`
+- Champs "First / Last Day on the Job" dans `StaffModal` (start date obligatoire a la creation)
+- Badge "⚠ Ghost" sur un shift pose hors periode de contrat (`ShiftCard`, `Calendar`)
+- Masquage des employes inactifs sur la semaine s'ils n'ont aucune heure (`Sidebar`, `EmployeeView`)
+- Barre de stats : 3 etats (sous l'objectif / pile dessus en vert / au-dessus avec la surcharge en teinte foncee)
+- **A savoir** : tant que les `startDate` ne sont pas saisis en DB pour les 11 employes, le filtrage ne fait rien — l'absence de `startDate` est traitee comme "actif depuis toujours".
+
+---
+
 ## 2026-05-04 — Incident : staff list ecrasee par INITIAL_STAFF + fix
 
 ### Quoi

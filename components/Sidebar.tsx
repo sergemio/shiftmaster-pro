@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Shift, Staff, Language } from '../types';
 import { getTranslation } from '../utils/translations';
 import { exportWeeksData, loadStaffFromFirebase } from '../services/firebaseService';
-import { toWeekId } from '../utils/helpers';
+import { toWeekId, isStaffActiveInWeek } from '../utils/helpers';
 
 interface SidebarProps {
   shifts: Shift[];
@@ -206,7 +206,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
       <div className="space-y-3 mb-6">
-        {[...staff].sort((a, b) => {
+        {[...staff].filter(p => {
+          // Option A: active during the week OR has any shift this week (orphan still pulls them in)
+          const hasHours = (worked[p.id] || 0) + (extra[p.id] || 0) > 0;
+          return hasHours || isStaffActiveInWeek(p, currentWeek);
+        }).sort((a, b) => {
           const aTotal = (worked[a.id] || 0) + (extra[a.id] || 0);
           const bTotal = (worked[b.id] || 0) + (extra[b.id] || 0);
           return bTotal - aTotal; // desc
@@ -227,14 +231,37 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </span>
               </div>
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
-                <div 
-                  className="h-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, (workedHours / person.targetHours) * 100)}%`, backgroundColor: person.color }}
-                />
-                <div 
-                  className="h-full transition-all duration-500 bg-indigo-500"
-                  style={{ width: `${Math.min(100, (extraHours / person.targetHours) * 100)}%` }}
-                />
+                {totalWorked > person.targetHours ? (
+                  // Over target: target portion in person color + overtime in darker shade
+                  <>
+                    <div
+                      className="h-full transition-all duration-500"
+                      style={{ width: `${(person.targetHours / totalWorked) * 100}%`, backgroundColor: person.color }}
+                    />
+                    <div
+                      className="h-full transition-all duration-500"
+                      style={{ width: `${((totalWorked - person.targetHours) / totalWorked) * 100}%`, backgroundColor: person.color, filter: 'brightness(0.55)' }}
+                    />
+                  </>
+                ) : totalWorked === person.targetHours && person.targetHours > 0 ? (
+                  // Exact: full green bar
+                  <div
+                    className="h-full transition-all duration-500"
+                    style={{ width: '100%', backgroundColor: '#22c55e' }}
+                  />
+                ) : (
+                  // Under target: existing behavior (worked + indigo extra)
+                  <>
+                    <div
+                      className="h-full transition-all duration-500"
+                      style={{ width: `${(workedHours / person.targetHours) * 100}%`, backgroundColor: person.color }}
+                    />
+                    <div
+                      className="h-full transition-all duration-500 bg-indigo-500"
+                      style={{ width: `${(extraHours / person.targetHours) * 100}%` }}
+                    />
+                  </>
+                )}
               </div>
             </div>
           );

@@ -15,6 +15,8 @@ export interface Staff {
   targetHours: number;
   role: 'admin' | 'staff';
   jobTitle?: string;
+  startDate?: string; // YYYY-MM-DD, employment start
+  endDate?: string | null; // YYYY-MM-DD or null = still employed (CDI)
 }
 
 export interface Shift {
