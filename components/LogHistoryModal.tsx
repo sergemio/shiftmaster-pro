@@ -63,17 +63,25 @@ const LogHistoryModal: React.FC<LogHistoryModalProps> = ({ isOpen, onClose, lang
   const [role, setRole] = useState<Role>('both');
   const [hideNoise, setHideNoise] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  // How many days are actually in `logs`. Firestore bills per document, so we
+  // fetch the window being displayed — not the widest one on offer — and only
+  // go back further when the reader asks for it.
+  const [loadedDays, setLoadedDays] = useState(0);
 
-  // Fetched when the journal is opened, not kept streaming all session.
   useEffect(() => {
     if (!isOpen) return;
+    if (loadedDays >= days) return;   // already have this range in memory
     let cancelled = false;
     setLoading(true);
-    loadLogs(2)
-      .then(rows => { if (!cancelled) setLogs(rows); })
+    loadLogs(Math.ceil(days / 30))
+      .then(rows => {
+        if (cancelled) return;
+        setLogs(rows);
+        setLoadedDays(days);
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [isOpen]);
+  }, [isOpen, days, loadedDays]);
 
   const colorFor = useMemo(() => {
     const map = new Map<string, string>();

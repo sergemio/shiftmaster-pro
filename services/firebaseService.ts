@@ -309,7 +309,16 @@ export const subscribeToGlobalSettings = (callback: (settings: { timezone?: stri
   });
 };
 
-export const loadLogs = async (months = 2, cap = 3000): Promise<LogEntry[]> => {
+/**
+ * Two deliberate limits, both because Firestore bills one read per document:
+ *  - one-shot read, not a live subscription. The old code kept 50 log documents
+ *    streaming for the whole session, for a screen almost nobody had open.
+ *  - only the window about to be displayed. The journal opens on 30 days, so it
+ *    asks for one month; widening the filter fetches more, on demand.
+ * Two months is ~1800 documents — fetching that on every open is what drains a
+ * free-tier daily quota.
+ */
+export const loadLogs = async (months = 1, cap = 3000): Promise<LogEntry[]> => {
   if (!auth.currentUser) {
     return JSON.parse(localStorage.getItem('sandbox_logs') || '[]');
   }
