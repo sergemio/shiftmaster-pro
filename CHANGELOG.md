@@ -72,6 +72,46 @@ Les 9 employes ont tous un email : personne ne perdra l'acces une fois l'etape 2
 
 ---
 
+## 2026-08-09 (soir) — 🔒 REGLES FIRESTORE DEPLOYEES — la base n'est plus ouverte
+
+### Ce qui a change
+Les regles reellement en ligne etaient, depuis le **2026-02-24** :
+`match /{document=**} { allow read, write: if request.auth != null; }` — n'importe quel
+compte Google pouvait **lire et effacer** toute la base. C'est fini.
+
+Desormais : lecture reservee a l'equipe et aux invites, ecriture aux seuls admins, journal
+non modifiable, plannings valides a l'ecriture.
+
+### Sequence exacte suivie
+1. Sauvegarde fraiche prise **avant** toute ecriture
+2. Champ `staffEmails` ajoute a `settings/staff` via l'Admin SDK — un `update()` qui n'a
+   touche **que** ce champ ; `list`, `admins` et `guests` verifies identiques apres coup
+3. Code deploye sur `master` (hash de l'asset servi compare au build local : identique)
+4. Regles compilees **sans etre publiees**, puis testees
+5. Publication, puis **relecture du contenu reellement en ligne** via l'API
+
+### Teste dans l'emulateur avant publication — 16 cas sur 16
+`npx firebase emulators:exec --only firestore --project demo-shiftmaster "node scripts/test-rules.mjs"`
+
+L'API `:test` de Google a ete essayee d'abord : le compte de service n'a pas la permission
+`firebaserules.rulesets.test`. L'emulateur local fait le meme travail sans toucher a la base.
+
+Couvert : admin lit/ecrit, staff lit mais **n'ecrit pas**, invite lit, **inconnu ne lit ni
+n'ecrit rien** (ni plannings, ni emails de l'equipe, ni journal), non connecte bloque, journal
+non modifiable, impossible de signer un log au nom d'un autre, plannings invalides refuses
+(dayIndex 9, fin avant debut), collection inconnue fermee.
+
+### Verifie apres publication
+`isTeamMember` present · `staffEmails` utilise · **ancien open bar absent** · email de Serge
+en dur (anti-lockout) · `isValidLog` **sans** `data.id` (sinon tous les logs seraient rejetes).
+
+### 🚨 Rollback d'urgence — a n'utiliser que si l'equipe est bloquee
+Ancien ruleset : `projects/shiftmaster-pro-9e20d/rulesets/23d752dd-27bd-43dd-b584-f2897001bc3d`
+PATCH sur `releases/cloud.firestore` avec ce `rulesetName`. **Attention : il rouvre la base a
+tout compte Google.** A ne faire qu'en depannage, et a refermer aussitot.
+
+---
+
 ## 2026-08-09 (soir) — La sauvegarde passe chez GitHub, la tache Windows est retiree
 
 ### Quoi
