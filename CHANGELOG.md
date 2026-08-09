@@ -72,6 +72,48 @@ Les 9 employes ont tous un email : personne ne perdra l'acces une fois l'etape 2
 
 ---
 
+## 2026-08-09 (nuit) — ⚠️ INCIDENT : quota de lectures Firestore epuise + optimisations
+
+### Ce qui s'est passe
+Les **50 000 lectures quotidiennes** du plan gratuit ont ete epuisees en une soiree de travail.
+Symptome : `RESOURCE_EXHAUSTED: Quota exceeded` sur les grosses requetes. Les lectures unitaires
+passaient encore — l'app restait utilisable, contrairement a ce qui a d'abord ete annonce a
+Serge (annonce trop pessimiste, corrigee apres verification par une lecture unique).
+
+### Cause
+**Firestore facture une lecture PAR DOCUMENT, pas par requete.** Le journal fait 3 672
+documents, donc chaque sauvegarde complete = 3 711 lectures. Sur la soiree :
+~9 sauvegardes completes + 4 analyses du journal + 2 verifications d'integrite ≈ **56 000
+lectures** — pour repondre a des questions dont la reponse etait deja sur le disque.
+
+### Trois optimisations faites dans la foulee
+1. **Sauvegarde incrementale des logs** (`shiftmaster-backup/backup.js`) : seuls les logs ecrits
+   depuis la derniere copie sont lus (`where timestamp > dernier connu`), fusionnes avec le
+   cumul sur disque. **3 711 -> 42 lectures** par sauvegarde, verifie en execution reelle
+   (« +2 lus, le reste repris du cumul »). Sur parce que les regles deployees ce soir rendent
+   `/logs` append-only : un log copie ne peut plus changer.
+2. **Le journal ne charge que la fenetre affichee** : il s'ouvrait sur 2 mois (~1 800 documents)
+   alors que l'ecran montre 30 jours par defaut. Il demande maintenant 1 mois et n'elargit que
+   si l'utilisateur choisit une periode plus longue.
+3. **Rappel de ce qui avait deja ete fait le soir meme** : le journal lisait en `onSnapshot`
+   permanent pendant toute la session ; il ne lit plus qu'a l'ouverture.
+
+### Regime normal apres corrections
+Sauvegarde quotidienne ~42 lectures + usage de l'equipe ~500-2 000 = **environ 2 000 / 50 000
+par jour**. Aucune marge a surveiller.
+
+### Regle retenue (Serge)
+Optimiser les appels **la ou c'est invisible pour l'utilisateur**, jamais au prix du temps reel
+ni de l'exhaustivite de l'enregistrement. Et pour toute ANALYSE (qui a fait quoi, combien de
+logs anciens...) : **lire le backup local, pas la base**. Detail : `M/feedback_firestore-quota-charger-a-la-demande.md`.
+
+### A savoir
+Le plan **Spark ne facture pas** : quota atteint = requetes refusees, rien n'est debite. Une
+facturation supposerait un passage volontaire en Blaze. Reinitialisation a minuit heure du
+Pacifique (~09:00 en France).
+
+---
+
 ## 2026-08-09 (soir) — 🔒 REGLES FIRESTORE DEPLOYEES — la base n'est plus ouverte
 
 ### Ce qui a change
