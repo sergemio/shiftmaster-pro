@@ -214,22 +214,19 @@ export const saveStaffToFirebase = async (staff: Staff[], guests: string[] = [])
       .map(s => (s.email || '').trim().toLowerCase())
       .filter(email => email !== '');
 
-    await setDoc(staffRef, { 
+    // Security rules cannot look inside an array of objects, so the emails are
+    // also stored flat. Without this, "is the caller on the team?" is not
+    // expressible in rules and reads stay open to any Google account.
+    const staffEmails = staff
+      .map(s => (s.email || '').trim().toLowerCase())
+      .filter(email => email !== '');
+
+    await setDoc(staffRef, {
       list: cleanStaff,
       guests: guests.map(g => g.toLowerCase().trim()),
-      admins: adminEmails
+      admins: adminEmails,
+      staffEmails
     }, { merge: true });
-  } catch (e) {
-    handleFirestoreError(e, OperationType.WRITE, path);
-  }
-};
-
-export const saveGlobalSettingsToFirebase = async (settings: { timezone?: string, language?: string }): Promise<void> => {
-  if (!auth.currentUser) return;
-  const path = 'settings/global';
-  try {
-    const settingsRef = doc(db, 'settings', 'global');
-    await setDoc(settingsRef, sanitizeData(settings), { merge: true });
   } catch (e) {
     handleFirestoreError(e, OperationType.WRITE, path);
   }
@@ -312,21 +309,26 @@ export const subscribeToGlobalSettings = (callback: (settings: { timezone?: stri
   });
 };
 
-export const subscribeToLogs = (callback: (logs: LogEntry[]) => void) => {
+export const loadLogs = async (months = 2, cap = 3000): Promise<LogEntry[]> => {
   if (!auth.currentUser) {
-    const localLogs = JSON.parse(localStorage.getItem('sandbox_logs') || '[]');
-    callback(localLogs);
-    return () => {};
+    return JSON.parse(localStorage.getItem('sandbox_logs') || '[]');
   }
+  const since = new Date();
+  since.setMonth(since.getMonth() - months);
   const path = 'logs';
-  const logsCol = collection(db, 'logs');
-  const q = query(logsCol, orderBy('timestamp', 'desc'), limit(50));
-  return onSnapshot(q, (snap) => {
-    const logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as LogEntry));
-    callback(logs);
-  }, (error) => {
-    handleFirestoreError(error, OperationType.GET, path);
-  });
+  try {
+    const q = query(
+      collection(db, 'logs'),
+      where('timestamp', '>=', since.toISOString()),
+      orderBy('timestamp', 'desc'),
+      limit(cap)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as LogEntry));
+  } catch (e) {
+    handleFirestoreError(e, OperationType.LIST, path);
+    return [];
+  }
 };
 
 export const loadShiftsFromFirebase = async (weekId: string): Promise<Shift[] | null> => {

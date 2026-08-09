@@ -1,12 +1,6 @@
 
 export type Language = 'en' | 'fr';
 
-export interface Settings {
-  language: Language;
-  timezone: string;
-  viewType: 'day' | 'employee';
-}
-
 export interface Staff {
   id: string;
   name: string;
@@ -27,11 +21,6 @@ export interface Shift {
   endTime: number;
   coverageBy?: string; // staffId of someone covering
   notes?: string;
-}
-
-export interface WeeklyData {
-  weekStart: string; // ISO string for the Sunday (week start)
-  shifts: Shift[];
 }
 
 export type DragType = 'move' | 'resize-top' | 'resize-bottom';
@@ -55,4 +44,13 @@ export interface LogEntry {
   action: string;
   details: string;
   timestamp: string;
+  /**
+   * Who the entry is ABOUT (as opposed to userName, who did it). Absent on the
+   * 3600+ entries written before this field existed — the journal falls back to
+   * reading the name out of `details` for those.
+   */
+  targetStaffName?: string;
+  targetStaffId?: string;
+  /** Week the action touched, for future filtering. */
+  weekId?: string;
 }

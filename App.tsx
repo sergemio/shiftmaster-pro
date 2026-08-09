@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Staff, Shift, LogEntry, Language } from './types';
+import { Staff, Shift, Language } from './types';
 import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffActiveInWeek } from './utils/helpers';
 import { INITIAL_STAFF, DAYS_EN, DAYS_FR } from './constants';
 import Calendar from './components/Calendar';
@@ -21,7 +21,7 @@ import {
   subscribeToAuth,
   subscribeToShifts,
   subscribeToStaff,
-  subscribeToLogs,
+  subscribeToGlobalSettings,
   AuthResult,
   loadShiftsFromFirebase,
   setFirestoreErrorReporter,
@@ -107,7 +107,6 @@ const App: React.FC = () => {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [guestEmails, setGuestEmails] = useState<string[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
   
   const [past, setPast] = useState<Shift[][]>([]);
   const [future, setFuture] = useState<Shift[][]>([]);
@@ -126,6 +125,7 @@ const App: React.FC = () => {
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [timezone, setTimezone] = useState('Europe/Paris');
   // `updatedAt` of the week currently on screen, used to detect that another
   // admin saved it while this one was editing.
   const weekVersion = useRef<string | null | undefined>(undefined);
@@ -192,9 +192,15 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // The journal no longer streams for the whole session: it loads its two
+  // months only when opened. See loadLogs() for why that matters to quota.
+
+  // settings/global has held { timezone: "Europe/Paris" } all along, but
+  // nothing read it — the zone was hardcoded in five places instead.
   useEffect(() => {
-    const unsubscribe = subscribeToLogs((updatedLogs) => {
-      setLogs(updatedLogs);
+    if (!user || isGuest) return;
+    const unsubscribe = subscribeToGlobalSettings((settings) => {
+      if (settings?.timezone) setTimezone(settings.timezone);
     });
     return () => unsubscribe();
   }, [user, isGuest]);
@@ -264,10 +270,17 @@ const App: React.FC = () => {
     setTimeout(() => setShowSyncSuccess(false), 2000);
   };
 
-  const createLog = (action: string, details: string) => {
+  /**
+   * @param target the staff member the action is about — stored as its own
+   *               field so the journal can filter on it, instead of the name
+   *               only existing buried inside the English sentence.
+   */
+  const createLog = (action: string, details: string, target?: Staff | null) => {
     saveLogToFirebase({
       userId: user?.uid || 'guest',
       userName: user?.displayName || 'Sandbox Admin',
+      ...(target ? { targetStaffId: target.id, targetStaffName: target.name } : {}),
+      weekId,
       action,
       details,
       timestamp: new Date().toISOString()
@@ -331,9 +344,9 @@ const App: React.FC = () => {
     if (isReadOnly) return;
     const newShift: Shift = { id: Math.random().toString(36).substr(2, 9), staffId, dayIndex, startTime, endTime };
     handleUpdateShifts([...shifts, newShift]);
-    const name = staffList.find(s => s.id === staffId)?.name || 'Unknown';
+    const target = staffList.find(s => s.id === staffId) || null;
     const dayLabel = getShiftDate(toWeekId(currentWeek), dayIndex, language);
-    createLog('CREATE SHIFT', `Added shift for ${name} on ${dayLabel} (${formatTime(startTime)}-${formatTime(endTime)})`);
+    createLog('CREATE SHIFT', `Added shift for ${target?.name || 'Unknown'} on ${dayLabel} (${formatTime(startTime)}-${formatTime(endTime)})`, target);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
   const updateShift = useCallback((updatedShift: Shift) => {
@@ -349,9 +362,9 @@ const App: React.FC = () => {
       if (isUnchanged) return;
     }
     handleUpdateShifts(shifts.map(s => s.id === updatedShift.id ? updatedShift : s));
-    const name = staffList.find(s => s.id === updatedShift.staffId)?.name || 'Unknown';
+    const target = staffList.find(s => s.id === updatedShift.staffId) || null;
     const dayLabel = getShiftDate(toWeekId(currentWeek), updatedShift.dayIndex, language);
-    createLog('UPDATE SHIFT', `Updated shift for ${name} on ${dayLabel} (${formatTime(updatedShift.startTime)}-${formatTime(updatedShift.endTime)})`);
+    createLog('UPDATE SHIFT', `Updated shift for ${target?.name || 'Unknown'} on ${dayLabel} (${formatTime(updatedShift.startTime)}-${formatTime(updatedShift.endTime)})`, target);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
   const deleteShift = useCallback((id: string) => {
@@ -359,10 +372,10 @@ const App: React.FC = () => {
     const shift = shifts.find(s => s.id === id);
     if (!shift) return;
     
-    const staffName = staffList.find(s => s.id === shift.staffId)?.name || 'Unknown';
+    const target = staffList.find(s => s.id === shift.staffId) || null;
     handleUpdateShifts(shifts.filter(s => s.id !== id));
     const dayLabel = getShiftDate(toWeekId(currentWeek), shift.dayIndex, language);
-    createLog('DELETE SHIFT', `Removed shift for ${staffName} on ${dayLabel}`);
+    createLog('DELETE SHIFT', `Removed shift for ${target?.name || 'Unknown'} on ${dayLabel}`, target);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
   const handleUpdateStaffList = async (newList: Staff[], newGuests: string[] = guestEmails) => {
@@ -642,6 +655,7 @@ const App: React.FC = () => {
             isLoading={isLoading} 
             isExporting={isExporting}
             language={language}
+            timezone={timezone}
             viewType={viewType}
           />
         </div>
@@ -679,7 +693,7 @@ const App: React.FC = () => {
         language={language} 
       />
       <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
-      <LogHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} logs={logs} language={language} />
+      <LogHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} language={language} />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} />
     </div>
   );

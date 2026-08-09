@@ -2,7 +2,6 @@
 import React from 'react';
 import { Language } from '../types';
 import { getTranslation } from '../utils/translations';
-import { TIMEZONES } from '../constants';
 
 interface SettingsModalProps {
   isOpen: boolean;

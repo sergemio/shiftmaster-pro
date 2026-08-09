@@ -9,33 +9,11 @@ export const DAYS_FR = [
   'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'
 ];
 
-export const DAYS = DAYS_EN; // Default legacy
-
 export const HOUR_HEIGHT = 50; // Increased from 40 to 50 (25px per 30-min unit)
 export const START_HOUR = 8; // 8 AM
 export const END_HOUR = 24; // Midnight
 export const TOTAL_HOURS = END_HOUR - START_HOUR;
 
-export const TIMEZONES = [
-  'UTC',
-  'Europe/London',
-  'Europe/Paris',
-  'Europe/Berlin',
-  'Europe/Madrid',
-  'Europe/Rome',
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Toronto',
-  'America/Mexico_City',
-  'Asia/Dubai',
-  'Asia/Singapore',
-  'Asia/Tokyo',
-  'Asia/Hong_Kong',
-  'Australia/Sydney',
-  'Pacific/Auckland'
-];
 
 export const INITIAL_STAFF: Staff[] = [
   { id: '1', name: 'Serge', email: '', color: '#7c2d12', targetHours: 40, role: 'admin' },

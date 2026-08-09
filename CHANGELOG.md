@@ -5,6 +5,73 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-08-09 — Phases 1, 3, 4, 5, 6 de l'audit (robustesse + journal + cycle de vie)
+
+### Bugs de perte de donnees corriges
+- **Undo traversait les semaines** : `past`/`future` n'etaient jamais vides au changement de
+  semaine. Editer la semaine A, naviguer vers B, cliquer Undo -> le planning de A **ecrasait**
+  celui de B en base. (`App.tsx`, effet sur `weekId`)
+- **Deux admins s'ecrasaient en silence** : `saveShiftsToFirebase` remplacait tout le tableau
+  `shifts` avec un `setDoc` simple. Desormais `runTransaction` compare `updatedAt` a ce que
+  l'appelant avait charge et **refuse** d'ecrire si le document a bouge -> message « quelqu'un
+  d'autre a modifie cette semaine ». Les ecritures sont aussi **chainees** (`writeQueue`), sinon
+  deux edits rapides du meme utilisateur se declaraient en conflit avec eux-memes.
+- **Le badge « Saved » mentait** : les erreurs Firestore etaient avalees. `handleFirestoreError`
+  ne **throw plus** (il etait appele depuis des callbacks `onSnapshot` -> rejet non capture) et
+  remonte un message clair dans une banniere. Le badge affiche « Not saved ».
+  L'email de l'utilisateur n'est plus serialise dans le message d'Error.
+- **Fenetre d'ecriture au demarrage** : `staffList` vide etait lu comme « bootstrap » donc
+  `isReadOnly = false` pour tout utilisateur connecte pendant les premieres secondes. Nouveau
+  flag `staffLoaded` : aucun droit tant qu'on ne sait pas qui est qui.
+
+### Cycle de vie employe (demande de Serge)
+- **On ne supprime plus jamais un employe** : le bouton corbeille devient « marquer comme parti »
+  (pose `endDate`), avec un dialogue aux couleurs de l'app qui dit explicitement que
+  **l'historique est conserve**. Bouton « Reinstate » pour annuler. `onRemove` supprime.
+- `StaffModal` : liste triee actifs -> anciens, avec separateur « Former Team » et mention
+  « Left on <date> · history kept ».
+- Les selecteurs de shift (`ShiftModal`, `EditShiftModal`) ne proposent que les employes actifs
+  **sur la semaine affichee** ; l'assigne actuel reste selectionnable meme s'il est parti, sinon
+  un ancien shift ne serait plus editable.
+- Les shifts deja poses hors contrat ne sont **pas caches** (badge d'alerte) : cacher une donnee
+  reelle serait pire que la signaler.
+
+### Journal d'activite refondu
+- Champs structures a l'ecriture : `targetStaffId`, `targetStaffName`, `weekId`. Les 3671 logs
+  anterieurs n'en ont pas -> le nom est **relu depuis la phrase**. Verifie sur les donnees reelles :
+  **1750 / 1750 logs de shift analyses avec succes (100 %)**.
+- Ecran : recherche unique (employe **ou** auteur) avec bascule de role et compteurs, filtres de
+  periode, case « masquer les ajustements » (80 % des logs sont des `UPDATE SHIFT`), jours
+  **replies par defaut** et **tout deplie des qu'on cherche**.
+- **Chargement a la demande** : le journal streamait 50 logs en permanence toute la session.
+  Passer a 2 mois en streaming aurait multiplie les lectures Firestore par ~32. Il lit maintenant
+  uniquement a l'ouverture (`loadLogs`). Requete verifiee sur la vraie base : 1783 documents,
+  **aucun index composite requis**.
+
+### Nettoyage
+- Supprime : `Sidebar.tsx` vide a la racine, types `WeeklyData` et `Settings`, constante `DAYS`,
+  `TIMEZONES` (jamais utilise) + son import mort, `testConnection()` (erreur console a chaque
+  demarrage), `subscribeToLogs`, `saveGlobalSettingsToFirebase` (jamais appelee).
+- **`settings/global` enfin branche** : le fuseau y etait stocke mais jamais lu — il etait code
+  en dur a cinq endroits. `subscribeToGlobalSettings` alimente maintenant `Calendar`.
+
+### Regles Firestore REECRITES mais PAS DEPLOYEES
+`firestore.rules` corrige : `isValidLog` n'exige plus `data.id` (qui n'existe pas -> aurait
+rejete tous les logs), `isTeamMember` remplace `isStaffOrGuest` (dont la clause
+`list.size() > 0` etait toujours vraie, donc equivalente a « n'importe quel compte Google »),
+bornes horaires 0..24, logs non modifiables, email de Serge garde en dur comme **anti-lockout**.
+
+⚠️ **ORDRE DE DEPLOIEMENT OBLIGATOIRE** — verifie : le champ `staffEmails` **n'existe pas encore
+en base**. Deployer les regles maintenant couperait la lecture a tout le monde sauf les 3 admins.
+1. Deployer le code (le nouveau `saveStaffToFirebase` ecrit `staffEmails`)
+2. Ouvrir Manage Staff et enregistrer un employe -> `staffEmails` est ecrit
+3. Verifier sa presence en base
+4. **Seulement ensuite** `firebase deploy --only firestore:rules`
+5. Verifier la release via l'API (comme dans l'audit), pas seulement l'absence d'erreur
+Les 9 employes ont tous un email : personne ne perdra l'acces une fois l'etape 2 faite.
+
+---
+
 ## 2026-08-09 — Backup automatique quotidien (Phase 0 de l'audit)
 
 ### Quoi
