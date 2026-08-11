@@ -72,6 +72,31 @@ Les 9 employes ont tous un email : personne ne perdra l'acces une fois l'etape 2
 
 ---
 
+## 2026-08-11 — Sauvegarde decalee a 08:30 UTC (suite de l'incident quota)
+
+### Ce qui s'est passe
+La sauvegarde du **2026-08-10 a echoue** sur `RESOURCE_EXHAUSTED` (mail d'alerte GitHub recu
+par Serge). Celle du **11 a reussi** : le systeme n'etait pas casse.
+
+### Cause — erreur de conception de l'horaire
+Le creneau etait 02:15 UTC, choisi parce que « le restaurant est ferme la nuit ». Mais le quota
+Firestore se reinitialise a **minuit heure du Pacifique** : 07:00 UTC l'ete, 08:00 l'hiver.
+Un creneau nocturne tombe donc **toujours avant** la remise a zero et **herite du quota de la
+journee ecoulee**. La soiree du 09/08 ayant epuise les lectures, la sauvegarde de la nuit
+suivante etait condamnee d'avance. (GitHub avait en plus decale le run a 04:08 UTC.)
+
+Ce n'etait donc pas un aleas : **toute journee chargee condamnait la sauvegarde suivante.**
+
+### Correctif
+Cron passe a **`30 8 * * *`** (08:30 UTC = 10:30 a Lyon l'ete, 09:30 l'hiver) : apres la remise
+a zero dans les deux saisons, et avant l'ouverture du restaurant.
+
+### Au passage — l'incremental est confirme en production
+Run du 11/08 : `logs 3674 documents (+0 lus, le reste repris du cumul)`. Une sauvegarde coute
+desormais **~40 lectures** au lieu de 3 711, et la copie reste complete.
+
+---
+
 ## 2026-08-09 (nuit) — ⚠️ INCIDENT : quota de lectures Firestore epuise + optimisations
 
 ### Ce qui s'est passe
