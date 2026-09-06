@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { Shift, Staff, DragType, Language } from '../types';
 import { formatTime, formatShortDate, OrphanReason } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
@@ -19,6 +19,11 @@ interface ShiftCardProps {
   orphanReason?: OrphanReason;
   /** Cette personne a un autre shift au meme moment le meme jour. */
   hasOverlap?: boolean;
+  /** Ce shift fait partie de la selection en cours. */
+  isSelected?: boolean;
+  /** Une selection est ouverte : un simple appui coche au lieu d'ouvrir la fiche. */
+  selectionMode?: boolean;
+  onToggleSelect?: () => void;
 }
 
 const ShiftCard: React.FC<ShiftCardProps> = ({ 
@@ -33,9 +38,36 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   renderEndTime,
   language = 'en',
   orphanReason = null,
-  hasOverlap = false
+  hasOverlap = false,
+  isSelected = false,
+  selectionMode = false,
+  onToggleSelect
 }) => {
   if (!staff) return null;
+
+  /**
+   * Appui long = entrer en selection, sur telephone ou le clic droit et les
+   * touches modificatrices n'existent pas. Le drapeau evite le double effet :
+   * l'appui long declenche la selection, puis le `click` de fin de geste
+   * arriverait derriere et la decocherait aussitot.
+   */
+  const longPress = useRef<{ timer: number | null; fired: boolean }>({ timer: null, fired: false });
+
+  const cancelLongPress = () => {
+    if (longPress.current.timer !== null) {
+      window.clearTimeout(longPress.current.timer);
+      longPress.current.timer = null;
+    }
+  };
+
+  const startLongPress = () => {
+    if (isReadOnly || !onToggleSelect) return;
+    longPress.current.fired = false;
+    longPress.current.timer = window.setTimeout(() => {
+      longPress.current.fired = true;
+      onToggleSelect();
+    }, 450);
+  };
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
   const t = getTranslation(language as Language);
 
@@ -50,13 +82,29 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
       className={`@container rounded-md px-2 py-1.5 md:px-2 md:py-1.5 @max-[64px]:px-1 shadow-sm flex flex-col overflow-hidden border-l-4 group relative transition-transform ${isReadOnly ? '' : 'active:scale-[0.98]'} ${shift.coverageBy ? 'opacity-90' : ''}`}
       onMouseDown={(e) => {
         if (isReadOnly) return;
+        // Ctrl/Cmd+clic coche au lieu de deplacer : sans ca le geste de selection
+        // du bureau demarrerait un glisser en meme temps.
+        if (e.ctrlKey || e.metaKey || selectionMode) return;
         // Prevent drag start on mobile to avoid accidental moves/deletions during tap
         if (window.innerWidth < 768) return;
         onDragStart(e, 'move');
       }}
+      onTouchStart={startLongPress}
+      onTouchMove={cancelLongPress}
+      onTouchEnd={cancelLongPress}
+      onTouchCancel={cancelLongPress}
       onClick={(e) => {
         e.stopPropagation();
         if (isReadOnly) return;
+        // L'appui long vient de cocher : ce clic est la fin du meme geste.
+        if (longPress.current.fired) {
+          longPress.current.fired = false;
+          return;
+        }
+        if (onToggleSelect && (selectionMode || e.ctrlKey || e.metaKey)) {
+          onToggleSelect();
+          return;
+        }
         // On mobile, single click to edit
         if (window.innerWidth < 768) {
           onEdit();
@@ -64,7 +112,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        if (isReadOnly || window.innerWidth < 768) return;
+        if (isReadOnly || selectionMode || window.innerWidth < 768) return;
         onEdit();
       }}
       style={{
@@ -72,11 +120,15 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
         backgroundColor: shift.coverageBy ? '#f1f5f9' : staff.color + '15',
         borderColor: shift.coverageBy ? '#94a3b8' : staff.color,
         borderWidth: '0 0 0 4px',
+        // Un CONTOUR, pas une bordure : le contour ne prend pas de place, donc
+        // cocher une carte ne decale pas ses voisines dans la colonne.
+        outline: isSelected ? '2px solid #4f46e5' : undefined,
+        outlineOffset: isSelected ? '1px' : undefined,
         color: '#1e293b',
         cursor: isReadOnly ? 'default' : 'grab'
       }}
     >
-      {!isReadOnly && (
+      {!isReadOnly && !selectionMode && (
         <div 
           className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize z-50 hover:bg-black/10 transition-colors"
           onMouseDown={(e) => {
@@ -170,7 +222,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
         )}
       </div>
 
-      {!isReadOnly && (
+      {!isReadOnly && !selectionMode && (
         <div 
           className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize z-50 hover:bg-black/10 transition-colors"
           onMouseDown={(e) => {
@@ -178,6 +230,16 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             onDragStart(e, 'resize-bottom');
           }}
         />
+      )}
+
+      {/* Le contour seul se remarque mal sur une carte deja coloree et bordee.
+          La pastille dit « coche » sans ambiguite, meme sur une colonne etroite. */}
+      {isSelected && (
+        <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow z-50 pointer-events-none">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3.5} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
       )}
     </div>
   );

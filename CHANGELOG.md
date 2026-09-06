@@ -5,6 +5,42 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Lot 9 (2/2) : selection multiple et actions en bloc
+
+Le lot 9 prevoyait un « deplacement en bloc » par glisser-deposer. Mauvaise forme pour cette
+application : le glisser est un geste de souris, et l'outil sert surtout sur telephone — ou il est
+d'ailleurs desactive volontairement pour eviter les deplacements accidentels. Une barre d'actions
+marche au doigt comme a la souris, et surtout **elle ne touche pas au code de glisser-deposer**,
+la partie la plus delicate du calendrier. Verifie : un glisser simple deplace toujours un shift,
+et ne declenche pas de selection.
+
+**Entrer en selection** : appui long (450 ms) sur telephone, Ctrl/Cmd+clic au bureau. Ensuite un
+simple appui coche ou decoche, au lieu d'ouvrir la fiche. `Echap` sort. Un contour indigo et une
+pastille cochee marquent les cartes retenues — un contour et non une bordure, pour ne pas decaler
+les voisines dans la colonne.
+
+**Actions** (`components/SelectionBar.tsx`) : −30 min, +30 min, deplacer vers un jour, supprimer.
+Chacune part en un seul commit, donc **un seul Ctrl+Z rend le bloc entier**.
+
+Le decalage horaire est **tout ou rien** : si un seul des shifts sortait de la journee, rien ne
+bouge et un message le dit. Un bloc a moitie decale serait pire que pas de decalage — on croirait
+le geste fait, et il faudrait rattraper a la main les shifts restes en place.
+
+Trois details qui evitent des pieges : les poignees de redimensionnement disparaissent pendant une
+selection (elles demarreraient un glisser au moment ou l'on cherche a cocher) ; le drapeau
+d'appui long empeche le `click` de fin de geste de decocher aussitot ce que l'appui vient de
+cocher ; la selection est videe des qu'on change de semaine, sinon la barre agirait sur des cartes
+qui ne sont plus a l'ecran.
+
+Verifie au navigateur : 13 controles au bureau, 7 sur telephone, plus le glisser simple et la
+suppression (refus et acceptation de la confirmation, puis Ctrl+Z qui restaure). Zero erreur
+JavaScript, aucune cible sous 44 px, aucun debordement horizontal.
+
+`components/SelectionBar.tsx` (nouveau), `components/ShiftCard.tsx`, `components/Calendar.tsx`,
+`App.tsx`, `utils/translations.ts`
+
+---
+
 ## 2026-09-06 — Lot 9 (1/2) : poser un service sur plusieurs jours, et raccourcis clavier
 
 ### Un service, plusieurs jours

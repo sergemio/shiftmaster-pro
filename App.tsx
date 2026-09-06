@@ -2,10 +2,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, EMPTY_WEEK, ViewType } from './types';
 import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffActiveInWeek, getShiftIsoDate, weekIdsForMonth } from './utils/helpers';
-import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT } from './constants';
+import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR } from './constants';
 import Calendar from './components/Calendar';
 import Sidebar from './components/Sidebar';
 import ShiftModal from './components/ShiftModal';
+import SelectionBar from './components/SelectionBar';
 import StaffModal from './components/StaffModal';
 import EditShiftModal from './components/EditShiftModal';
 import MonthYearPicker from './components/MonthYearPicker';
@@ -133,6 +134,9 @@ const App: React.FC = () => {
   const [monthHours, setMonthHours] = useState<Record<string, number> | null>(null);
   const [monthLoading, setMonthLoading] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  // Shifts coches. Non vide = mode selection : un appui coche au lieu d'ouvrir
+  // la fiche, et la barre d'actions apparait en bas.
+  const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -501,6 +505,58 @@ const App: React.FC = () => {
     createLog('REPEAT SHIFT', `Copied shift for ${target?.name || 'Unknown'} onto ${days}`, target);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language]);
 
+  // -------------------------------------------------------------- selection
+  const toggleShiftSelection = useCallback((id: string) => {
+    if (isReadOnly) return;
+    setSelectedShiftIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }, [isReadOnly]);
+
+  const clearSelection = useCallback(() => setSelectedShiftIds([]), []);
+
+  /**
+   * Decale toute la selection de +/- 30 minutes.
+   *
+   * Tout ou rien : si un seul des shifts sortait de la journee, rien ne bouge.
+   * Un bloc a moitie decale serait pire que pas de decalage — on croirait le
+   * geste fait, et il faudrait rattraper a la main les shifts restes en place.
+   */
+  const nudgeSelected = useCallback((delta: number) => {
+    if (isReadOnly || selectedShiftIds.length === 0) return;
+    const chosen = shifts.filter(s => selectedShiftIds.includes(s.id));
+    const impossible = chosen.some(s => s.startTime + delta < START_HOUR || s.endTime + delta > END_HOUR);
+    if (impossible) {
+      setSaveError(t('cannotShiftOutOfRange'));
+      return;
+    }
+    // Le refus precedent, s'il y en a eu un, ne concerne plus rien : la meme
+    // action vient de reussir, le bandeau rouge n'a plus rien a dire.
+    setSaveError(null);
+    handleUpdateShifts(shifts.map(s => selectedShiftIds.includes(s.id)
+      ? { ...s, startTime: s.startTime + delta, endTime: s.endTime + delta }
+      : s));
+    createLog('MOVE SHIFTS', `Moved ${chosen.length} shift(s) by ${delta > 0 ? '+' : ''}${delta * 60} min`);
+  }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, t]);
+
+  const moveSelectedToDay = useCallback((dayIndex: number) => {
+    if (isReadOnly || selectedShiftIds.length === 0) return;
+    const chosen = shifts.filter(s => selectedShiftIds.includes(s.id));
+    if (chosen.every(s => s.dayIndex === dayIndex)) return;
+    handleUpdateShifts(shifts.map(s => selectedShiftIds.includes(s.id) ? { ...s, dayIndex } : s));
+    const dayLabel = getShiftDate(toWeekId(currentWeek), dayIndex, language);
+    createLog('MOVE SHIFTS', `Moved ${chosen.length} shift(s) to ${dayLabel}`);
+  }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, currentWeek, language]);
+
+  const deleteSelected = useCallback(() => {
+    if (isReadOnly || selectedShiftIds.length === 0) return;
+    const question = selectedShiftIds.length > 1
+      ? t('confirmDeleteSelectedPlural').replace('{n}', String(selectedShiftIds.length))
+      : t('confirmDeleteSelected');
+    if (!window.confirm(question)) return;
+    handleUpdateShifts(shifts.filter(s => !selectedShiftIds.includes(s.id)));
+    createLog('DELETE SHIFTS', `Removed ${selectedShiftIds.length} shift(s)`);
+    setSelectedShiftIds([]);
+  }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, t]);
+
   const deleteShift = useCallback((id: string) => {
     if (isReadOnly) return;
     const shift = shifts.find(s => s.id === id);
@@ -616,6 +672,7 @@ const App: React.FC = () => {
         else if (isStaffModalOpen) setIsStaffModalOpen(false);
         else if (isHistoryModalOpen) setIsHistoryModalOpen(false);
         else if (isSettingsModalOpen) setIsSettingsModalOpen(false);
+        else if (selectedShiftIds.length > 0) setSelectedShiftIds([]);
         else if (isMobileSidebarOpen) setIsMobileSidebarOpen(false);
         return;
       }
@@ -642,7 +699,14 @@ const App: React.FC = () => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [undo, redo, isShiftModalOpen, isStaffModalOpen, isHistoryModalOpen, isSettingsModalOpen,
-      isAbsenceModalOpen, editingShiftId, isMonthPickerOpen, isMobileSidebarOpen, currentWeek]);
+      isAbsenceModalOpen, editingShiftId, isMonthPickerOpen, isMobileSidebarOpen, currentWeek,
+      selectedShiftIds]);
+
+  useEffect(() => {
+    // Les ids coches appartiennent a la semaine affichee : en changer, ou passer
+    // en lecture seule, laisserait une barre d'actions sans cartes en face.
+    setSelectedShiftIds([]);
+  }, [currentWeek, isReadOnly]);
 
   const changeWeek = (direction: number) => {
     setNavDirection(direction > 0 ? 'forward' : 'backward');
@@ -920,6 +984,8 @@ const App: React.FC = () => {
             language={language}
             timezone={timezone}
             viewType={effectiveViewType}
+            selectedShiftIds={selectedShiftIds}
+            onToggleSelect={toggleShiftSelection}
             me={me}
             monthHours={monthHours}
             absences={absences}
@@ -969,6 +1035,18 @@ const App: React.FC = () => {
         language={language} 
       />
       <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
+      {/* La barre n'existe que pendant une selection : elle occupe le bas de
+          l'ecran, et rien ne justifie de manger cette place le reste du temps. */}
+      {selectedShiftIds.length > 0 && !isReadOnly && (
+        <SelectionBar
+          count={selectedShiftIds.length}
+          onNudge={nudgeSelected}
+          onMoveToDay={moveSelectedToDay}
+          onDelete={deleteSelected}
+          onClear={clearSelection}
+          language={language}
+        />
+      )}
       <LogHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} language={language} />
       <AbsenceModal
         isOpen={isAbsenceModalOpen}

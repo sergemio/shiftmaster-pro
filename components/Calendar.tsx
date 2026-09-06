@@ -50,6 +50,9 @@ interface CalendarProps {
   /** L'employe connecte, quand on le connait. Absent pour un invite. */
   me?: Staff | null;
   monthHours?: Record<string, number> | null;
+  /** Shifts coches. Non vide = on est en mode selection. */
+  selectedShiftIds?: string[];
+  onToggleSelect?: (shiftId: string) => void;
 }
 
 interface LayoutShift extends Shift {
@@ -136,7 +139,9 @@ const Calendar: React.FC<CalendarProps> = ({
   timezone = 'Europe/Paris',
   viewType = 'day',
   me = null,
-  monthHours = null
+  monthHours = null,
+  selectedShiftIds = [],
+  onToggleSelect
 }) => {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [activeDayIndex, setActiveDayIndex] = useState(0);
@@ -624,6 +629,9 @@ const Calendar: React.FC<CalendarProps> = ({
                   orphanReason={orphanReason}
                   hasOverlap={overlappingIds.has(shift.id)}
                   isReadOnly={isReadOnly}
+                  isSelected={selectedShiftIds.includes(shift.id)}
+                  selectionMode={selectedShiftIds.length > 0}
+                  onToggleSelect={onToggleSelect ? () => onToggleSelect(shift.id) : undefined}
                   onEdit={() => !isReadOnly && onEditShift(shift.id)}
                   renderStartTime={isDraggingThis ? previewStartTime : undefined}
                   renderEndTime={isDraggingThis ? previewEndTime : undefined}
