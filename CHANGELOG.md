@@ -5,6 +5,28 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Correctif : les horaires etaient masques dans les cartes de shift
+
+**Regression que j ai introduite le jour meme, signalee par Serge captures a l appui.**
+
+En verifiant le cas de trois shifts qui se chevauchent (cartes de ~40px), l horaire s y repliait
+sur trois lignes tronquees. J ai ajoute un masquage sous 104px de large. Deux erreurs :
+
+1. Le seuil porte sur la largeur INTERIEURE de la carte. Avec 16px de padding et 4px de bordure,
+   il attrapait toute carte de moins de 124px — soit une colonne de jour ordinaire.
+2. Surtout : je reglais un cas rare en cassant le cas courant. L horaire est l information la
+   plus utile apres le nom. Il se repliait sur deux lignes depuis toujours, et c est lisible.
+
+**Masquage retire.** L horaire ne disparait plus jamais. Meme correction pour le badge de
+periode d emploi, qui prend deja toute la largeur de la carte et se replie.
+
+Mesure au navigateur, cartes de 63px (deux shifts qui se chevauchent) et 130px :
+horaire absent avant, present apres, aux deux largeurs.
+
+
+
+---
+
 ## 2026-09-06 — Lot 1 : les absences (branche `dev`)
 
 Maquette validee par Serge (« ok go »), puis codee. Repond au probleme de depart :

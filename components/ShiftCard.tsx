@@ -91,7 +91,15 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
         </div>
         
         <div className="flex flex-col gap-1 md:gap-1.5">
-          <span className="text-xs font-bold text-slate-600 leading-tight whitespace-nowrap @max-[104px]:hidden">
+          {/* L'horaire ne se masque JAMAIS. Il se replie sur deux lignes quand la
+              colonne est etroite, comme il l'a toujours fait — c'est lisible, et
+              c'est l'information la plus utile apres le nom.
+              Le 06/09/2026 j'avais ajoute un masquage sous 104px pour eviter que
+              l'horaire se replie en trois lignes tronquees dans une sous-colonne
+              de 40px. Mauvais arbitrage, signale par Serge : le seuil attrapait
+              les colonnes de jour ordinaires, et l'horaire disparaissait dans le
+              cas courant pour regler un cas rare. */}
+          <span className="text-xs font-bold text-slate-600 leading-tight">
             {formatTime(startTime)} - {formatTime(endTime)}
           </span>
           <div className="flex gap-1 flex-wrap">
@@ -112,11 +120,11 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
                 className="bg-amber-100 text-amber-800 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-amber-300 basis-full leading-tight"
               >
                 ⚠{' '}
-                {/* Sous ~104px de large, rien de textuel ne tient : la carte est
-                    une sous-colonne de quelques dizaines de pixels. Le
-                    pictogramme reste, l'explication est dans l'infobulle et dans
-                    la fiche du shift. */}
-                <span className="@max-[104px]:hidden">
+                {/* Le badge prend toute la largeur de la carte et se replie, donc
+                    il n'a besoin de disparaitre que dans une sous-colonne ou plus
+                    rien de textuel ne tient. Seuil bas, pour la meme raison que
+                    l'horaire ci-dessus. */}
+                <span className="@max-[56px]:hidden">
                   {orphanReason.kind === 'after-end' ? t('leftOn') : t('startsOn')}{' '}
                   {formatShortDate(orphanReason.date, language)}
                 </span>
