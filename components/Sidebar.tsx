@@ -436,7 +436,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {/* Only on a week that is genuinely empty — `shifts` is also [] while
                 a week loads, and offering the copy then would let one click
                 replace a week that does have shifts. */}
-            {isEmpty && !isLoading && (
+            {!isLoading && (
               <button
                 type="button"
                 onClick={onCopyLastWeek}

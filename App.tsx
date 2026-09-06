@@ -558,26 +558,47 @@ const App: React.FC = () => {
     setIsMonthPickerOpen(false);
   };
 
+  /**
+   * Reprend les shifts de la semaine precedente.
+   *
+   * Le bouton n'apparaissait que sur une semaine VIDE, ce qui interdisait le cas
+   * le plus courant : la trame est deja la, il manque deux personnes le samedi.
+   * Il est desormais toujours disponible, et les shifts repris s'AJOUTENT a ceux
+   * en place — jamais de remplacement, donc jamais de travail efface. Un doublon
+   * eventuel se signale de lui-meme via l'alerte de chevauchement.
+   *
+   * Les absences et les jours feries ne sont PAS repris : ils sont propres a une
+   * semaine donnee, contrairement a une trame de service.
+   *
+   * La lecture du bac a sable pointait encore `sandbox_shifts_`, ancienne cle
+   * abandonnee en passant a `sandbox_week_` : la copie y etait silencieusement
+   * cassee depuis.
+   */
   const handleCopyLastWeek = async () => {
-    if (isReadOnly) return;
-    // The button only renders on an empty week, but that guard lives in the UI
-    // and `shifts` is [] while a week is still loading. Refuse here too, so a
-    // click in that gap can never replace a week that actually has shifts.
-    if (shifts.length > 0 || isLoading) return;
+    if (isReadOnly || isLoading) return;
     const prevWeek = new Date(currentWeek);
     prevWeek.setDate(prevWeek.getDate() - 7);
     const prevWeekId = toWeekId(prevWeek);
-    let prevShifts: Shift[] | null = [];
-    if (isGuest) {
-      const cached = localStorage.getItem(`sandbox_shifts_${prevWeekId}`);
-      prevShifts = cached ? JSON.parse(cached) : [];
+
+    let prevShifts: Shift[] = [];
+    if (user && !isGuest) {
+      prevShifts = (await loadShiftsFromFirebase(prevWeekId)) || [];
     } else {
-      prevShifts = await loadShiftsFromFirebase(prevWeekId);
+      const cached = localStorage.getItem(`sandbox_week_${prevWeekId}`);
+      prevShifts = cached ? (JSON.parse(cached).shifts || []) : [];
     }
-    if (prevShifts?.length) {
-      handleUpdateShifts(prevShifts.map(s => ({ ...s, id: Math.random().toString(36).substr(2, 9) })));
-      createLog('COPY WEEK', `Cloned shifts from week ${getWeekRangeString(prevWeek)}`);
+    if (prevShifts.length === 0) {
+      setSaveError(t('nothingToCopy'));
+      return;
     }
+    // Sur une semaine deja remplie on demande : l'ajout reste annulable, mais
+    // mieux vaut ne pas surprendre.
+    if (shifts.length > 0 && !window.confirm(t('confirmCopyInto').replace('{n}', String(prevShifts.length)))) {
+      return;
+    }
+    const copied = prevShifts.map(s => ({ ...s, id: Math.random().toString(36).substr(2, 9) }));
+    commitWeek({ shifts: [...shifts, ...copied] });
+    createLog('COPY WEEK', `Copied ${copied.length} shifts from week ${getWeekRangeString(prevWeek)}`);
   };
 
   const handleDeleteWeek = useCallback(() => {

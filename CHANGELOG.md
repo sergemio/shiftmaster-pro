@@ -5,6 +5,31 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Lot 6 : copier la semaine precedente, meme sur une semaine remplie (branche `dev`)
+
+Le bouton **Copy Previous Week** n apparaissait que sur une semaine **vide**, ce qui interdisait
+le cas le plus courant : la trame est deja posee, il manque deux personnes le samedi.
+
+Il est desormais toujours disponible. Les shifts repris **s ajoutent** a ceux en place — jamais
+de remplacement, donc jamais de travail efface. Sur une semaine deja remplie, une confirmation
+annonce le nombre exact de shifts ajoutes. Un doublon eventuel se signale de lui-meme via
+l alerte de chevauchement livree juste avant.
+
+Les absences et les jours feries ne sont pas repris : ils sont propres a une semaine donnee,
+contrairement a une trame de service.
+
+### Un bug silencieux corrige au passage
+
+La copie lisait encore `sandbox_shifts_`, cle abandonnee en passant a `sandbox_week_` lors du lot
+des absences. **La copie etait cassee dans le bac a sable depuis**, sans aucun message.
+
+Verifie au navigateur : semaine contenant 1 shift, copie d une semaine precedente en contenant 2,
+confirmation affichant bien « 2 », resultat 3 shifts. Aucune erreur JavaScript.
+
+`App.tsx`, `components/Sidebar.tsx`, `utils/translations.ts`
+
+---
+
 ## 2026-09-06 — Lot 5 : effectif par heure (branche `dev`)
 
 L application montrait les heures **par employe**, jamais la couverture du service. Un trou a
