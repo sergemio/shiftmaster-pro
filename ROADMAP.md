@@ -101,6 +101,7 @@ l'inclure dans `saveWeekToFirebase` l'effacerait a la premiere modification de s
 
 | Fichier | Ce qu'il verrouille |
 |---|---|
+| `scripts/test-lazy-subscribe.mjs` | 8 cas du chargement differe de Firestore |
 | `scripts/test-rules.mjs` | 24 cas des regles Firestore (emulateur requis) |
 | `scripts/test-contract-hours.mjs` | 11 cas des avenants dates |
 | `scripts/test-month-hours.mjs` | 7 cas du contrat mensuel |

@@ -5,6 +5,79 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Chargement mobile : Firestore sort du premier ecran, et cache local
+
+Serge : « a chaque fois que j'essaie de charger le site sur un mobile, ca prend beaucoup, beaucoup
+de temps », avant ET apres la connexion. Mesure sur un profil telephone (4G lente 1,6 Mb/s,
+150 ms de latence, CPU bride x4) :
+
+| | 1re visite | revisite |
+|---|---|---|
+| 4G lente + telephone bas de gamme | 4,48 s | 0,59 s |
+| 4G lente + telephone correct | 2,36 s | 0,11 s |
+| Bonne 4G + bas de gamme | 1,67 s | 0,53 s |
+
+### Avant la connexion — le SDK Firestore etait telecharge pour rien
+
+Le paquet faisait 226 ko, dont 75 % de Firebase, et **Firestore est la plus grosse piece**. Importe
+en haut de `firebaseService.ts`, il etait telecharge et execute AVANT que l'ecran de connexion
+puisse s'afficher — alors que cet ecran n'a besoin que de l'authentification.
+
+Il se charge desormais a la demande. Le premier paquet passe de **258 ko a 156 ko compresses
+(−40 %)** ; les 450 ko de Firestore partent dans un fichier separe qui se charge pendant que Google
+verifie la session. Le temps est passe en parallele au lieu d'etre passe en serie.
+
+Verifie sur le site construit : l'ecran de connexion ne charge qu'un seul script, et le bac a
+sable monte toute l'interface **sans jamais demander le fichier Firestore**.
+
+### Apres la connexion — cache local persistant
+
+`initializeFirestore` avec `persistentLocalCache` (IndexedDB, `persistentMultipleTabManager` car le
+planning s'ouvre souvent dans plusieurs onglets). Sans lui, chaque ouverture affiche un calendrier
+vide le temps que la liaison s'etablisse ; avec lui, la semaine deja consultee s'affiche
+immediatement depuis le telephone, puis le serveur la corrige s'il y a eu du changement.
+
+Deux consequences a connaitre. Les lectures servies par le cache **ne sont pas facturees** : le
+quota baisse, il ne monte pas. Et une donnee peut etre affichee brievement perimee — c'est deja
+couvert, toute ecriture passe par une transaction qui compare `updatedAt` et refuse d'ecraser le
+travail d'un autre.
+
+### Le piege du chargement differe, et son test
+
+React attend une fonction de desabonnement **tout de suite**, alors que le SDK n'est pas encore la.
+Entre l'appel et l'arrivee du module, l'effet peut deja avoir ete demonte — un changement rapide de
+semaine suffit. Sans garde, l'ecoute s'ouvrirait apres coup et personne ne la fermerait : une ecoute
+Firestore qui survit, c'est de la facturation qui continue. D'ou `lazySubscribe`, et
+`scripts/test-lazy-subscribe.mjs` qui fige les cas limites, dont le demontage avant l'arrivee du SDK.
+
+### Une faiblesse trouvee en relisant, avant de pousser
+
+La promesse de chargement est mise en cache pour ne charger le SDK qu'une fois — mais elle
+memorisait aussi son **echec**. Une coupure reseau d'une seconde au mauvais moment aurait condamne
+toute la session : plus aucune lecture ni sauvegarde jusqu'au rechargement de la page, sans que
+rien ne l'explique. Le cache est desormais efface en cas d'echec, et le prochain appel retente.
+Septieme cas ajoute au test.
+
+### Une piste ecartee apres verification
+
+GitHub Pages ne met les fichiers en cache que 10 minutes, ce qui laissait croire a un
+retelechargement complet a chaque ouverture. Verification faite avec `If-None-Match` : le serveur
+repond **304, zero octet**. Ca coute un aller-retour, pas 226 ko. Piste abandonnee.
+
+### Reste a faire
+
+La prod charge encore le CDN Tailwind (retire au lot 0, pas encore fusionne) : **3,03 s contre
+2,21 s** pour la preview dans les memes conditions. Ce script telecharge, puis **compile le CSS
+dans le navigateur a chaque ouverture**.
+
+⚠️ **Ce qui n'a pas pu etre teste ici** : le chemin connecte — abonnements, sauvegardes,
+transactions — demande un compte de l'equipe. A verifier sur la preview avant fusion : les shifts
+s'affichent, une modification se sauvegarde, un rechargement la retrouve.
+
+`services/firebaseService.ts`, `scripts/test-lazy-subscribe.mjs` (nouveau)
+
+---
+
 ## 2026-09-06 — Lot 9 (2/2) : selection multiple et actions en bloc
 
 Le lot 9 prevoyait un « deplacement en bloc » par glisser-deposer. Mauvaise forme pour cette

@@ -2,7 +2,6 @@ import { Shift, Staff, LogEntry, Absence, WeekData, EMPTY_WEEK } from '../types'
 
 // Use the Official Google Firebase ESM CDN to ensure total compatibility
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, limit, runTransaction, where, getDocs } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 
 // Import the Firebase configuration
@@ -14,9 +13,102 @@ import firebaseConfig from '../firebase-applet-config.json';
 // Initialize App (Singleton Pattern)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Services with the confirmed app instance
-// Use the firestoreDatabaseId from the config if it exists
-export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || '(default)');
+/**
+ * Firestore AVEC cache local persistant (IndexedDB).
+ *
+ * Sans lui, chaque ouverture de l'application sur telephone affiche un calendrier
+ * vide le temps que la liaison reseau s'etablisse et que les documents arrivent —
+ * plusieurs secondes sur une 4G ordinaire. Avec lui, la semaine deja consultee
+ * s'affiche immediatement depuis le telephone, puis le serveur la corrige s'il y a
+ * eu du changement. C'est le meme mecanisme `onSnapshot` : rien a modifier ailleurs.
+ *
+ * Trois consequences a connaitre :
+ * - Les lectures servies par le cache **ne sont pas facturees**. Le quota baisse,
+ *   il ne monte pas.
+ * - Une donnee peut etre affichee brievement perimee. C'est deja couvert : toute
+ *   ecriture passe par une transaction qui compare `updatedAt` et refuse d'ecraser
+ *   le travail de quelqu'un d'autre (voir saveWeekToFirebase).
+ * - `persistentMultipleTabManager` : le planning s'ouvre souvent dans plusieurs
+ *   onglets, et le gestionnaire mono-onglet ferait echouer le cache dans les autres.
+ */
+const DATABASE_ID = (firebaseConfig as any).firestoreDatabaseId || '(default)';
+
+type FirestoreModule = typeof import('firebase/firestore');
+let firestorePromise: Promise<{ fs: FirestoreModule; db: any }> | null = null;
+
+/**
+ * Charge le SDK Firestore A LA DEMANDE, et l'initialise avec un cache local.
+ *
+ * Pourquoi pas un import statique. Firestore est la plus grosse piece de
+ * l'application — plus du tiers du code envoye au navigateur. Importe en haut de
+ * ce fichier, il etait telecharge et execute AVANT que l'ecran de connexion
+ * puisse s'afficher, alors que cet ecran n'a besoin que de l'authentification.
+ * Sur une 4G ordinaire c'etait une seconde d'attente devant un ecran blanc, pour
+ * du code dont on ne se sert qu'une fois connecte. Il se charge desormais pendant
+ * que Google verifie la session : le temps est passe en parallele, plus en serie.
+ *
+ * Le cache local (IndexedDB) repond a l'autre moitie du probleme. Sans lui, chaque
+ * ouverture affiche un calendrier vide le temps que la liaison s'etablisse ; avec
+ * lui, la semaine deja consultee s'affiche immediatement depuis le telephone, puis
+ * le serveur la corrige s'il y a eu du changement. Trois consequences a connaitre :
+ *  - les lectures servies par le cache NE SONT PAS facturees : le quota baisse ;
+ *  - une donnee peut etre affichee brievement perimee, ce qui est deja couvert —
+ *    toute ecriture passe par une transaction qui compare `updatedAt` et refuse
+ *    d'ecraser le travail d'un autre (voir saveWeekToFirebase) ;
+ *  - `persistentMultipleTabManager` parce que le planning s'ouvre souvent dans
+ *    plusieurs onglets, ou le gestionnaire mono-onglet desactiverait le cache.
+ *
+ * `initializeFirestore` refuse d'etre appele deux fois sur la meme base : ca
+ * n'arrive pas en production, mais le rechargement a chaud du serveur de
+ * developpement reevalue ce fichier, d'ou le repli sur `getFirestore`.
+ */
+const firestore = () => (firestorePromise ??= import('firebase/firestore')
+  .then(fs => {
+    let db: any;
+    try {
+      db = fs.initializeFirestore(
+        app,
+        { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) },
+        DATABASE_ID,
+      );
+    } catch {
+      db = fs.getFirestore(app, DATABASE_ID);
+    }
+    return { fs, db };
+  })
+  .catch(e => {
+    // Un chargement rate ne doit pas etre memorise. La promesse est mise en cache
+    // pour ne charger le SDK qu'une fois ; si on gardait aussi son echec, une
+    // coupure reseau d'une seconde condamnerait toute la session — plus aucune
+    // lecture ni sauvegarde jusqu'au rechargement de la page. On efface donc le
+    // cache pour que le prochain appel retente.
+    firestorePromise = null;
+    throw e;
+  }));
+
+/**
+ * Abonnement Firestore depuis un appelant synchrone.
+ *
+ * React attend une fonction de desabonnement TOUT DE SUITE, alors que le SDK
+ * n'est pas encore charge. On rend donc un desabonnement qui couvre les deux cas :
+ * si l'effet est demonte avant l'arrivee du module, `cancelled` empeche l'ecoute
+ * de s'ouvrir dans le vide — sans lui, un changement rapide de semaine laissait
+ * derriere lui des ecoutes que plus personne ne fermait.
+ */
+const lazySubscribe = (open: (ctx: { fs: FirestoreModule; db: any }) => () => void) => {
+  let stop: (() => void) | null = null;
+  let cancelled = false;
+  firestore().then(ctx => {
+    if (cancelled) return;
+    stop = open(ctx);
+  });
+  return () => {
+    cancelled = true;
+    stop?.();
+    stop = null;
+  };
+};
+
 export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
@@ -184,8 +276,9 @@ export const saveWeekToFirebase = async (
   baseUpdatedAt?: string | null
 ): Promise<string> => {
   if (!auth.currentUser) return '';
+  const { fs, db } = await firestore();
   const path = `weeks/${weekId}`;
-  const weekRef = doc(db, 'weeks', weekId);
+  const weekRef = fs.doc(db, 'weeks', weekId);
   const payload = {
     shifts: sanitizeData(week.shifts),
     absences: sanitizeData(week.absences),
@@ -194,7 +287,7 @@ export const saveWeekToFirebase = async (
   const stamp = new Date().toISOString();
 
   try {
-    await runTransaction(db, async (tx) => {
+    await fs.runTransaction(db, async (tx) => {
       if (baseUpdatedAt !== undefined) {
         const snap = await tx.get(weekRef);
         const theirs = snap.exists() ? (snap.data().updatedAt ?? null) : null;
@@ -212,9 +305,10 @@ export const saveWeekToFirebase = async (
 
 export const saveStaffToFirebase = async (staff: Staff[], guests: string[] = []): Promise<void> => {
   if (!auth.currentUser) return;
+  const { fs, db } = await firestore();
   const path = 'settings/staff';
   try {
-    const staffRef = doc(db, 'settings', 'staff');
+    const staffRef = fs.doc(db, 'settings', 'staff');
     const cleanStaff = sanitizeData(staff);
     const adminEmails = staff
       .filter(s => s.role === 'admin')
@@ -228,7 +322,7 @@ export const saveStaffToFirebase = async (staff: Staff[], guests: string[] = [])
       .map(s => (s.email || '').trim().toLowerCase())
       .filter(email => email !== '');
 
-    await setDoc(staffRef, {
+    await fs.setDoc(staffRef, {
       list: cleanStaff,
       guests: guests.map(g => g.toLowerCase().trim()),
       admins: adminEmails,
@@ -250,10 +344,11 @@ export const saveLogToFirebase = async (log: Omit<LogEntry, 'id'>): Promise<void
     localStorage.setItem('sandbox_logs', JSON.stringify(localLogs.slice(0, 50)));
     return;
   }
+  const { fs, db } = await firestore();
   const path = 'logs';
   try {
-    const logsCol = collection(db, 'logs');
-    await addDoc(logsCol, {
+    const logsCol = fs.collection(db, 'logs');
+    await fs.addDoc(logsCol, {
       ...log,
       timestamp: new Date().toISOString()
     });
@@ -280,8 +375,7 @@ export const subscribeToWeek = (
 ) => {
   if (!auth.currentUser) return () => {};
   const path = `weeks/${weekId}`;
-  const weekRef = doc(db, 'weeks', weekId);
-  return onSnapshot(weekRef, (snap) => {
+  return lazySubscribe(({ fs, db }) => fs.onSnapshot(fs.doc(db, 'weeks', weekId), (snap) => {
     if (!snap.exists()) return callback(EMPTY_WEEK, null);
     const data = snap.data();
     // `as Shift[]` would be a lie if the field were missing or malformed.
@@ -292,14 +386,13 @@ export const subscribeToWeek = (
     }, data.updatedAt ?? null);
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, path);
-  });
+  }));
 };
 
 export const subscribeToStaff = (callback: (staff: Staff[], guests: string[]) => void) => {
   if (!auth.currentUser) return () => {};
   const path = 'settings/staff';
-  const staffRef = doc(db, 'settings', 'staff');
-  return onSnapshot(staffRef, (snap) => {
+  return lazySubscribe(({ fs, db }) => fs.onSnapshot(fs.doc(db, 'settings', 'staff'), (snap) => {
     if (snap.exists()) {
       const data = snap.data();
       callback(data.list as Staff[], data.guests || []);
@@ -308,20 +401,19 @@ export const subscribeToStaff = (callback: (staff: Staff[], guests: string[]) =>
     }
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, path);
-  });
+  }));
 };
 
 export const subscribeToGlobalSettings = (callback: (settings: { timezone?: string, language?: string }) => void) => {
   if (!auth.currentUser) return () => {};
   const path = 'settings/global';
-  const settingsRef = doc(db, 'settings', 'global');
-  return onSnapshot(settingsRef, (snap) => {
+  return lazySubscribe(({ fs, db }) => fs.onSnapshot(fs.doc(db, 'settings', 'global'), (snap) => {
     if (snap.exists()) {
       callback(snap.data() as { timezone?: string, language?: string });
     }
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, path);
-  });
+  }));
 };
 
 /**
@@ -337,17 +429,18 @@ export const loadLogs = async (months = 1, cap = 3000): Promise<LogEntry[]> => {
   if (!auth.currentUser) {
     return JSON.parse(localStorage.getItem('sandbox_logs') || '[]');
   }
+  const { fs, db } = await firestore();
   const since = new Date();
   since.setMonth(since.getMonth() - months);
   const path = 'logs';
   try {
-    const q = query(
-      collection(db, 'logs'),
-      where('timestamp', '>=', since.toISOString()),
-      orderBy('timestamp', 'desc'),
-      limit(cap)
+    const q = fs.query(
+      fs.collection(db, 'logs'),
+      fs.where('timestamp', '>=', since.toISOString()),
+      fs.orderBy('timestamp', 'desc'),
+      fs.limit(cap)
     );
-    const snap = await getDocs(q);
+    const snap = await fs.getDocs(q);
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as LogEntry));
   } catch (e) {
     handleFirestoreError(e, OperationType.LIST, path);
@@ -357,10 +450,11 @@ export const loadLogs = async (months = 1, cap = 3000): Promise<LogEntry[]> => {
 
 export const loadShiftsFromFirebase = async (weekId: string): Promise<Shift[] | null> => {
   if (!auth.currentUser) return null;
+  const { fs, db } = await firestore();
   const path = `weeks/${weekId}`;
   try {
-    const weekRef = doc(db, 'weeks', weekId);
-    const snap = await getDoc(weekRef);
+    const weekRef = fs.doc(db, 'weeks', weekId);
+    const snap = await fs.getDoc(weekRef);
     if (snap.exists()) {
       return snap.data().shifts as Shift[];
     }
@@ -380,11 +474,12 @@ export const loadShiftsFromFirebase = async (weekId: string): Promise<Shift[] | 
  */
 export const loadWeeks = async (weekIds: string[]): Promise<Record<string, WeekData>> => {
   if (!auth.currentUser) return {};
+  const { fs, db } = await firestore();
   const out: Record<string, WeekData> = {};
   const snaps = await Promise.all(
     weekIds.map(async (wid) => {
       try {
-        return { wid, snap: await getDoc(doc(db, 'weeks', wid)) };
+        return { wid, snap: await fs.getDoc(fs.doc(db, 'weeks', wid)) };
       } catch (e) {
         handleFirestoreError(e, OperationType.GET, `weeks/${wid}`);
         return { wid, snap: null };
@@ -405,10 +500,11 @@ export const loadWeeks = async (weekIds: string[]): Promise<Record<string, WeekD
 
 export const exportWeeksData = async (weekIds: string[]): Promise<Record<string, any>> => {
   if (!auth.currentUser) return {};
+  const { fs, db } = await firestore();
   const result: Record<string, any> = {};
   for (const wid of weekIds) {
     try {
-      const snap = await getDoc(doc(db, 'weeks', wid));
+      const snap = await fs.getDoc(fs.doc(db, 'weeks', wid));
       if (snap.exists()) result[wid] = snap.data();
     } catch (e) { /* skip */ }
   }
@@ -417,10 +513,11 @@ export const exportWeeksData = async (weekIds: string[]): Promise<Record<string,
 
 export const loadStaffFromFirebase = async (): Promise<{ staff: Staff[], guests: string[] } | null> => {
   if (!auth.currentUser) return null;
+  const { fs, db } = await firestore();
   const path = 'settings/staff';
   try {
-    const staffRef = doc(db, 'settings', 'staff');
-    const snap = await getDoc(staffRef);
+    const staffRef = fs.doc(db, 'settings', 'staff');
+    const snap = await fs.getDoc(staffRef);
     if (snap.exists()) {
       const data = snap.data();
       return {
