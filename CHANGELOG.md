@@ -5,6 +5,47 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Correctif : sur telephone, toute semaine autre que la courante etait vide
+
+**Trouve par Serge en testant la preview sur son iPhone** : les shifts de la semaine
+precedente et de la suivante n'apparaissaient pas. Bug **anterieur au lot 0**, introduit par
+`5f379fd` (« Fix Sunday highlight and Jump to Today on wrong week »).
+
+### Cause
+
+```js
+if (todayIndex !== -1) setActiveDayIndex(todayIndex);
+else                   setActiveDayIndex(-1);   // <- ici
+```
+
+Le `-1` voulait dire « aucun jour a mettre en avant » quand la semaine affichee ne contient pas
+aujourd'hui. Mais sur telephone une seule colonne est rendue, celle dont l'index vaut
+`activeDayIndex` : a `-1`, **aucune colonne ne correspondait**. Les shifts etaient bien charges
+depuis Firestore, il n'y avait simplement aucune colonne pour les accueillir.
+
+Invisible sur ordinateur, ou les 7 colonnes s'affichent de toute facon — d'ou le fait que ca
+n'ait jamais ete vu.
+
+### Correctif
+
+Retour au lundi (`index 0`) quand la semaine ne contient pas aujourd'hui. Le lundi est alors
+marque comme jour affiche, et les autres jours restent accessibles d'un tap.
+
+### Verification
+
+Compte des colonnes visibles, mesure au navigateur :
+
+| | avant | apres |
+|---|---|---|
+| Telephone, semaine courante | 1 | 1 |
+| Telephone, semaine -1 | **0** | **1** |
+| Telephone, semaine -2 | **0** | **1** |
+| Bureau, semaine -1 | 7 | 7 |
+
+`components/Calendar.tsx`
+
+---
+
 ## 2026-09-06 — Lot 0 : fondations typographiques et tactiles (branche `dev`)
 
 Premier lot du chantier UX. **Aucune fonctionnalite ajoutee** : on remet d'aplomb les

@@ -152,11 +152,13 @@ const Calendar: React.FC<CalendarProps> = ({
   }, []);
 
   useEffect(() => {
-    if (todayIndex !== -1) {
-      setActiveDayIndex(todayIndex);
-    } else {
-      setActiveDayIndex(-1);
-    }
+    // Le -1 signifiait « aucun jour a mettre en avant » sur une semaine qui ne
+    // contient pas aujourd'hui. Mais sur telephone une seule colonne est rendue,
+    // celle dont l'index vaut activeDayIndex : a -1 aucune ne correspondait, et
+    // TOUTE semaine autre que la semaine courante paraissait vide — les shifts
+    // etaient bien charges, simplement aucune colonne ne les accueillait.
+    // On retombe donc sur le lundi, qui reste un jour valide a afficher.
+    setActiveDayIndex(todayIndex !== -1 ? todayIndex : 0);
   }, [todayIndex]);
 
   const processedShifts = useMemo(() => {
