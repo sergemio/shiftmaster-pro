@@ -42,11 +42,25 @@ largeur telephone. Aucun debordement hors du cas 44px, ou rien de textuel ne tie
 
 `utils/helpers.ts`, `utils/translations.ts`, `components/ShiftCard.tsx`, `components/Calendar.tsx`
 
-### Rappel : l'incoherence de donnees reste entiere
+### Ce n'etait PAS une incoherence — tranche par Serge le meme jour
 
-Omar et Harshil ont une date de sortie au **2026-09-03** et gardent des shifts posés apres.
-Le badge la signale, il ne la corrige pas. **Rien n'a ete modifie dans la base** — en attente
-de la decision de Serge : supprimer ces shifts, ou effacer la date de sortie.
+Omar et Harshil ont bien une date de sortie au **2026-09-03** et des shifts posés apres, mais
+c'est **normal** : ils sont sortis des effectifs et prennent encore **quelques shifts en extra**.
+
+> « ne supprime pas et ne change rien […] leur date de sortie a expire. Cela dit, ils prennent
+> encore quelques shifts en tant qu'extra, donc il n'y a rien a faire sur le sujet. »
+
+**Rien n'a ete modifie dans la base, et il n'y a rien a y modifier.**
+
+Ce que ca implique pour la suite :
+
+- Le badge se declenche sur une situation **recurrente et legitime**. Il informe (« cette
+  personne n'est plus dans l'effectif regulier »), il n'alerte pas. A surveiller : s'il devient
+  du bruit visuel, le ton ambre sera a revoir (R5.3).
+- Un futur **compteur mensuel** ou **export de paie** ne doit pas exclure quelqu'un au motif que
+  sa date de sortie est passee : ses heures d'extra comptent.
+- Idem pour l'idee, notee au plan, de « nettoyer les shifts futurs a la saisie d'une sortie » :
+  elle devra **proposer**, jamais supprimer d'office.
 
 ---
 
