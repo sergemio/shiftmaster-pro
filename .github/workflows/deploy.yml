@@ -1,11 +1,19 @@
 name: Deploy to GitHub Pages
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
 permissions:
   contents: read
   pages: write
   id-token: write
+# One Pages site, two builds:
+#   master -> /shiftmaster-pro/          (what the team uses)
+#   dev    -> /shiftmaster-pro/preview/  (to check changes online first)
+# A push on either branch rebuilds both from their current tips, so prod is
+# always master and preview is always dev, whichever one moved.
+concurrency:
+  group: pages
+  cancel-in-progress: true
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -13,15 +21,44 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm ci
-      - run: npm run build
+
+      - name: Checkout master (prod)
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: prod
+      - name: Build prod
+        working-directory: prod
+        run: |
+          npm ci
+          npm run build
+
+      - name: Checkout dev (preview)
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: preview
+      - name: Build preview
+        working-directory: preview
+        env:
+          VITE_BASE: /shiftmaster-pro/preview/
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -r prod/dist/. site/
+          mkdir -p site/preview
+          cp -r preview/dist/. site/preview/
+
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
