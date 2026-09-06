@@ -26,7 +26,8 @@ validation de Serge. Detail de ce qui est fait : `CHANGELOG.md`.
 | 5 | Effectif par heure | ✅ fait |
 | 6 | Copier la semaine precedente (semaine vide seulement) | ✅ fait |
 | 3 | Vue personnelle de l'employe | ✅ fait |
-| 9 | Confort de saisie | ⬜ a faire |
+| 9 | Confort de saisie — multi-jours + raccourcis | ✅ fait |
+| 9b | Selection multiple et actions en bloc | ⬜ a faire |
 | 4 | Publication et notification | 🔒 **demande une decision de Serge** |
 | 6b | Semaine type et shifts types | ⬜ a faire |
 | — | Contraintes legales | ⬜ explicitement remis a plus tard |
@@ -48,9 +49,16 @@ apres validation de Serge sur la preview.
 
 ## Ce qui reste
 
-### Lot 9 — Confort de saisie *(le plus utile qui reste sans decision)*
-Multi-selection et deplacement en bloc, duplication d'un shift sur plusieurs jours, raccourcis
-clavier. **Aucune decision requise.**
+### Lot 9b — Selection multiple et actions en bloc
+La partie du lot 9 qui reste. Le glisser-deposer en bloc est un geste de souris, or l'application
+sert surtout sur telephone — ou le glisser est d'ailleurs desactive volontairement. La forme qui
+marche sur les deux : un **mode selection** (appui long sur telephone, Ctrl+clic au bureau), puis
+une barre d'actions — decaler de +/-30 min, deplacer vers un autre jour, supprimer. Couvre les
+trois besoins reels (« tout le samedi soir 30 min plus tard », « supprimer les shifts du mardi »,
+« passer Yasmine du mardi au mercredi ») **sans toucher au code de glisser-deposer**, qui est la
+partie la plus delicate de l'application.
+
+C'est un changement d'apparence visible : a montrer a Serge avant de le construire.
 
 ### Lot 6b — Semaine type et shifts types
 Au-dela de la copie de la semaine precedente : enregistrer une trame de reference, et des shifts

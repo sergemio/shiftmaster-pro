@@ -5,6 +5,43 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Lot 9 (1/2) : poser un service sur plusieurs jours, et raccourcis clavier
+
+### Un service, plusieurs jours
+
+Poser le meme horaire du lundi au vendredi demandait cinq ouvertures de la fenetre « Add Shift »,
+alors que c'est le geste le plus courant d'un planning de restaurant. La liste deroulante
+« Day of Week » devient sept pastilles (`components/DayPicker.tsx`), cochables au doigt, et la
+fenetre annonce ce qu'elle va faire : « 4 shifts seront crees ».
+
+Meme selecteur dans la fenetre d'edition, sous « Repeter aussi sur », avec le jour du shift
+verrouille — il reste affiche plutot que masque, sinon on ne verrait plus a quel jour appartient
+le shift qu'on modifie. Les copies partent des valeurs **editees** : corriger l'horaire puis
+cocher trois jours pose le bon horaire partout.
+
+Point important : tout part en **un seul commit**. Une ecriture Firestore, et surtout **une seule
+etape d'annulation** — devoir annuler cinq fois un geste unique aurait ete un piege. Verifie :
+quatre shifts crees d'un coup, un Ctrl+Z les retire tous les quatre, un Ctrl+Shift+Z les remet.
+
+### Raccourcis clavier (poste fixe)
+
+`Ctrl+Z` / `Ctrl+Shift+Z` (ou `Ctrl+Y`) pour annuler et retablir, fleches gauche et droite pour
+changer de semaine, `Echap` pour fermer la fenetre du dessus. Rien ne remplace un bouton existant :
+les raccourcis doublent des actions deja accessibles, et les boutons portent desormais le rappel du
+raccourci au survol.
+
+Trois garde-fous : la frappe est ignoree si elle vise un champ de saisie (sinon `Ctrl+Z` annulerait
+la semaine au lieu du texte tape), les fleches sont ignorees quand une fenetre est ouverte, et
+`Echap` ferme la fenetre du dessus avant tout le reste.
+
+Verifie au navigateur, neuf controles, zero erreur JavaScript. Sur telephone (390 px) : aucune
+cible sous 44 px, aucun debordement horizontal.
+
+`components/DayPicker.tsx` (nouveau), `components/ShiftModal.tsx`, `components/EditShiftModal.tsx`,
+`components/Sidebar.tsx`, `App.tsx`, `utils/translations.ts`
+
+---
+
 ## 2026-09-06 — Bande d'effectif : a la demi-heure, et non plus a l'heure
 
 Signale par Serge, capture du vendredi 28 : l'infobulle annoncait « 17:00 — 3 » alors que le

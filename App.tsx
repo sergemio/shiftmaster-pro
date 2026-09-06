@@ -443,14 +443,21 @@ const App: React.FC = () => {
     createLog('REDO', 'Performed a redo action');
   }, [future, shifts, absences, holidays, commitWeek]);
 
-  const handleAddShift = useCallback((staffId: string, dayIndex: number, startTime: number, endTime: number) => {
-    if (isReadOnly) return;
-    const newShift: Shift = { id: Math.random().toString(36).substr(2, 9), staffId, dayIndex, startTime, endTime };
-    handleUpdateShifts([...shifts, newShift]);
+  /**
+   * Un meme service sur plusieurs jours. Les shifts sont crees en UN SEUL
+   * commit : une seule ecriture Firestore, et surtout une seule etape d'annulation
+   * — cinq etapes a annuler une par une pour un geste unique serait un piege.
+   */
+  const handleAddShift = useCallback((staffId: string, dayIndexes: number[], startTime: number, endTime: number) => {
+    if (isReadOnly || dayIndexes.length === 0) return;
+    const created: Shift[] = dayIndexes.map(dayIndex => ({
+      id: Math.random().toString(36).substr(2, 9), staffId, dayIndex, startTime, endTime,
+    }));
+    handleUpdateShifts([...shifts, ...created]);
     const target = staffList.find(s => s.id === staffId) || null;
-    const dayLabel = getShiftDate(toWeekId(currentWeek), dayIndex, language);
-    createLog('CREATE SHIFT', `Added shift for ${target?.name || 'Unknown'} on ${dayLabel} (${formatTime(startTime)}-${formatTime(endTime)})`, target);
-  }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
+    const days = dayIndexes.map(d => getShiftDate(toWeekId(currentWeek), d, language)).join(', ');
+    createLog('CREATE SHIFT', `Added ${created.length} shift(s) for ${target?.name || 'Unknown'} on ${days} (${formatTime(startTime)}-${formatTime(endTime)})`, target);
+  }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language]);
 
   const updateShift = useCallback((updatedShift: Shift) => {
     if (isReadOnly) return;
@@ -469,6 +476,30 @@ const App: React.FC = () => {
     const dayLabel = getShiftDate(toWeekId(currentWeek), updatedShift.dayIndex, language);
     createLog('UPDATE SHIFT', `Updated shift for ${target?.name || 'Unknown'} on ${dayLabel} (${formatTime(updatedShift.startTime)}-${formatTime(updatedShift.endTime)})`, target);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
+
+  /**
+   * Recopie un shift sur d'autres jours de la semaine affichee.
+   *
+   * `source` est le shift tel qu'EDITE par la fenetre : corriger l'horaire puis
+   * cocher trois jours pose le bon horaire partout. Cette fonction porte donc
+   * aussi la mise a jour de l'original — sinon l'edition et les copies
+   * partiraient en deux commits, soit deux ecritures et deux etapes d'annulation
+   * pour un seul geste.
+   *
+   * Le jour d'origine est verrouille dans le selecteur, mais on le refiltre ici :
+   * un appel programme ne doit pas pouvoir creer un doublon sur place.
+   */
+  const repeatShift = useCallback((source: Shift, dayIndexes: number[]) => {
+    if (isReadOnly) return;
+    const copies: Shift[] = dayIndexes
+      .filter(d => d !== source.dayIndex)
+      .map(dayIndex => ({ ...source, id: Math.random().toString(36).substr(2, 9), dayIndex }));
+    if (copies.length === 0) return;
+    handleUpdateShifts([...shifts.map(s => (s.id === source.id ? source : s)), ...copies]);
+    const target = staffList.find(s => s.id === source.staffId) || null;
+    const days = copies.map(c => getShiftDate(toWeekId(currentWeek), c.dayIndex, language)).join(', ');
+    createLog('REPEAT SHIFT', `Copied shift for ${target?.name || 'Unknown'} onto ${days}`, target);
+  }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language]);
 
   const deleteShift = useCallback((id: string) => {
     if (isReadOnly) return;
@@ -559,6 +590,59 @@ const App: React.FC = () => {
     const newGuests = guestEmails.filter(e => e !== email.toLowerCase().trim());
     handleUpdateStaffList(staffList, newGuests);
   };
+
+  /**
+   * Raccourcis clavier, poste fixe uniquement — sur telephone il n'y a pas de
+   * clavier physique et rien ici ne remplace un bouton existant.
+   *
+   * Trois garde-fous, dans cet ordre : on ignore la frappe si elle vise un champ
+   * de saisie (sinon Ctrl+Z annulerait la semaine au lieu du texte tape) ; on
+   * ignore les fleches quand une fenetre est ouverte (changer de semaine derriere
+   * une fenetre ouverte n'a aucun sens) ; Echap ferme la fenetre du dessus.
+   */
+  useEffect(() => {
+    const anyModalOpen = isShiftModalOpen || isStaffModalOpen || isHistoryModalOpen ||
+      isSettingsModalOpen || isAbsenceModalOpen || !!editingShiftId || isMonthPickerOpen;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable);
+
+      if (e.key === 'Escape') {
+        if (isMonthPickerOpen) setIsMonthPickerOpen(false);
+        else if (editingShiftId) setEditingShiftId(null);
+        else if (isAbsenceModalOpen) setIsAbsenceModalOpen(false);
+        else if (isShiftModalOpen) setIsShiftModalOpen(false);
+        else if (isStaffModalOpen) setIsStaffModalOpen(false);
+        else if (isHistoryModalOpen) setIsHistoryModalOpen(false);
+        else if (isSettingsModalOpen) setIsSettingsModalOpen(false);
+        else if (isMobileSidebarOpen) setIsMobileSidebarOpen(false);
+        return;
+      }
+
+      if (typing) return;
+
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      if (mod || e.altKey || anyModalOpen) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); changeWeek(-1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); changeWeek(1); }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [undo, redo, isShiftModalOpen, isStaffModalOpen, isHistoryModalOpen, isSettingsModalOpen,
+      isAbsenceModalOpen, editingShiftId, isMonthPickerOpen, isMobileSidebarOpen, currentWeek]);
 
   const changeWeek = (direction: number) => {
     setNavDirection(direction > 0 ? 'forward' : 'backward');
@@ -740,7 +824,7 @@ const App: React.FC = () => {
             </button>
             <div className="h-6 w-px bg-slate-200 hidden md:block" />
             <div className="flex items-center gap-0 relative">
-              <button onClick={() => changeWeek(-1)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors active:scale-95">
+              <button onClick={() => changeWeek(-1)} title="←" aria-label="Previous week" className="p-1 hover:bg-gray-100 rounded-lg transition-colors active:scale-95">
                 <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
               </button>
               <div className="relative" ref={monthPickerRef}>
@@ -760,7 +844,7 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
-              <button onClick={changeWeek.bind(null, 1)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors active:scale-95">
+              <button onClick={changeWeek.bind(null, 1)} title="→" aria-label="Next week" className="p-1 hover:bg-gray-100 rounded-lg transition-colors active:scale-95">
                 <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
               </button>
               <div className="flex items-center gap-2 ml-1 md:ml-3">
@@ -884,7 +968,7 @@ const App: React.FC = () => {
         onRemoveGuest={handleRemoveGuest}
         language={language} 
       />
-      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
+      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
       <LogHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} language={language} />
       <AbsenceModal
         isOpen={isAbsenceModalOpen}

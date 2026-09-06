@@ -201,7 +201,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <button 
                   onClick={onUndo}
                   disabled={!canUndo}
-                  title={t('undo')}
+                  title={`${t('undo')} (Ctrl+Z)`}
                   className="p-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-90"
                 >
                   <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -211,7 +211,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <button 
                   onClick={onRedo}
                   disabled={!canRedo}
-                  title={t('redo')}
+                  title={`${t('redo')} (Ctrl+Shift+Z)`}
                   className="p-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-90"
                 >
                   <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

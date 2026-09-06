@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Staff, Shift } from '../types';
+import { Staff, Shift, Language } from '../types';
 import { START_HOUR, END_HOUR } from '../constants';
 import { formatTime } from '../utils/helpers';
+import { getTranslation } from '../utils/translations';
+import DayPicker from './DayPicker';
 
 interface EditShiftModalProps {
   isOpen: boolean;
@@ -11,12 +13,14 @@ interface EditShiftModalProps {
   /** People still employed on the week being viewed. Defaults to everyone. */
   assignableStaff?: Staff[];
   onUpdate: (updatedShift: Shift) => void;
+  /** Copie le shift (tel qu'edite) sur d'autres jours de la meme semaine. */
+  onRepeat: (shift: Shift, dayIndexes: number[]) => void;
   onDelete: (id: string) => void;
   isReadOnly?: boolean;
   language: string;
 }
 
-const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onDelete, isReadOnly = false, language }) => {
+const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, onDelete, isReadOnly = false, language }) => {
   if (!isOpen || !shift) return null;
 
   const [staffId, setStaffId] = useState(shift.staffId);
@@ -25,6 +29,9 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
   const [coverageBy, setCoverageBy] = useState(shift.coverageBy || '');
   const [notes, setNotes] = useState(shift.notes || '');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  // Jours sur lesquels recopier ce shift, en plus du sien.
+  const [repeatOn, setRepeatOn] = useState<number[]>([]);
+  const t = getTranslation((language || 'en') as Language);
 
   useEffect(() => {
     if (shift) {
@@ -34,6 +41,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
       setCoverageBy(shift.coverageBy || '');
       setNotes(shift.notes || '');
       setIsConfirmingDelete(false);
+      setRepeatOn([]);
     }
   }, [shift]);
 
@@ -68,16 +76,19 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                         (sanitizedCoverage || '') === (shift.coverageBy || '') &&
                         (sanitizedNotes || '') === (shift.notes || '');
 
-    if (!isUnchanged) {
-      onUpdate({
-        ...shift,
-        staffId,
-        startTime,
-        endTime,
-        coverageBy: sanitizedCoverage,
-        notes: sanitizedNotes
-      });
-    }
+    const edited: Shift = {
+      ...shift,
+      staffId,
+      startTime,
+      endTime,
+      coverageBy: sanitizedCoverage,
+      notes: sanitizedNotes,
+    };
+
+    // `onRepeat` porte aussi la mise a jour de l'original, pour n'avoir qu'un
+    // seul commit : une ecriture, une etape d'annulation.
+    if (repeatOn.length > 0) onRepeat(edited, repeatOn);
+    else if (!isUnchanged) onUpdate(edited);
 
     onClose();
   };
@@ -201,6 +212,23 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none h-24 resize-none transition-all placeholder:text-slate-300"
                 />
               </div>
+
+              {!isReadOnly && (
+                <div>
+                  <label className="block text-sm font-bold text-slate-600 mb-2">{t('repeatAlsoOn')}</label>
+                  <DayPicker
+                    value={repeatOn}
+                    onChange={setRepeatOn}
+                    lockedDay={shift.dayIndex}
+                    language={(language || 'en') as Language}
+                  />
+                  {repeatOn.length > 0 && (
+                    <p className="mt-2 text-xs font-semibold text-indigo-600">
+                      {t(repeatOn.length > 1 ? 'repeatHintPlural' : 'repeatHint').replace('{n}', String(repeatOn.length))}
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="pt-4 space-y-4">
                 <div className="flex gap-4">

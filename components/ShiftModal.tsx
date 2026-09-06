@@ -1,15 +1,16 @@
 
 import React, { useState, useMemo } from 'react';
 import { Staff, Language } from '../types';
-import { DAYS_EN, DAYS_FR, START_HOUR, END_HOUR } from '../constants';
+import { START_HOUR, END_HOUR } from '../constants';
 import { formatTime } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
+import DayPicker from './DayPicker';
 
 interface ShiftModalProps {
   isOpen: boolean;
   onClose: () => void;
   staff: Staff[];
-  onAdd: (staffId: string, dayIndex: number, startTime: number, endTime: number) => void;
+  onAdd: (staffId: string, dayIndexes: number[], startTime: number, endTime: number) => void;
   language?: Language;
 }
 
@@ -17,10 +18,11 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
   if (!isOpen) return null;
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
   const t = getTranslation(language as Language);
-  const localizedDays = language === 'fr' ? DAYS_FR : DAYS_EN;
 
   const [selectedStaff, setSelectedStaff] = useState(staff[0]?.id || '');
-  const [selectedDay, setSelectedDay] = useState(0);
+  // Plusieurs jours d'un coup : le meme service du lundi au vendredi se posait
+  // en cinq ouvertures de cette fenetre.
+  const [selectedDays, setSelectedDays] = useState<number[]>([0]);
   const [startTime, setStartTime] = useState(11.5);
   const [endTime, setEndTime] = useState(17.5);
 
@@ -42,7 +44,11 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
       alert("End time must be after start time");
       return;
     }
-    onAdd(selectedStaff, selectedDay, startTime, endTime);
+    if (selectedDays.length === 0) {
+      alert(t('pickAtLeastOneDay'));
+      return;
+    }
+    onAdd(selectedStaff, selectedDays, startTime, endTime);
     onClose();
   };
 
@@ -76,21 +82,16 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-slate-600 mb-2">{t('dayOfWeek')}</label>
-            <div className="relative">
-              <select 
-                value={selectedDay}
-                onChange={(e) => setSelectedDay(parseInt(e.target.value))}
-                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all"
-              >
-                {localizedDays.map((day, idx) => (
-                  <option key={day} value={idx}>{day}</option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-              </div>
-            </div>
+            <label className="block text-sm font-bold text-slate-600 mb-2">{t('daysOfWeek')}</label>
+            <DayPicker value={selectedDays} onChange={setSelectedDays} language={language} />
+            {/* Le nombre annonce est celui des shifts crees, pas des « copies
+                supplementaires » : quatre jours coches -> quatre shifts. C'est ce
+                que la personne vient de designer a l'ecran. */}
+            {selectedDays.length > 1 && (
+              <p className="mt-2 text-xs font-semibold text-indigo-600">
+                {t('shiftsWillBeCreated').replace('{n}', String(selectedDays.length))}
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
