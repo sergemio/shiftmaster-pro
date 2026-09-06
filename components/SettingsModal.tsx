@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Language } from '../types';
+import { Language, ViewType } from '../types';
 import { getTranslation } from '../utils/translations';
 
 interface SettingsModalProps {
@@ -8,8 +8,9 @@ interface SettingsModalProps {
   onClose: () => void;
   language: Language;
   onLanguageChange: (lang: Language) => void;
-  viewType: 'day' | 'employee';
-  onViewTypeChange: (type: 'day' | 'employee') => void;
+  viewType: ViewType;
+  canSeeMyWeek?: boolean;
+  onViewTypeChange: (type: ViewType) => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -18,6 +19,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   language, 
   onLanguageChange,
   viewType,
+  canSeeMyWeek = false,
   onViewTypeChange
 }) => {
   if (!isOpen) return null;
@@ -80,6 +82,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
                 <span className="text-xs uppercase tracking-widest">{t('employeeView')}</span>
               </button>
+              {/* Propose seulement si une fiche porte l'email de l'utilisateur :
+                  sans elle, « ma semaine » n'aurait rien a montrer. */}
+              {canSeeMyWeek && (
+                <button
+                  onClick={() => onViewTypeChange('me')}
+                  className={`py-4 rounded-2xl font-bold flex flex-col items-center gap-2 border-2 transition-all col-span-2 ${viewType === 'me' ? 'bg-indigo-50 border-indigo-600 text-indigo-700' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                  </div>
+                  <span className="text-xs uppercase tracking-widest">{t('myWeekView')}</span>
+                </button>
+              )}
             </div>
           </section>
 

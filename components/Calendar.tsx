@@ -1,9 +1,10 @@
 
 import React, { useRef, useState, useMemo, useEffect } from 'react';
-import { Shift, Staff, DragState, DragType, Language, Absence } from '../types';
+import { Shift, Staff, DragState, DragType, Language, Absence, ViewType } from '../types';
 import { DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR, HOUR_HEIGHT, TOTAL_HOURS } from '../constants';
 import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
+import MyWeekView from './MyWeekView';
 import { getTranslation } from '../utils/translations';
 import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, staffingPerHour, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
 import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
@@ -42,7 +43,10 @@ interface CalendarProps {
   isExporting?: boolean;
   language?: Language;
   timezone?: string;
-  viewType?: 'day' | 'employee';
+  viewType?: ViewType;
+  /** L'employe connecte, quand on le connait. Absent pour un invite. */
+  me?: Staff | null;
+  monthHours?: Record<string, number> | null;
 }
 
 interface LayoutShift extends Shift {
@@ -127,7 +131,9 @@ const Calendar: React.FC<CalendarProps> = ({
   isExporting = false,
   language = 'en',
   timezone = 'Europe/Paris',
-  viewType = 'day'
+  viewType = 'day',
+  me = null,
+  monthHours = null
 }) => {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [activeDayIndex, setActiveDayIndex] = useState(0);
@@ -301,6 +307,27 @@ const Calendar: React.FC<CalendarProps> = ({
   const visualStateClass = (isLoading && !isExporting) 
     ? 'opacity-30 blur-[2px] grayscale-[0.5]' 
     : 'opacity-100 blur-0 grayscale-0 shadow-none';
+
+  if (viewType === 'me' && me) {
+    const now = getNowInTimezone(timezone);
+    return (
+      <div className="bg-slate-50 min-h-full overflow-auto">
+        <MyWeekView
+          shifts={shifts}
+          absences={absences}
+          holidays={holidays}
+          me={me}
+          allStaff={staff}
+          currentWeek={currentWeek}
+          days={localizedDays}
+          monthHours={monthHours ? (monthHours[me.id] ?? 0) : null}
+          todayIsoDate={now.isoDate}
+          nowHour={now.hour + now.minute / 60}
+          language={language as Language}
+        />
+      </div>
+    );
+  }
 
   if (viewType === 'employee') {
     return (

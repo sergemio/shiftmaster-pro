@@ -5,6 +5,49 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Lot 3 : « ma semaine », la vue de l employe (branche `dev`)
+
+L equipe recevait la **grille complete en lecture seule** : sept colonnes, tout le monde, a lire
+sur un telephone pour y trouver ses deux shifts.
+
+### Ce que l employe voit maintenant
+
+En tete, **son prochain shift** en gros, aux couleurs de sa pastille — c est ce qu on ouvre
+l application pour lire. Puis ses heures de la **semaine** et du **mois** face a son contrat.
+Puis la semaine en liste, du lundi au dimanche.
+
+**Les jours sans service restent affiches** (« Pas de service ») : « je ne travaille pas jeudi »
+est une information, pas un vide a masquer. Les jours passes sont estompes, aujourd hui est
+surligne.
+
+Les conges, arrets et jours feries y apparaissent, et un shift pris en remplacement est marque
+comme tel — dans les deux sens : ce que je couvre pour un autre m appartient, ce qu un autre
+couvre pour moi ne m appartient plus.
+
+### Qui suis-je ?
+
+La fiche dont l email correspond au compte connecte. Un meme email pouvant figurer sur plusieurs
+lignes (la ligne partagee « Extra » porte celui de Serge), on retient celle qui a des heures de
+contrat. Sans fiche a son nom, la vue se retire d elle-meme et le planning complet reprend la
+main plutot que d afficher un ecran vide.
+
+Le choix se fait dans les reglages, a cote de « Day » et « Employee », et n apparait que si une
+fiche porte l email de l utilisateur.
+
+### Verification
+
+Parcours joue au navigateur sur un telephone de 390px, avec shifts, conge, jour ferie,
+remplacement et note. Compteurs coherents : **18h sur la semaine, 13,5h sur septembre** — le
+lundi 31 aout compte dans la semaine mais pas dans le mois. Aucun debordement, aucun bouton sous
+44px, aucune erreur JavaScript.
+
+Le bac a sable prete la premiere fiche de l equipe pour que la vue y soit essayable sans compte.
+
+`components/MyWeekView.tsx` (nouveau), `types.ts`, `App.tsx`, `components/Calendar.tsx`,
+`components/SettingsModal.tsx`, `utils/translations.ts`
+
+---
+
 ## 2026-09-06 — Lot 6 : copier la semaine precedente, meme sur une semaine remplie (branche `dev`)
 
 Le bouton **Copy Previous Week** n apparaissait que sur une semaine **vide**, ce qui interdisait

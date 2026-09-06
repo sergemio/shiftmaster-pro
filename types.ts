@@ -1,6 +1,9 @@
 
 export type Language = 'en' | 'fr';
 
+/** 'me' = « ma semaine », l'ecran que l'equipe ouvre sur son telephone. */
+export type ViewType = 'day' | 'employee' | 'me';
+
 export interface Staff {
   id: string;
   name: string;

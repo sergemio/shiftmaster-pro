@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, EMPTY_WEEK } from './types';
+import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, EMPTY_WEEK, ViewType } from './types';
 import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffActiveInWeek, getShiftIsoDate, weekIdsForMonth } from './utils/helpers';
 import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT } from './constants';
 import Calendar from './components/Calendar';
@@ -99,8 +99,8 @@ const App: React.FC = () => {
   const [language, setLanguage] = useState<Language>(() => {
     return (localStorage.getItem('shiftmaster_lang') as Language) || 'en';
   });
-  const [viewType, setViewType] = useState<'day' | 'employee'>(() => {
-    return (localStorage.getItem('shiftmaster_view') as 'day' | 'employee') || 'day';
+  const [viewType, setViewType] = useState<ViewType>(() => {
+    return (localStorage.getItem('shiftmaster_view') as ViewType) || 'day';
   });
   const t = useMemo(() => getTranslation(language), [language]);
 
@@ -191,6 +191,28 @@ const App: React.FC = () => {
     const mine = staffList.filter(s => (s.email || '').trim().toLowerCase() === currentUserEmail);
     return !mine.some(s => s.role === 'admin');
   }, [user, staffList, isGuest, isBootstrapMode]);
+
+  /**
+   * La fiche de l'employe connecte, pour « ma semaine ».
+   *
+   * Un meme email peut apparaitre sur plusieurs lignes — la ligne partagee
+   * « Extra » porte celui de Serge. On prend la ligne qui a des heures de
+   * contrat, faute de quoi on tomberait sur la ligne generique.
+   */
+  const me = useMemo(() => {
+    // Le bac a sable n'authentifie personne : on prete la premiere fiche, sinon
+    // « ma semaine » n'y serait pas essayable du tout.
+    if (isGuest) return staffList[1] || staffList[0] || null;
+    const email = (user?.email || '').trim().toLowerCase();
+    if (!email) return null;
+    const mine = staffList.filter(s => (s.email || '').trim().toLowerCase() === email);
+    if (mine.length === 0) return null;
+    return mine.find(s => (s.contractHours ?? s.targetHours ?? 0) > 0) || mine[0];
+  }, [user, staffList, isGuest]);
+
+  // Sans fiche a son nom, « ma semaine » n'a rien a montrer : on retombe sur le
+  // planning complet plutot que sur un ecran vide.
+  const effectiveViewType: ViewType = viewType === 'me' && !me ? 'day' : viewType;
 
   // A failed write used to be invisible: the badge said "Saved" regardless.
   useEffect(() => {
@@ -293,7 +315,7 @@ const App: React.FC = () => {
    * a cheval sur deux mois se repartit correctement entre les deux.
    */
   useEffect(() => {
-    if (statsPeriod !== 'month') {
+    if (statsPeriod !== 'month' && effectiveViewType !== 'me') {
       setMonthHours(null);
       return;
     }
@@ -331,7 +353,7 @@ const App: React.FC = () => {
       setMonthLoading(false);
     }).catch(() => { if (!cancelled) setMonthLoading(false); });
     return () => { cancelled = true; };
-  }, [statsPeriod, currentWeek, user, isGuest]);
+  }, [statsPeriod, effectiveViewType, currentWeek, user, isGuest]);
 
   const triggerSyncFeedback = () => {
     setShowSyncSuccess(true);
@@ -813,7 +835,9 @@ const App: React.FC = () => {
             isExporting={isExporting}
             language={language}
             timezone={timezone}
-            viewType={viewType}
+            viewType={effectiveViewType}
+            me={me}
+            monthHours={monthHours}
             absences={absences}
             holidays={holidays}
             onRemoveAbsence={removeAbsence}
@@ -875,7 +899,7 @@ const App: React.FC = () => {
         onToggleHoliday={toggleHoliday}
         language={language}
       />
-      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} />
+      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} />
     </div>
   );
 };
