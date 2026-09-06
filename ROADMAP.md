@@ -25,7 +25,7 @@ validation de Serge. Detail de ce qui est fait : `CHANGELOG.md`.
 | 7 | Alerte de chevauchement | ✅ fait |
 | 5 | Effectif par heure | ✅ fait |
 | 6 | Copier une semaine sur une semaine remplie | ✅ fait |
-| 3 | Vue personnelle de l'employe | ⬜ a faire — **le plus utile qui reste** |
+| 3 | Vue personnelle de l'employe | ✅ fait |
 | 9 | Confort de saisie | ⬜ a faire |
 | 4 | Publication et notification | 🔒 **demande une decision de Serge** |
 | 6b | Semaine type et shifts types | ⬜ a faire |
@@ -43,14 +43,7 @@ dans l'emulateur ; il reste a publier. Ordre : **deployer les regles, PUIS fusio
 
 ## Ce qui reste
 
-### Lot 3 — Vue personnelle de l'employe *(le plus utile qui reste)*
-L'equipe recoit la grille complete en lecture seule. Il lui faut « ma semaine » : mes shifts, le
-prochain en tete, mes heures de la semaine et du mois face a mon contrat. Tout le calcul existe
-deja depuis le compteur mensuel ; il manque l'ecran.
-
-**Ne demande aucune decision.** Faisable sans Serge.
-
-### Lot 9 — Confort de saisie
+### Lot 9 — Confort de saisie *(le plus utile qui reste sans decision)*
 Multi-selection et deplacement en bloc, duplication d'un shift sur plusieurs jours, raccourcis
 clavier. **Aucune decision requise.**
 
