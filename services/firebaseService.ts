@@ -370,6 +370,39 @@ export const loadShiftsFromFirebase = async (weekId: string): Promise<Shift[] | 
   return null;
 };
 
+/**
+ * Charge plusieurs semaines d'un coup, pour le compteur mensuel.
+ *
+ * Appele UNIQUEMENT quand l'utilisateur bascule sur « Mois » — jamais a
+ * l'ouverture. Firestore facture une lecture par document : 5 ou 6 lectures a
+ * la demande, contre 5 ou 6 a chaque chargement de l'app si on le faisait
+ * d'office. Voir la regle du 2026-08-09 sur le quota.
+ */
+export const loadWeeks = async (weekIds: string[]): Promise<Record<string, WeekData>> => {
+  if (!auth.currentUser) return {};
+  const out: Record<string, WeekData> = {};
+  const snaps = await Promise.all(
+    weekIds.map(async (wid) => {
+      try {
+        return { wid, snap: await getDoc(doc(db, 'weeks', wid)) };
+      } catch (e) {
+        handleFirestoreError(e, OperationType.GET, `weeks/${wid}`);
+        return { wid, snap: null };
+      }
+    })
+  );
+  for (const { wid, snap } of snaps) {
+    if (!snap || !snap.exists()) continue;
+    const d = snap.data();
+    out[wid] = {
+      shifts: Array.isArray(d.shifts) ? d.shifts as Shift[] : [],
+      absences: Array.isArray(d.absences) ? d.absences as Absence[] : [],
+      holidays: Array.isArray(d.holidays) ? d.holidays.filter((x: unknown) => typeof x === 'number') : [],
+    };
+  }
+  return out;
+};
+
 export const exportWeeksData = async (weekIds: string[]): Promise<Record<string, any>> => {
   if (!auth.currentUser) return {};
   const result: Record<string, any> = {};

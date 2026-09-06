@@ -11,7 +11,7 @@ const ABSENCE_LABELS: Record<string, string> = {
 };
 import { getTranslation } from '../utils/translations';
 import { exportWeeksData, loadStaffFromFirebase } from '../services/firebaseService';
-import { toWeekId, isStaffActiveInWeek, contractHoursOn, getShiftIsoDate } from '../utils/helpers';
+import { toWeekId, isStaffActiveInWeek, contractHoursOn, monthlyContractHours, getShiftIsoDate } from '../utils/helpers';
 
 interface SidebarProps {
   shifts: Shift[];
@@ -20,6 +20,12 @@ interface SidebarProps {
   onAddClick: () => void;
   onAbsenceClick: () => void;
   absences?: Absence[];
+  /** Heures du mois par employe, chargees a la demande. null = pas encore demande. */
+  monthHours?: Record<string, number> | null;
+  monthLoading?: boolean;
+  onPeriodChange?: (period: 'week' | 'month') => void;
+  period?: 'week' | 'month';
+  monthLabel?: string;
   onManageStaffClick: () => void;
   onCopyLastWeek: () => void;
   onDeleteWeek: () => void;
@@ -40,9 +46,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   shifts, 
   staff, 
   currentWeek, 
-  onAddClick, 
+  onAddClick,
   onAbsenceClick,
   absences = [],
+  monthHours = null,
+  monthLoading = false,
+  onPeriodChange,
+  period = 'week',
+  monthLabel = '',
   onManageStaffClick, 
   onCopyLastWeek,
   onDeleteWeek,
@@ -173,7 +184,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <line x1="6" y1="20" x2="6" y2="14" />
               </svg>
             </button>
-            <h2 className="text-lg font-bold text-slate-800 whitespace-nowrap">{t('weeklyStats')}</h2>
+            <h2 className="text-lg font-bold text-slate-800 whitespace-nowrap">
+              {period === 'month' ? t('monthlyStats') : t('weeklyStats')}
+            </h2>
             
             <button onClick={onExportSnapshot} title={t('exportSnapshot')} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all active:scale-90 ml-1">
                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -219,21 +232,63 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
+      {/* ------------------------------------------------------------------
+          Semaine / Mois. Le contrat, les heures supplementaires et la paie se
+          raisonnent au mois ; l'app ne savait compter qu'a la semaine.
+          Le mois n'est charge QU'AU CLIC : 5 ou 6 documents de plus, a la
+          demande et non a chaque ouverture de l'application.
+          ------------------------------------------------------------------ */}
+      {onPeriodChange && (
+        <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-4">
+          {(['week', 'month'] as const).map(pKey => (
+            <button
+              key={pKey}
+              type="button"
+              onClick={() => onPeriodChange(pKey)}
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                period === pKey
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {pKey === 'week' ? t('periodWeek') : t('periodMonth')}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {period === 'month' && monthLabel && (
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">{monthLabel}</p>
+      )}
+
       <div className="space-y-3 mb-6">
+        {period === 'month' && monthLoading && (
+          <p className="text-sm text-slate-400 italic">{t('loadingMonth')}</p>
+        )}
         {[...staff].filter(p => {
           // Option A: active during the week OR has any shift this week (orphan still pulls them in)
-          const hasHours = (worked[p.id] || 0) + (extra[p.id] || 0) > 0;
+          const hasHours = period === 'month'
+            ? (monthHours?.[p.id] ?? 0) > 0
+            : (worked[p.id] || 0) + (extra[p.id] || 0) > 0;
           return hasHours || isStaffActiveInWeek(p, currentWeek);
         }).sort((a, b) => {
-          const aTotal = (worked[a.id] || 0) + (extra[a.id] || 0);
-          const bTotal = (worked[b.id] || 0) + (extra[b.id] || 0);
+          const tot = (x: Staff) => period === 'month'
+            ? (monthHours?.[x.id] ?? 0)
+            : (worked[x.id] || 0) + (extra[x.id] || 0);
+          const aTotal = tot(a);
+          const bTotal = tot(b);
           return bTotal - aTotal; // desc
         }).map(person => {
-          // Heures du contrat A LA SEMAINE AFFICHEE, pas celles d'aujourd'hui :
+          const isMonth = period === 'month';
+          // Heures du contrat A LA PERIODE AFFICHEE, jamais celles d'aujourd'hui :
           // un avenant signe en octobre ne doit pas reecrire le mois de septembre.
-          const contractHours = contractHoursOn(person, getShiftIsoDate(currentWeek, 0));
-          const workedHours = worked[person.id] || 0;
-          const extraHours = extra[person.id] || 0;
+          const contractHours = isMonth
+            ? Math.round(monthlyContractHours(person, getShiftIsoDate(currentWeek, 3)))
+            : contractHoursOn(person, getShiftIsoDate(currentWeek, 0));
+          // En mois, les heures viennent des semaines chargees a la demande, et
+          // la reference est le contrat mensuel (52/12), pas l'hebdomadaire.
+          const workedHours = isMonth ? (monthHours?.[person.id] ?? 0) : (worked[person.id] || 0);
+          const extraHours = isMonth ? 0 : (extra[person.id] || 0);
           const totalWorked = workedHours + extraHours;
 
           // Un 0.0 ressemble a un oubli de planification. Quand la personne est
@@ -241,7 +296,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           // barre ne dirait rien, alors que le motif repond a la question.
           const myAbsences = absences.filter(a => a.staffId === person.id);
           const absenceLabel = (() => {
-            if (totalWorked > 0 || myAbsences.length === 0) return null;
+            if (isMonth || totalWorked > 0 || myAbsences.length === 0) return null;
             const kinds = [...new Set(myAbsences.map(a => a.kind))];
             const kindLabel = kinds.length === 1
               ? t(ABSENCE_LABELS[kinds[0]] ?? 'absenceRepos')
@@ -258,8 +313,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: person.color }} />
                   {person.name}
                 </span>
-                <span className="text-slate-400 font-bold">
+                <span className="text-slate-400 font-bold tabular-nums">
                   {totalWorked.toFixed(1)} / {contractHours}h
+                  {isMonth && contractHours > 0 && (
+                    <span className={`ml-1.5 ${totalWorked >= contractHours ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {totalWorked >= contractHours ? '+' : '−'}
+                      {Math.abs(totalWorked - contractHours).toFixed(1)}
+                    </span>
+                  )}
                 </span>
               </div>
               {absenceLabel ? (

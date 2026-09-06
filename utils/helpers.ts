@@ -181,6 +181,52 @@ export const contractHoursOn = (staff: Staff, isoDate: string): number => {
 export const currentContractHours = (staff: Staff): number =>
   contractHoursOn(staff, todayIso());
 
+/**
+ * Les weekId (dimanches) dont la semaine touche le mois de `isoDateInMonth`.
+ * Une semaine a cheval sur deux mois est prise dans les deux : chaque shift
+ * est ensuite rattache a sa vraie date, jamais a la semaine entiere.
+ */
+export const weekIdsForMonth = (isoDateInMonth: string): string[] => {
+  const [y, m] = isoDateInMonth.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1, 1));
+  const last = new Date(Date.UTC(y, m, 0));
+  const ids: string[] = [];
+  const cursor = getWeekStart(first);
+  const d = new Date(cursor);
+  while (d <= last) {
+    ids.push(getIsoDateString(d));
+    d.setUTCDate(d.getUTCDate() + 7);
+  }
+  return ids;
+};
+
+/** Nombre de jours du mois contenant cette date. */
+export const daysInMonth = (isoDateInMonth: string): number => {
+  const [y, m] = isoDateInMonth.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+};
+
+/**
+ * Heures contractuelles du MOIS.
+ *
+ * Base legale francaise : un contrat hebdomadaire vaut 52/12 fois plus par mois
+ * (35h/semaine = 151,67h/mois), quel que soit le nombre de jours du mois.
+ *
+ * On calcule jour par jour plutot que d'appliquer le facteur au contrat
+ * courant : si un avenant prend effet le 15, la moitie du mois compte a
+ * l'ancien tarif et l'autre au nouveau, sans cas particulier a ecrire.
+ */
+export const monthlyContractHours = (staff: Staff, isoDateInMonth: string): number => {
+  const [y, m] = isoDateInMonth.split('-').map(Number);
+  const n = daysInMonth(isoDateInMonth);
+  let total = 0;
+  for (let day = 1; day <= n; day++) {
+    const iso = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    total += contractHoursOn(staff, iso) * 52 / 12 / n;
+  }
+  return total;
+};
+
 /** Someone whose last day is already behind us. They keep their history. */
 export const isFormerStaff = (staff: Staff, today: string = todayIso()): boolean =>
   !!staff.endDate && staff.endDate < today;

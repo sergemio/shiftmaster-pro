@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, EMPTY_WEEK } from './types';
-import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffActiveInWeek } from './utils/helpers';
+import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffActiveInWeek, getShiftIsoDate, weekIdsForMonth } from './utils/helpers';
 import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT } from './constants';
 import Calendar from './components/Calendar';
 import Sidebar from './components/Sidebar';
@@ -25,6 +25,7 @@ import {
   subscribeToGlobalSettings,
   AuthResult,
   loadShiftsFromFirebase,
+  loadWeeks,
   setFirestoreErrorReporter,
   WeekConflictError
 } from './services/firebaseService';
@@ -128,6 +129,9 @@ const App: React.FC = () => {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isAbsenceModalOpen, setIsAbsenceModalOpen] = useState(false);
+  const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('week');
+  const [monthHours, setMonthHours] = useState<Record<string, number> | null>(null);
+  const [monthLoading, setMonthLoading] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
@@ -276,6 +280,58 @@ const App: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [weekId, user, isGuest]);
+
+  /**
+   * Total d'heures du mois par employe.
+   *
+   * Ne se declenche QUE si l'utilisateur a bascule sur « Mois ». Firestore
+   * facture une lecture par document : charger 5 ou 6 semaines a chaque
+   * ouverture de l'app couterait ce prix a tout le monde, tout le temps, pour
+   * un ecran que personne n'ouvre la plupart du temps.
+   *
+   * Chaque shift est rattache a SA date reelle, pas a sa semaine : une semaine
+   * a cheval sur deux mois se repartit correctement entre les deux.
+   */
+  useEffect(() => {
+    if (statsPeriod !== 'month') {
+      setMonthHours(null);
+      return;
+    }
+    let cancelled = false;
+    setMonthLoading(true);
+    // Ancre sur le JEUDI, pas le lundi. La semaine du 31 aout au 6 septembre a
+    // son lundi en aout alors qu'elle est a six septiemes en septembre : ancrer
+    // sur le lundi affichait « aout » un 6 septembre. Le jeudi est la regle
+    // ISO 8601 pour decider a quel mois appartient une semaine.
+    const monthAnchor = getShiftIsoDate(currentWeek, 3);
+    const month = monthAnchor.slice(0, 7);
+    const ids = weekIdsForMonth(monthAnchor);
+    // Le bac a sable n'est pas authentifie : Firestore refuserait la lecture.
+    // Il relit ses propres semaines dans le navigateur, ce qui permet aussi de
+    // faire une demonstration sans toucher aux donnees reelles.
+    const source = (user && !isGuest)
+      ? loadWeeks(ids)
+      : Promise.resolve(Object.fromEntries(ids.map(wid => {
+          const raw = localStorage.getItem(`sandbox_week_${wid}`);
+          return [wid, raw ? { ...EMPTY_WEEK, ...JSON.parse(raw) } : EMPTY_WEEK];
+        })));
+    source.then(weeks => {
+      if (cancelled) return;
+      const totals: Record<string, number> = {};
+      for (const [wid, data] of Object.entries(weeks)) {
+        const weekStart = new Date(wid + 'T00:00:00Z');
+        for (const sh of data.shifts) {
+          if (getShiftIsoDate(weekStart, sh.dayIndex).slice(0, 7) !== month) continue;
+          // Un shift couvert par quelqu'un d'autre compte pour celui qui le fait.
+          const who = sh.coverageBy || sh.staffId;
+          totals[who] = (totals[who] || 0) + (sh.endTime - sh.startTime);
+        }
+      }
+      setMonthHours(totals);
+      setMonthLoading(false);
+    }).catch(() => { if (!cancelled) setMonthLoading(false); });
+    return () => { cancelled = true; };
+  }, [statsPeriod, currentWeek, user, isGuest]);
 
   const triggerSyncFeedback = () => {
     setShowSyncSuccess(true);
@@ -750,6 +806,12 @@ const App: React.FC = () => {
         onAddClick={fromSidebar(() => setIsShiftModalOpen(true))}
         onAbsenceClick={fromSidebar(() => setIsAbsenceModalOpen(true))}
         absences={absences}
+        period={statsPeriod}
+        onPeriodChange={setStatsPeriod}
+        monthHours={monthHours}
+        monthLoading={monthLoading}
+        monthLabel={new Date(getShiftIsoDate(currentWeek, 3) + 'T12:00:00Z').toLocaleDateString(
+          language === 'fr' ? 'fr-FR' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
         onManageStaffClick={fromSidebar(() => setIsStaffModalOpen(true))}
         onCopyLastWeek={handleCopyLastWeek}
         onDeleteWeek={handleDeleteWeek}

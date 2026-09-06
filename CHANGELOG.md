@@ -5,6 +5,56 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Lot 2 : compteur mensuel (branche `dev`)
+
+Le contrat, les heures supplementaires et la paie se raisonnent au mois. L'application ne savait
+compter qu'a la semaine.
+
+### Ce que ca donne
+
+Un basculeur **Semaine / Mois** en tete des stats. Meme liste, memes barres, seule la periode
+change. En mois, chaque ligne affiche les heures faites, le contrat mensuel, et **l'ecart** en
+plus (vert) ou en moins (ambre).
+
+### Deux regles a connaitre
+
+**Chaque shift compte dans le mois de sa VRAIE DATE**, pas dans celui de sa semaine. La semaine
+du 31 aout au 6 septembre appartient aux deux mois : le lundi 31 va en aout, le reste en
+septembre. Verifie sur un jeu de donnees ou un shift du 31 aout est bien exclu du total de
+septembre alors qu'il s'affiche dans la meme semaine a l'ecran.
+
+**Le contrat mensuel suit la base legale francaise** : hebdomadaire × 52/12. 35h/semaine font
+151,67h/mois, quel que soit le nombre de jours du mois. Le calcul se fait jour par jour, si bien
+qu'un **avenant prenant effet en milieu de mois est proratise** sans cas particulier a ecrire :
+un passage de 24h a 30h le 16 septembre donne 117h pour le mois.
+
+### Quel mois pour une semaine a cheval ?
+
+Celui de son **jeudi**, la regle ISO 8601. Sans ca, la semaine du 31 aout au 6 septembre
+affichait « aout » un 6 septembre, parce que son lundi tombe en aout. Constate en testant.
+
+### Cout en lectures — la contrainte de Serge
+
+Le mois demande 5 ou 6 documents au lieu d'un. Ils ne sont charges **qu'au clic sur « Mois »**,
+jamais a l'ouverture de l'application. Firestore facture une lecture par document : les charger
+d'office ferait payer ce prix a toute l'equipe, en permanence, pour un ecran que personne
+n'ouvre la plupart du temps. Regle du 2026-08-09 sur le quota.
+
+Le mode bac a sable relit ses propres semaines depuis le navigateur, ce qui permet d'essayer la
+fonction sans aucune lecture facturee.
+
+### Verification
+
+**7 cas testes** (`scripts/test-month-hours.mjs`, conserve) : equivalence legale sur un mois de
+28 et de 31 jours, mois entierement avant ou apres un avenant, avenant en milieu de mois,
+absence de donnee. Parcours joue au navigateur sur un jeu de deux semaines dont une a cheval :
+totaux exacts, mois correctement identifie, aucune erreur JavaScript.
+
+`utils/helpers.ts`, `services/firebaseService.ts`, `App.tsx`, `components/Sidebar.tsx`,
+`utils/translations.ts`, `scripts/test-month-hours.mjs` (nouveau)
+
+---
+
 ## 2026-09-06 — Lot 8 : heures contractuelles et avenants (branche `dev`)
 
 Demande de Serge :
