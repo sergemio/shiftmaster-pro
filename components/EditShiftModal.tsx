@@ -16,11 +16,14 @@ interface EditShiftModalProps {
   /** Copie le shift (tel qu'edite) sur d'autres jours de la meme semaine. */
   onRepeat: (shift: Shift, dayIndexes: number[]) => void;
   onDelete: (id: string) => void;
+  /** Ce que ce shift enfreindrait une fois modifie. `excludeShiftId` retire la
+   *  version actuelle du calcul, sinon elle se comparerait a elle-meme. */
+  onCheck?: (staffId: string, dayIndexes: number[], start: number, end: number, excludeShiftId?: string) => string[];
   isReadOnly?: boolean;
   language: string;
 }
 
-const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, onDelete, isReadOnly = false, language }) => {
+const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, onDelete, onCheck, isReadOnly = false, language }) => {
   if (!isOpen || !shift) return null;
 
   const [staffId, setStaffId] = useState(shift.staffId);
@@ -57,6 +60,13 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
     }
     return options;
   }, []);
+
+  // Les jours verifies : celui du shift, plus ceux ou on s'appreste a le
+  // recopier — une repetition sur cinq jours peut creer cinq problemes.
+  const warnings = useMemo(
+    () => onCheck?.(staffId, [shift.dayIndex, ...repeatOn], startTime, endTime, shift.id) || [],
+    [onCheck, staffId, shift.dayIndex, shift.id, repeatOn, startTime, endTime],
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -227,6 +237,14 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                       {t(repeatOn.length > 1 ? 'repeatHintPlural' : 'repeatHint').replace('{n}', String(repeatOn.length))}
                     </p>
                   )}
+                </div>
+              )}
+
+              {warnings.length > 0 && (
+                <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 space-y-1">
+                  {warnings.map((w, i) => (
+                    <p key={i} className="text-xs font-semibold text-amber-800 leading-snug">⚠ {w}</p>
+                  ))}
                 </div>
               )}
 

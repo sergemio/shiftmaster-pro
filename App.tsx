@@ -3,6 +3,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, EMPTY_WEEK, ViewType } from './types';
 import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffActiveInWeek, getShiftIsoDate, weekIdsForMonth } from './utils/helpers';
 import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR } from './constants';
+import { CONVENTIONS, DEFAULT_CONVENTION, findViolations, DatedShift, Violation } from './utils/laborRules';
+import { violationText, violationWho } from './utils/violationText';
 import Calendar from './components/Calendar';
 import Sidebar from './components/Sidebar';
 import ShiftModal from './components/ShiftModal';
@@ -137,10 +139,15 @@ const App: React.FC = () => {
   // Shifts coches. Non vide = mode selection : un appui coche au lieu d'ouvrir
   // la fiche, et la barre d'actions apparait en bas.
   const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
+  /** Semaines voisines, pour les regles qui traversent le dimanche soir. */
+  const [neighbourWeeks, setNeighbourWeeks] = useState<Record<string, WeekData>>({});
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [timezone, setTimezone] = useState('Europe/Paris');
+  /** Convention collective appliquee. Elle vit dans settings/global, a cote du
+   *  fuseau : c'est un reglage de l'etablissement, pas une preference d'ecran. */
+  const [conventionId, setConventionId] = useState<string>(DEFAULT_CONVENTION);
   // `updatedAt` of the week currently on screen, used to detect that another
   // admin saved it while this one was editing.
   const weekVersion = useRef<string | null | undefined>(undefined);
@@ -242,6 +249,7 @@ const App: React.FC = () => {
     if (!user || isGuest) return;
     const unsubscribe = subscribeToGlobalSettings((settings) => {
       if (settings?.timezone) setTimezone(settings.timezone);
+      if (settings?.convention) setConventionId(settings.convention);
     });
     return () => unsubscribe();
   }, [user, isGuest]);
@@ -358,6 +366,155 @@ const App: React.FC = () => {
     }).catch(() => { if (!cancelled) setMonthLoading(false); });
     return () => { cancelled = true; };
   }, [statsPeriod, effectiveViewType, currentWeek, user, isGuest]);
+
+  /**
+   * Charge la semaine precedente et la suivante, uniquement pour les regles de
+   * duree du travail.
+   *
+   * Le repos de 11 h entre dimanche soir et lundi matin traverse deux documents
+   * Firestore : sans les voisines, l'infraction la plus frequente d'un planning
+   * de restaurant serait la seule invisible. Deux lectures par changement de
+   * semaine, servies par le cache local des la deuxieme fois.
+   *
+   * Une voisine absente ne produit pas de faux positif : elle produit un
+   * silence, ce qui est le bon defaut quand on ne sait pas.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const prev = new Date(currentWeek); prev.setDate(prev.getDate() - 7);
+    const next = new Date(currentWeek); next.setDate(next.getDate() + 7);
+    const ids = [toWeekId(prev), toWeekId(next)];
+    const source = (user && !isGuest)
+      ? loadWeeks(ids)
+      : Promise.resolve(Object.fromEntries(ids.map(wid => {
+          const raw = localStorage.getItem(`sandbox_week_${wid}`);
+          return [wid, raw ? { ...EMPTY_WEEK, ...JSON.parse(raw) } : EMPTY_WEEK];
+        })));
+    source.then(weeks => { if (!cancelled) setNeighbourWeeks(weeks); })
+          .catch(() => { if (!cancelled) setNeighbourWeeks({}); });
+    return () => { cancelled = true; };
+  }, [currentWeek, user, isGuest]);
+
+  const convention = CONVENTIONS[conventionId] || CONVENTIONS[DEFAULT_CONVENTION];
+
+  /**
+   * Les depassements de la semaine affichee.
+   *
+   * Les shifts des semaines voisines entrent dans le CALCUL mais pas dans les
+   * alertes : on ne signale pas des problemes d'une semaine que l'utilisateur
+   * ne regarde pas. Un shift couvert par quelqu'un d'autre compte pour celui
+   * qui le fait reellement — c'est lui qui se fatigue.
+   */
+  const violations = useMemo<Violation[]>(() => {
+    const flat: DatedShift[] = [];
+    const push = (weekStart: Date, list: Shift[]) => {
+      for (const sh of list) {
+        flat.push({
+          id: sh.id,
+          staffId: sh.coverageBy || sh.staffId,
+          date: getShiftIsoDate(weekStart, sh.dayIndex),
+          start: sh.startTime,
+          end: sh.endTime,
+        });
+      }
+    };
+    push(currentWeek, shifts);
+    for (const [wid, data] of Object.entries(neighbourWeeks)) {
+      push(new Date(wid + 'T00:00:00Z'), data.shifts || []);
+    }
+    const pooled = staffList.filter(s => s.isPool).map(s => s.id);
+    return findViolations(flat, convention, {
+      from: getShiftIsoDate(currentWeek, 0),
+      to: getShiftIsoDate(currentWeek, 6),
+    }, pooled);
+  }, [shifts, neighbourWeeks, currentWeek, staffList, convention]);
+
+  /** Les shifts de la fenetre, indexes pour retrouver celui qu'un message cite. */
+  const shiftIndex = useMemo(() => {
+    const map = new Map<string, { shift: Shift; date: string }>();
+    const add = (weekStart: Date, list: Shift[]) => {
+      for (const sh of list) map.set(sh.id, { shift: sh, date: getShiftIsoDate(weekStart, sh.dayIndex) });
+    };
+    add(currentWeek, shifts);
+    for (const [wid, data] of Object.entries(neighbourWeeks)) {
+      add(new Date(wid + 'T00:00:00Z'), data.shifts || []);
+    }
+    return map;
+  }, [shifts, neighbourWeeks, currentWeek]);
+
+  /** Les phrases, groupees par carte. Le repos hebdomadaire n'en a pas : il ne
+   *  designe aucune carte en particulier, il n'apparait que dans le recapitulatif. */
+  const warningsByShift = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const v of violations) {
+      if (!v.shiftId) continue;
+      (out[v.shiftId] ||= []).push(violationText(v, language, shiftIndex));
+    }
+    return out;
+  }, [violations, language, shiftIndex]);
+
+  /** Le recapitulatif de la semaine : qui, quoi. */
+  const complianceList = useMemo(
+    () => violations.map(v => ({
+      who: violationWho(v, staffList),
+      text: violationText(v, language, shiftIndex),
+    })),
+    [violations, staffList, language, shiftIndex],
+  );
+
+  /**
+   * Ce que donnerait un shift qu'on est en train de composer, avant de l'enregistrer.
+   *
+   * C'est le coeur du dispositif. Le badge sur la carte arrive trop tard : quand
+   * on le voit, le shift est pose et on est passe a autre chose. Ici la
+   * consequence s'affiche PENDANT qu'on choisit, dans le meme ecran, et
+   * disparait si on recule l'heure. C'est ce qui apprend la regle a quelqu'un
+   * qui ne l'a jamais lue.
+   *
+   * On simule : les shifts existants moins celui qu'on modifie, plus les
+   * candidats. Rien n'est ecrit.
+   */
+  const previewViolations = useCallback((
+    staffId: string,
+    dayIndexes: number[],
+    start: number,
+    end: number,
+    excludeShiftId?: string,
+  ): string[] => {
+    if (!staffId || end <= start || dayIndexes.length === 0) return [];
+    if (staffList.find(s => s.id === staffId)?.isPool) return [];
+
+    const flat: DatedShift[] = [];
+    const index = new Map<string, { shift: Shift; date: string }>();
+    const add = (weekStart: Date, list: Shift[]) => {
+      for (const sh of list) {
+        if (sh.id === excludeShiftId) continue;
+        const date = getShiftIsoDate(weekStart, sh.dayIndex);
+        flat.push({ id: sh.id, staffId: sh.coverageBy || sh.staffId, date, start: sh.startTime, end: sh.endTime });
+        index.set(sh.id, { shift: sh, date });
+      }
+    };
+    add(currentWeek, shifts);
+    for (const [wid, data] of Object.entries(neighbourWeeks)) {
+      add(new Date(wid + 'T00:00:00Z'), data.shifts || []);
+    }
+    for (const dayIndex of dayIndexes) {
+      const candidate: Shift = { id: `preview-${dayIndex}`, staffId, dayIndex, startTime: start, endTime: end };
+      const date = getShiftIsoDate(currentWeek, dayIndex);
+      flat.push({ id: candidate.id, staffId, date, start, end });
+      index.set(candidate.id, { shift: candidate, date });
+    }
+
+    const pooled = staffList.filter(s => s.isPool).map(s => s.id);
+    return findViolations(flat, convention, {
+      from: getShiftIsoDate(currentWeek, 0),
+      to: getShiftIsoDate(currentWeek, 6),
+    }, pooled)
+      // Seulement la personne concernee : on ne va pas signaler le probleme
+      // d'un collegue au moment ou l'on saisit le shift de quelqu'un d'autre.
+      .filter(v => v.staffId === staffId)
+      .map(v => violationText(v, language, index));
+  }, [shifts, neighbourWeeks, currentWeek, staffList, convention, language]);
 
   const triggerSyncFeedback = () => {
     setShowSyncSuccess(true);
@@ -984,6 +1141,7 @@ const App: React.FC = () => {
             language={language}
             timezone={timezone}
             viewType={effectiveViewType}
+            ruleWarnings={warningsByShift}
             selectedShiftIds={selectedShiftIds}
             onToggleSelect={toggleShiftSelection}
             me={me}
@@ -1009,6 +1167,8 @@ const App: React.FC = () => {
           language === 'fr' ? 'fr-FR' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
         onManageStaffClick={fromSidebar(() => setIsStaffModalOpen(true))}
         onCopyLastWeek={handleCopyLastWeek}
+        compliance={complianceList}
+        conventionLabel={`${convention.label} — IDCC ${convention.idcc}`}
         onDeleteWeek={handleDeleteWeek}
         onOpenHistory={fromSidebar(() => setIsHistoryModalOpen(true))}
         onExportSnapshot={handleExportSnapshot}
@@ -1022,7 +1182,7 @@ const App: React.FC = () => {
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
       />
-      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} onAdd={handleAddShift} language={language} />
+      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} onAdd={handleAddShift} onCheck={previewViolations} language={language} />
       <StaffModal 
         isOpen={isStaffModalOpen} 
         onClose={() => setIsStaffModalOpen(false)} 
@@ -1034,7 +1194,7 @@ const App: React.FC = () => {
         onRemoveGuest={handleRemoveGuest}
         language={language} 
       />
-      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
+      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onCheck={previewViolations} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
       {/* La barre n'existe que pendant une selection : elle occupe le bas de
           l'ecran, et rien ne justifie de manger cette place le reste du temps. */}
       {selectedShiftIds.length > 0 && !isReadOnly && (

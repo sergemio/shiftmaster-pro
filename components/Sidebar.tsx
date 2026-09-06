@@ -28,6 +28,11 @@ interface SidebarProps {
   monthLabel?: string;
   onManageStaffClick: () => void;
   onCopyLastWeek: () => void;
+  /** Depassements de duree du travail sur la semaine affichee. */
+  compliance?: { who: string; text: string }[];
+  /** Nom de la convention appliquee. L'utilisateur doit toujours savoir de
+   *  quelle loi on lui parle : sans ca, un seuil affiche n'est pas verifiable. */
+  conventionLabel?: string;
   onDeleteWeek: () => void;
   onOpenHistory: () => void;
   onExportSnapshot: () => void;
@@ -56,6 +61,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   monthLabel = '',
   onManageStaffClick, 
   onCopyLastWeek,
+  compliance = [],
+  conventionLabel = '',
   onDeleteWeek,
   onOpenHistory,
   onExportSnapshot,
@@ -409,6 +416,29 @@ const Sidebar: React.FC<SidebarProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
+        </div>
+      )}
+
+      {/* Duree du travail. Le bloc n'apparait que s'il a quelque chose a dire :
+          un encart « rien a signaler » permanent prend de la place et finit
+          ignore, ce qui est exactement ce qu'on veut eviter pour un avertissement.
+          Ambre et non rouge : ce sont des decisions possibles, pas des erreurs. */}
+      {compliance.length > 0 && (
+        <div className="bg-amber-50 rounded-2xl p-4 mb-8 border border-amber-200 shadow-sm">
+          <h3 className="text-xs font-black text-amber-700 uppercase tracking-widest mb-1">
+            {t(compliance.length > 1 ? 'compliancePointsPlural' : 'compliancePoints').replace('{n}', String(compliance.length))}
+          </h3>
+          {conventionLabel && (
+            <p className="text-xs text-amber-600/80 font-medium mb-2.5">{conventionLabel}</p>
+          )}
+          <div className="space-y-2">
+            {compliance.map((c, idx) => (
+              <div key={idx} className="text-xs bg-white p-2.5 rounded-xl border border-amber-100">
+                <span className="font-bold text-slate-700 block">{c.who}</span>
+                <span className="text-slate-500 font-medium leading-snug">{c.text}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

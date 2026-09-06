@@ -27,6 +27,15 @@ export interface Staff {
    */
   contractChanges?: { from: string; weeklyHours: number }[];
   role: 'admin' | 'staff';
+  /**
+   * Ligne partagee par plusieurs personnes reelles, comme « Extra ».
+   *
+   * Les regles de duree du travail sont individuelles : les appliquer a une
+   * ligne ou deux extras differents s'enchainent produirait une fausse alerte
+   * par jour, et on cesserait de lire les avertissements des la premiere
+   * semaine. Le moteur exclut ces lignes.
+   */
+  isPool?: boolean;
   jobTitle?: string;
   startDate?: string; // YYYY-MM-DD, employment start
   endDate?: string | null; // YYYY-MM-DD or null = still employed (CDI)

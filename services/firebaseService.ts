@@ -404,12 +404,12 @@ export const subscribeToStaff = (callback: (staff: Staff[], guests: string[]) =>
   }));
 };
 
-export const subscribeToGlobalSettings = (callback: (settings: { timezone?: string, language?: string }) => void) => {
+export const subscribeToGlobalSettings = (callback: (settings: { timezone?: string, language?: string, convention?: string }) => void) => {
   if (!auth.currentUser) return () => {};
   const path = 'settings/global';
   return lazySubscribe(({ fs, db }) => fs.onSnapshot(fs.doc(db, 'settings', 'global'), (snap) => {
     if (snap.exists()) {
-      callback(snap.data() as { timezone?: string, language?: string });
+      callback(snap.data() as { timezone?: string, language?: string, convention?: string });
     }
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, path);

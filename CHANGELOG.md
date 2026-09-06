@@ -5,6 +5,90 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Regles de duree du travail : l'app previent, elle ne bloque jamais
+
+Cadrage donne par Serge : « les gens qui font les schedules ne connaissent pas toutes ces regles.
+C'est en faisant les shifts que l'application lui apporte l'information. » Et : « je veux laisser
+l'utilisateur libre de placer des shifts comme il veut. »
+
+### Le badge arrive trop tard — l'endroit qui apprend, c'est la saisie
+
+Un badge sur une carte se lit quand le shift est deja pose et qu'on est passe a autre chose.
+L'avertissement s'affiche donc **pendant** qu'on choisit la personne, le jour et les horaires,
+dans la meme fenetre, et disparait si on recule l'heure. La cause et l'effet sont dans le meme
+ecran, a la meme seconde : c'est ce qui apprend la regle a quelqu'un qui ne l'a jamais lue.
+
+Trois points de contact, chacun pour un cas different :
+- **la fenetre de saisie** : la consequence avant de valider ;
+- **le badge ambre sur la carte** : pour les infractions creees en deplacant un AUTRE shift,
+  la ou personne n'a rien saisi ;
+- **le recapitulatif de semaine** : pour verifier l'ensemble avant d'envoyer, sans chasser les
+  badges a l'oeil.
+
+Ambre et non rouge (R5.2) : le rouge reste pris par le chevauchement, qui est une erreur de
+saisie. Depasser 10 h est une decision que l'employeur a le droit de prendre.
+
+### Formulation : on dit ce qui est, puis ce qui devrait etre
+
+« Seulement 8 h 30 de repos apres jeudi 18:00–23:30 — 11 h minimum. » Jamais « infraction
+L3131-1 » : celui qui fait le planning ne connait pas les articles et n'a pas a les apprendre.
+Et le message **nomme l'autre shift** — sans ca, « 8 h 30 de repos » n'est pas actionnable, il
+faut chercher le coupable a l'oeil.
+
+### Architecture : une regle porte un calcul, une convention porte des chiffres
+
+`utils/laborRules.ts`. « Repos entre deux journees » se calcule pareil partout ; seul le seuil
+compare change. Ajouter une convention = ajouter une ligne dans `CONVENTIONS`, pas ecrire du code.
+Chaque convention porte sa `source` et sa `checkedOn` : les conventions changent par avenants,
+sans ces deux champs la table pourrit en silence. Le nom de la convention est affiche dans
+l'application — sans lui, un seuil n'est pas verifiable.
+
+Le moteur ignore les semaines et les `dayIndex` : il travaille sur une liste plate de shifts
+dates. C'est ce qui lui permet de voir le repos entre dimanche soir et lundi matin, qui traverse
+deux documents Firestore. Les semaines voisines sont chargees pour le calcul mais ne declenchent
+pas d'alerte : on ne signale pas les problemes d'une semaine que l'utilisateur ne regarde pas.
+
+### Quatre regles, convention Restauration rapide (IDCC 1501)
+
+| Regle | Seuil |
+|---|---|
+| Repos entre deux journees | 11 h |
+| Repos hebdomadaire | 35 h (24 h + 11 h) |
+| Duree quotidienne | 10 h |
+| Jours consecutifs | 6 |
+
+Le repos hebdomadaire est celui qu'un planificateur ne peut pas deviner : finir vendredi a 23 h 30,
+samedi off, reprendre dimanche a 9 h fait 33 h 30 — le samedi est vide et pourtant ce n'est pas
+conforme. Il n'a pas de badge : il ne designe aucune carte en particulier, l'accrocher a une carte
+choisie au hasard induirait en erreur. Recapitulatif seulement.
+
+### La ligne partagee
+
+« Extra » est utilisee par plusieurs personnes reelles. Les regles individuelles y produiraient une
+fausse alerte par jour, et on cesserait de lire les avertissements des la premiere semaine. Case
+« Shared row » sur la fiche (`isPool`), et le moteur exclut ces lignes.
+
+### Un vrai bug trouve par les tests
+
+La boucle des jours consecutifs lisait `dates[-1]` au premier tour et plantait. Les 20 cas de
+`scripts/test-labor-rules.mjs` figent le comportement, dont l'exemple du vendredi soir.
+
+### Reporte, et pourquoi
+
+La pause de 20 min : l'application ne modelise pas les pauses, on ne peut que constater qu'un shift
+depasse 6 h. La moyenne sur 12 semaines : demande de charger 12 semaines. Le « je sais, c'est
+voulu » : un avertissement est calcule, pas stocke — le memoriser demande de lui donner une
+identite stable et un champ dans le document de semaine, donc une regle Firestore et une ligne
+dans `saveWeekToFirebase`, faute de quoi la premiere modification l'effacerait.
+
+`utils/laborRules.ts` (nouveau), `utils/violationText.ts` (nouveau),
+`scripts/test-labor-rules.mjs` (nouveau), `App.tsx`, `components/ShiftModal.tsx`,
+`components/EditShiftModal.tsx`, `components/ShiftCard.tsx`, `components/Calendar.tsx`,
+`components/Sidebar.tsx`, `components/StaffModal.tsx`, `types.ts`, `utils/translations.ts`,
+`services/firebaseService.ts`
+
+---
+
 ## 2026-09-06 — Chargement mobile : Firestore sort du premier ecran, et cache local
 
 Serge : « a chaque fois que j'essaie de charger le site sur un mobile, ca prend beaucoup, beaucoup

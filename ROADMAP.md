@@ -30,7 +30,7 @@ validation de Serge. Detail de ce qui est fait : `CHANGELOG.md`.
 | 9b | Selection multiple et actions en bloc | ✅ fait |
 | 4 | Publication et notification | 🔒 **demande une decision de Serge** |
 | 6b | Semaine type et shifts types | ⬜ a faire |
-| — | Contraintes legales | ⬜ explicitement remis a plus tard |
+| 10 | Contraintes legales (4 regles, IDCC 1501) | ✅ fait |
 
 ---
 
@@ -102,6 +102,7 @@ l'inclure dans `saveWeekToFirebase` l'effacerait a la premiere modification de s
 | Fichier | Ce qu'il verrouille |
 |---|---|
 | `scripts/test-lazy-subscribe.mjs` | 8 cas du chargement differe de Firestore |
+| `scripts/test-labor-rules.mjs` | 20 cas des regles de duree du travail |
 | `scripts/test-rules.mjs` | 24 cas des regles Firestore (emulateur requis) |
 | `scripts/test-contract-hours.mjs` | 11 cas des avenants dates |
 | `scripts/test-month-hours.mjs` | 7 cas du contrat mensuel |

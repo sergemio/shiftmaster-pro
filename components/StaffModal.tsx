@@ -52,6 +52,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
   const [editColor, setEditColor] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
+  const [editIsPool, setEditIsPool] = useState(false);
   const [showSavedId, setShowSavedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ staff: Staff; action: 'leave' | 'reinstate' } | null>(null);
 
@@ -120,6 +121,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
     setEditColor(staff.color);
     setEditStartDate(staff.startDate || '');
     setEditEndDate(staff.endDate || '');
+    setEditIsPool(!!staff.isPool);
     setIsAddingNew(false); // Hide add form if we start editing someone
   };
 
@@ -142,6 +144,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
       color: editColor,
       startDate: editStartDate || undefined,
       endDate: editEndDate || null,
+      isPool: editIsPool,
     });
     
     setShowSavedId(staff.id);
@@ -423,6 +426,23 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         />
                       </div>
                     </div>
+                    {/* Une ligne partagee — « Extra » — n'est pas une personne :
+                        les regles de duree du travail y produiraient une fausse
+                        alerte par jour. */}
+                    <label className="flex items-start gap-2 cursor-pointer select-none py-1">
+                      <input
+                        type="checkbox"
+                        checked={editIsPool}
+                        onChange={(e) => setEditIsPool(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 accent-indigo-600 cursor-pointer"
+                      />
+                      <span className="text-xs leading-snug">
+                        <span className="font-bold text-indigo-700 uppercase">Shared row</span>
+                        <span className="block text-indigo-500 font-medium">
+                          Several people use this row (e.g. Extra). Working-time rules are skipped.
+                        </span>
+                      </span>
+                    </label>
                     <div>
                       <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Brand Color</label>
                       <div className="flex gap-2">

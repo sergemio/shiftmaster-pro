@@ -19,6 +19,10 @@ interface ShiftCardProps {
   orphanReason?: OrphanReason;
   /** Cette personne a un autre shift au meme moment le meme jour. */
   hasOverlap?: boolean;
+  /** Phrases des regles de duree du travail que ce shift enfreint. Ambre et non
+   *  rouge : depasser 10 h n'est pas une erreur de saisie, c'est une decision
+   *  que l'employeur a le droit de prendre en connaissance de cause. */
+  ruleWarnings?: string[];
   /** Ce shift fait partie de la selection en cours. */
   isSelected?: boolean;
   /** Une selection est ouverte : un simple appui coche au lieu d'ouvrir la fiche. */
@@ -39,6 +43,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   language = 'en',
   orphanReason = null,
   hasOverlap = false,
+  ruleWarnings = [],
   isSelected = false,
   selectionMode = false,
   onToggleSelect
@@ -173,6 +178,17 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
                     Un badge reduit au pictogramme laisse deviner le probleme,
                     ce qui est precisement le defaut corrige plus tot. */}
                 ⚠ {t('overlapWarning')}
+              </span>
+            )}
+            {ruleWarnings.length > 0 && (
+              <span
+                title={ruleWarnings.join(' · ')}
+                className="bg-amber-100 text-amber-800 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-amber-300 basis-full leading-tight"
+              >
+                {/* Le detail est dans l'infobulle et dans le recapitulatif : la
+                    carte n'a pas la place d'une phrase, mais elle doit dire
+                    qu'il y a quelque chose a lire. */}
+                ⚠ {ruleWarnings.length > 1 ? `${ruleWarnings.length} ${t('ruleBadgePlural')}` : t('ruleBadge')}
               </span>
             )}
             {orphanReason && (

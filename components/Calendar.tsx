@@ -50,6 +50,8 @@ interface CalendarProps {
   /** L'employe connecte, quand on le connait. Absent pour un invite. */
   me?: Staff | null;
   monthHours?: Record<string, number> | null;
+  /** Phrases des regles enfreintes, par identifiant de shift. */
+  ruleWarnings?: Record<string, string[]>;
   /** Shifts coches. Non vide = on est en mode selection. */
   selectedShiftIds?: string[];
   onToggleSelect?: (shiftId: string) => void;
@@ -140,6 +142,7 @@ const Calendar: React.FC<CalendarProps> = ({
   viewType = 'day',
   me = null,
   monthHours = null,
+  ruleWarnings = {},
   selectedShiftIds = [],
   onToggleSelect
 }) => {
@@ -628,6 +631,7 @@ const Calendar: React.FC<CalendarProps> = ({
                   allStaff={staff}
                   orphanReason={orphanReason}
                   hasOverlap={overlappingIds.has(shift.id)}
+                  ruleWarnings={ruleWarnings[shift.id]}
                   isReadOnly={isReadOnly}
                   isSelected={selectedShiftIds.includes(shift.id)}
                   selectionMode={selectedShiftIds.length > 0}
