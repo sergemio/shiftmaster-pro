@@ -5,7 +5,7 @@ import { DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR, H
 import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, isStaffActiveOnDate, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
 import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
 
 // Branded header stamped on top of the grid in the PNG export only.
@@ -395,7 +395,7 @@ const Calendar: React.FC<CalendarProps> = ({
             if (!staffMember) return null;
 
             const shiftIso = getShiftIsoDate(currentWeek, shift.dayIndex);
-            const isOrphan = !isStaffActiveOnDate(staffMember, shiftIso);
+            const orphanReason = getOrphanReason(staffMember, shiftIso);
 
             const dayWidthPercentage = 100 / 7;
             const subColumnWidth = dayWidthPercentage / shift.totalColumns;
@@ -460,7 +460,7 @@ const Calendar: React.FC<CalendarProps> = ({
                   shift={shift}
                   staff={staffMember}
                   allStaff={staff}
-                  isOrphan={isOrphan}
+                  orphanReason={orphanReason}
                   isReadOnly={isReadOnly}
                   onEdit={() => !isReadOnly && onEditShift(shift.id)}
                   renderStartTime={isDraggingThis ? previewStartTime : undefined}

@@ -109,13 +109,38 @@ export const getShiftIsoDate = (weekStart: Date, dayIndex: number): string => {
   return `${y}-${m}-${day}`;
 };
 
+/**
+ * Pourquoi ce shift tombe hors de la periode d'emploi — ou `null` s'il est
+ * normal. On renvoie la RAISON plutot qu'un booleen : le badge affiche « Parti
+ * le 3 sept 26 » et non un « Ghost » dont l'utilisateur devait deviner le sens.
+ *
+ * Sans startDate, la personne est consideree active depuis toujours (donnees
+ * anterieures a la saisie des dates) ; sans endDate, elle est toujours en poste.
+ */
+export type OrphanReason = { kind: 'before-start' | 'after-end'; date: string } | null;
+
+export const getOrphanReason = (staff: Staff, isoDate: string): OrphanReason => {
+  if (staff.startDate && isoDate < staff.startDate) return { kind: 'before-start', date: staff.startDate };
+  if (staff.endDate && isoDate > staff.endDate) return { kind: 'after-end', date: staff.endDate };
+  return null;
+};
+
 // Employment lifecycle: is staff active on a given ISO date (YYYY-MM-DD)?
-// No startDate => treated as active forever in the past (legacy data).
-// No/null endDate => still employed (CDI).
-export const isStaffActiveOnDate = (staff: Staff, isoDate: string): boolean => {
-  if (staff.startDate && isoDate < staff.startDate) return false;
-  if (staff.endDate && isoDate > staff.endDate) return false;
-  return true;
+// Defini a partir de getOrphanReason pour que les deux ne puissent pas diverger.
+export const isStaffActiveOnDate = (staff: Staff, isoDate: string): boolean =>
+  getOrphanReason(staff, isoDate) === null;
+
+/**
+ * Date courte et non ambigue pour un badge : « 3 sept 26 » / « Sep 3, 26 ».
+ * Le mois et l'annee sont toujours presents — un numero de jour seul ne dit rien.
+ */
+export const formatShortDate = (isoDate: string, lang: Language = 'en'): string => {
+  const d = new Date(isoDate + 'T12:00:00Z');
+  if (Number.isNaN(d.getTime())) return isoDate;
+  const parts = new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : 'en-US', {
+    day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC',
+  }).format(d);
+  return parts.replace('.', '');
 };
 
 // Active during any day of the week (Mon..Sun) starting at weekStart (Sunday).

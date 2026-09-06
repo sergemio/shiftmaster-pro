@@ -5,6 +5,51 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Le badge « Ghost » dit maintenant POURQUOI
+
+**Demande de Serge** apres avoir vu un badge « ⚠ Ghost » sur un shift d'Omar sans pouvoir en
+deviner la raison. L'app connaissait pourtant la raison exacte : elle ne l'affichait pas.
+
+### Avant / apres
+
+| | |
+|---|---|
+| avant | `⚠ Ghost` |
+| apres (fr) | `⚠ Parti le 3 sept 26` |
+| apres (en) | `⚠ Left Sep 3, 26` |
+| cas symetrique | `⚠ Arrivée le 15 sept 26` |
+
+Un shift peut sortir de la periode d'emploi **des deux cotes** : avant l'arrivee ou apres le
+depart. Les deux cas sont desormais distingues et dates.
+
+### Une seule source de verite
+
+`getOrphanReason(staff, isoDate)` renvoie la **raison** (`before-start` / `after-end` + la date)
+plutot qu'un booleen. `isStaffActiveOnDate` est redefini a partir d'elle, pour que le test
+« cette personne est-elle active » et le texte du badge ne puissent pas diverger.
+
+Ajout de `formatShortDate` : « 3 sept 26 » / « Sep 3, 26 ». Le mois et l'annee sont toujours
+presents — un numero de jour seul ne dit rien. Le jour de la semaine est omis faute de place
+dans un badge de cette taille.
+
+### Tenue dans l'espace disponible
+
+Le libelle complet est plus large qu'une colonne de jour de 134px. Le badge occupe donc toute
+la largeur de la carte et se replie sur deux lignes. Sous ~104px de large — une sous-colonne
+quand plusieurs shifts se chevauchent — seul le pictogramme reste, l'explication passant par
+l'infobulle. Verifie sur cinq cas : 134px fr, 134px en, cas « pas encore arrive », 44px, et la
+largeur telephone. Aucun debordement hors du cas 44px, ou rien de textuel ne tient.
+
+`utils/helpers.ts`, `utils/translations.ts`, `components/ShiftCard.tsx`, `components/Calendar.tsx`
+
+### Rappel : l'incoherence de donnees reste entiere
+
+Omar et Harshil ont une date de sortie au **2026-09-03** et gardent des shifts posés apres.
+Le badge la signale, il ne la corrige pas. **Rien n'a ete modifie dans la base** — en attente
+de la decision de Serge : supprimer ces shifts, ou effacer la date de sortie.
+
+---
+
 ## 2026-09-06 — Correctif : sur telephone, toute semaine autre que la courante etait vide
 
 **Trouve par Serge en testant la preview sur son iPhone** : les shifts de la semaine

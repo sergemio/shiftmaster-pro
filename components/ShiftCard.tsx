@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Shift, Staff, DragType, Language } from '../types';
-import { formatTime } from '../utils/helpers';
+import { formatTime, formatShortDate, OrphanReason } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
 
 interface ShiftCardProps {
@@ -15,7 +15,8 @@ interface ShiftCardProps {
   renderStartTime?: number;
   renderEndTime?: number;
   language?: Language;
-  isOrphan?: boolean;
+  /** Pourquoi le shift sort de la periode d'emploi, ou null s'il est normal. */
+  orphanReason?: OrphanReason;
 }
 
 const ShiftCard: React.FC<ShiftCardProps> = ({ 
@@ -29,7 +30,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   renderStartTime,
   renderEndTime,
   language = 'en',
-  isOrphan = false
+  orphanReason = null
 }) => {
   if (!staff) return null;
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
@@ -97,12 +98,28 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             <span className="bg-slate-200/60 text-slate-600 text-xs font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-slate-300/30">
               {duration.toFixed(duration % 1 === 0 ? 0 : 1)}H
             </span>
-            {isOrphan && (
+            {orphanReason && (
+              /* Le badge disait « Ghost » : l'utilisateur devait deviner pourquoi.
+                 Il enonce maintenant la raison, que l'app connait exactement.
+                 Pas de capitales ici : c'est une phrase, pas une etiquette, et
+                 les capitales la rendraient plus large sans la rendre plus lisible. */
               <span
-                title="Shift outside this employee's contract dates"
-                className="bg-amber-100 text-amber-800 text-xs font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-amber-300"
+                title={
+                  orphanReason.kind === 'after-end'
+                    ? `${staff.name} a quitte l'equipe le ${formatShortDate(orphanReason.date, language)} — ce shift est apres son depart`
+                    : `${staff.name} arrive le ${formatShortDate(orphanReason.date, language)} — ce shift est avant son arrivee`
+                }
+                className="bg-amber-100 text-amber-800 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-amber-300 basis-full leading-tight"
               >
-                ⚠ Ghost
+                ⚠{' '}
+                {/* Sous ~104px de large, rien de textuel ne tient : la carte est
+                    une sous-colonne de quelques dizaines de pixels. Le
+                    pictogramme reste, l'explication est dans l'infobulle et dans
+                    la fiche du shift. */}
+                <span className="@max-[104px]:hidden">
+                  {orphanReason.kind === 'after-end' ? t('leftOn') : t('startsOn')}{' '}
+                  {formatShortDate(orphanReason.date, language)}
+                </span>
               </span>
             )}
           </div>
