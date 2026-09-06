@@ -6,7 +6,23 @@ export interface Staff {
   name: string;
   email: string; // Added for RBAC mapping
   color: string;
-  targetHours: number;
+  /**
+   * Heures du contrat EN COURS, par semaine. Ancien nom : targetHours — ce
+   * n'etait pas un objectif fixe par le manager mais ce que dit le contrat.
+   * L'ancien champ est encore lu en repli tant que la fiche n'a pas ete
+   * reenregistree, donc aucune migration de donnees n'est necessaire.
+   */
+  contractHours?: number;
+  /** @deprecated Remplace par contractHours. Conserve pour les fiches non migrees. */
+  targetHours?: number;
+  /**
+   * Avenants. Chaque entree dit « a partir de cette date, le contrat passe a N
+   * heures ». Un meme salarie peut avoir 24h en septembre et 30h en octobre
+   * apres signature d'un avenant : sans historique, le nouveau chiffre
+   * reecrirait retroactivement tous les mois passes.
+   * Une date future est permise — un avenant se signe avant de prendre effet.
+   */
+  contractChanges?: { from: string; weeklyHours: number }[];
   role: 'admin' | 'staff';
   jobTitle?: string;
   startDate?: string; // YYYY-MM-DD, employment start

@@ -5,6 +5,65 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Lot 8 : heures contractuelles et avenants (branche `dev`)
+
+Demande de Serge :
+
+> « Tu peux changer "target hours" par "contract hours". Ce ne sont plus des heures qu'on met,
+> mais celles du contrat. Attention, une nuance : parfois il y a des avenants signes avec
+> l'employe, donc le meme employe peut avoir un certain nombre d'heures dans un mois et, le mois
+> d'apres, un nombre different. Il faut l'integrer de maniere intuitive et comprehensible. »
+
+### Le renommage
+
+`targetHours` devient **`contractHours`**. Ce n'etait pas un objectif fixe par le manager mais ce
+que dit le contrat, et le libelle disait le contraire. « Weekly Target (h) » devient
+**« Contract hours / week »**, dans la fiche d'edition **et** dans le formulaire de creation.
+
+**Aucune migration de donnees.** L'ancien champ est encore lu en repli : une fiche pas encore
+reenregistree affiche le bon chiffre, et l'ancien nom reste ecrit en parallele tant que la
+transition n'est pas finie. Une sauvegarde restauree continue donc de fonctionner.
+
+### Les avenants
+
+Nouveau champ `contractChanges` : une liste de « a partir de cette date, le contrat est de N
+heures ». Sans elle, changer le chiffre du contrat **reecrirait retroactivement tous les mois
+deja ecoules** — quelqu'un passe de 24h a 30h en octobre, et septembre serait soudain compte
+face a 30h. C'est exactement le genre d'erreur qui fausse une paie.
+
+`contractHoursOn(staff, date)` renvoie les heures **applicables a cette date** : le dernier
+avenant dont la date d'effet est deja passee, sinon le contrat courant. Weekly Stats et la vue
+employe l'appellent avec le **lundi de la semaine affichee**, pas avec aujourd'hui.
+
+Une date d'effet **future** est acceptee : un avenant se signe avant de prendre effet.
+
+### Ce que Serge voit
+
+Dans la fiche d'un employe, sous les heures de contrat, une section **Amendments** : la liste des
+avenants dates et triés, chacun supprimable, et une ligne de saisie « Effective from / Hours /
+Add ». Une phrase explique la regle : *« Each week counts against the amendment in force that
+week — past months keep the hours they were signed under. »*
+
+Ressaisir la meme date d'effet **corrige** l'avenant au lieu d'en empiler deux.
+
+### Verification
+
+**11 cas de la regle testes** (`scripts/test-contract-hours.mjs`, conserve dans le depot), dont
+le cas critique : un avenant signe en septembre ne change pas le chiffre applique en aout.
+Egalement : fiche non migree, avenant futur, avenants saisis dans le desordre, absence totale de
+donnee.
+
+Parcours joue au navigateur : ouverture d'une fiche, ajout de deux avenants dans le desordre,
+affichage trié chronologiquement. Aucune erreur JavaScript.
+
+Au passage, les trois champs des avenants ont un `aria-label` — l'audit du 06/09 relevait **zero**
+attribut d'accessibilite dans toute l'application.
+
+`types.ts`, `utils/helpers.ts`, `constants.ts`, `components/StaffModal.tsx`,
+`components/Sidebar.tsx`, `components/EmployeeView.tsx`, `scripts/test-contract-hours.mjs` (nouveau)
+
+---
+
 ## 2026-09-06 — Correctif : les horaires etaient masques dans les cartes de shift
 
 **Regression que j ai introduite le jour meme, signalee par Serge captures a l appui.**

@@ -11,7 +11,7 @@ const ABSENCE_LABELS: Record<string, string> = {
 };
 import { getTranslation } from '../utils/translations';
 import { exportWeeksData, loadStaffFromFirebase } from '../services/firebaseService';
-import { toWeekId, isStaffActiveInWeek } from '../utils/helpers';
+import { toWeekId, isStaffActiveInWeek, contractHoursOn, getShiftIsoDate } from '../utils/helpers';
 
 interface SidebarProps {
   shifts: Shift[];
@@ -229,6 +229,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           const bTotal = (worked[b.id] || 0) + (extra[b.id] || 0);
           return bTotal - aTotal; // desc
         }).map(person => {
+          // Heures du contrat A LA SEMAINE AFFICHEE, pas celles d'aujourd'hui :
+          // un avenant signe en octobre ne doit pas reecrire le mois de septembre.
+          const contractHours = contractHoursOn(person, getShiftIsoDate(currentWeek, 0));
           const workedHours = worked[person.id] || 0;
           const extraHours = extra[person.id] || 0;
           const totalWorked = workedHours + extraHours;
@@ -256,7 +259,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {person.name}
                 </span>
                 <span className="text-slate-400 font-bold">
-                  {totalWorked.toFixed(1)} / {person.targetHours}h
+                  {totalWorked.toFixed(1)} / {contractHours}h
                 </span>
               </div>
               {absenceLabel ? (
@@ -271,19 +274,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </span>
               ) : (
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
-                {totalWorked > person.targetHours ? (
+                {totalWorked > contractHours ? (
                   // Over target: target portion in person color + overtime in darker shade
                   <>
                     <div
                       className="h-full transition-all duration-500"
-                      style={{ width: `${(person.targetHours / totalWorked) * 100}%`, backgroundColor: person.color }}
+                      style={{ width: `${(contractHours / totalWorked) * 100}%`, backgroundColor: person.color }}
                     />
                     <div
                       className="h-full transition-all duration-500"
-                      style={{ width: `${((totalWorked - person.targetHours) / totalWorked) * 100}%`, backgroundColor: person.color, filter: 'brightness(0.55)' }}
+                      style={{ width: `${((totalWorked - contractHours) / totalWorked) * 100}%`, backgroundColor: person.color, filter: 'brightness(0.55)' }}
                     />
                   </>
-                ) : totalWorked === person.targetHours && person.targetHours > 0 ? (
+                ) : totalWorked === contractHours && contractHours > 0 ? (
                   // Exact: full green bar
                   <div
                     className="h-full transition-all duration-500"
@@ -294,11 +297,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <>
                     <div
                       className="h-full transition-all duration-500"
-                      style={{ width: `${(workedHours / person.targetHours) * 100}%`, backgroundColor: person.color }}
+                      style={{ width: `${(workedHours / contractHours) * 100}%`, backgroundColor: person.color }}
                     />
                     <div
                       className="h-full transition-all duration-500 bg-indigo-500"
-                      style={{ width: `${(extraHours / person.targetHours) * 100}%` }}
+                      style={{ width: `${(extraHours / contractHours) * 100}%` }}
                     />
                   </>
                 )}

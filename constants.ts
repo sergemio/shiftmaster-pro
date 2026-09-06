@@ -27,12 +27,12 @@ export const TOTAL_HOURS = END_HOUR - START_HOUR;
 
 
 export const INITIAL_STAFF: Staff[] = [
-  { id: '1', name: 'Serge', email: '', color: '#7c2d12', targetHours: 40, role: 'admin' },
-  { id: '2', name: 'Tatiana', email: '', color: '#166534', targetHours: 36, role: 'staff' },
-  { id: '3', name: 'Omar', email: '', color: '#ea580c', targetHours: 20, role: 'staff' },
-  { id: '4', name: 'Chris', email: '', color: '#a855f7', targetHours: 18, role: 'staff' },
-  { id: '5', name: 'Yasmine', email: '', color: '#1e3a8a', targetHours: 24, role: 'staff' },
-  { id: '6', name: 'Sinar', email: '', color: '#bef264', targetHours: 24, role: 'staff' },
-  { id: '7', name: 'Youssef', email: '', color: '#facc15', targetHours: 20, role: 'staff' },
-  { id: '8', name: 'Adiba', email: '', color: '#f97316', targetHours: 20, role: 'staff' },
+  { id: '1', name: 'Serge', email: '', color: '#7c2d12', contractHours: 40, role: 'admin' },
+  { id: '2', name: 'Tatiana', email: '', color: '#166534', contractHours: 36, role: 'staff' },
+  { id: '3', name: 'Omar', email: '', color: '#ea580c', contractHours: 20, role: 'staff' },
+  { id: '4', name: 'Chris', email: '', color: '#a855f7', contractHours: 18, role: 'staff' },
+  { id: '5', name: 'Yasmine', email: '', color: '#1e3a8a', contractHours: 24, role: 'staff' },
+  { id: '6', name: 'Sinar', email: '', color: '#bef264', contractHours: 24, role: 'staff' },
+  { id: '7', name: 'Youssef', email: '', color: '#facc15', contractHours: 20, role: 'staff' },
+  { id: '8', name: 'Adiba', email: '', color: '#f97316', contractHours: 20, role: 'staff' },
 ];

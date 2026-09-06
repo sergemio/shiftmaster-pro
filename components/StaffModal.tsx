@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Staff } from '../types';
-import { isFormerStaff, todayIso } from '../utils/helpers';
+import { isFormerStaff, todayIso, currentContractHours, formatShortDate } from '../utils/helpers';
 
 interface StaffModalProps {
   isOpen: boolean;
@@ -29,7 +29,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
 
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newTargetHours, setNewTargetHours] = useState(40);
+  const [newContractHours, setNewContractHours] = useState(35);
   const [newColor, setNewColor] = useState('#6366f1');
   const [newRole, setNewRole] = useState<'admin' | 'staff'>('staff');
   const [newJobTitle, setNewJobTitle] = useState('');
@@ -40,7 +40,12 @@ const StaffModal: React.FC<StaffModalProps> = ({
   const [isAddingGuest, setIsAddingGuest] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTargetHours, setEditTargetHours] = useState(0);
+  const [editContractHours, setEditContractHours] = useState(0);
+  // Avenants en cours d'edition. On travaille sur une copie : tant que Serge n'a
+  // pas enregistre, la fiche d'origine n'est pas touchee.
+  const [editChanges, setEditChanges] = useState<{ from: string; weeklyHours: number }[]>([]);
+  const [newChangeFrom, setNewChangeFrom] = useState('');
+  const [newChangeHours, setNewChangeHours] = useState(35);
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState<'admin' | 'staff'>('staff');
   const [editJobTitle, setEditJobTitle] = useState('');
@@ -84,7 +89,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
       name: newName,
       email: (newEmail || '').trim().toLowerCase(),
       color: newColor,
-      targetHours: newTargetHours,
+      contractHours: newContractHours,
       role: newRole,
       jobTitle: newJobTitle,
       startDate: newStartDate,
@@ -94,7 +99,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
     onAdd(newStaff);
     setNewName('');
     setNewEmail('');
-    setNewTargetHours(40);
+    setNewContractHours(35);
     setNewRole('staff');
     setNewJobTitle('');
     setNewColor('#6366f1');
@@ -105,7 +110,10 @@ const StaffModal: React.FC<StaffModalProps> = ({
 
   const startEditing = (staff: Staff) => {
     setEditingId(staff.id);
-    setEditTargetHours(staff.targetHours);
+    setEditContractHours(currentContractHours(staff));
+    setEditChanges([...(staff.contractChanges || [])].sort((a, b) => a.from.localeCompare(b.from)));
+    setNewChangeFrom('');
+    setNewChangeHours(currentContractHours(staff) || 35);
     setEditEmail(staff.email || '');
     setEditRole(staff.role);
     setEditJobTitle(staff.jobTitle || '');
@@ -120,7 +128,14 @@ const StaffModal: React.FC<StaffModalProps> = ({
     
     onUpdate({
       ...staff,
-      targetHours: editTargetHours,
+      contractHours: editContractHours,
+      // Toujours ecrit, meme vide : sans ca, supprimer le dernier avenant
+      // laisserait l'ancien tableau en base et le contrat resterait fige dessus.
+      contractChanges: editChanges,
+      // L'ancien nom reste synchronise le temps que toutes les fiches soient
+      // reenregistrees : une sauvegarde restauree ou un onglet pas rafraichi
+      // continue de lire un chiffre juste.
+      targetHours: editContractHours,
       email: (editEmail || '').trim().toLowerCase(),
       role: editRole,
       jobTitle: editJobTitle,
@@ -271,11 +286,11 @@ const StaffModal: React.FC<StaffModalProps> = ({
                   <div className="mt-3 pt-3 border-t border-indigo-100 animate-in slide-in-from-top-2 duration-200 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Weekly Target (h)</label>
+                        <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Contract hours / week</label>
                         <input 
                           type="number"
-                          value={editTargetHours}
-                          onChange={(e) => setEditTargetHours(parseInt(e.target.value))}
+                          value={editContractHours}
+                          onChange={(e) => setEditContractHours(parseInt(e.target.value) || 0)}
                           className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
@@ -290,6 +305,93 @@ const StaffModal: React.FC<StaffModalProps> = ({
                           <option value="admin">Admin</option>
                         </select>
                       </div>
+                    </div>
+                    {/* --------------------------------------------------------
+                        Avenants. Un salarie peut passer de 24h a 30h en cours
+                        d'annee : sans dater le changement, le nouveau chiffre
+                        reecrirait retroactivement tous les mois deja ecoules et
+                        fausserait la paie. Chaque ligne dit « a partir de cette
+                        date, le contrat est de N heures ».
+                        Une date future est acceptee : un avenant se signe avant
+                        de prendre effet.
+                        -------------------------------------------------------- */}
+                    <div className="pt-3 border-t border-indigo-100">
+                      <label className="block text-xs font-bold text-indigo-700 uppercase mb-1.5">Amendments</label>
+
+                      {editChanges.length > 0 && (
+                        <ul className="flex flex-col gap-1 mb-2">
+                          {editChanges.map((c, i) => (
+                            <li key={i} className="flex items-center justify-between gap-2 bg-white border border-indigo-100 rounded px-2 py-1">
+                              <span className="text-xs text-slate-700">
+                                <b className="font-bold">{c.weeklyHours}h</b> from {formatShortDate(c.from, 'en')}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setEditChanges(editChanges.filter((_, j) => j !== i)); }}
+                                className="text-red-400 hover:text-red-600 p-1 flex-none"
+                                title="Remove"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <label className="block text-xs text-slate-500 mb-0.5">Effective from</label>
+                          <input
+                            type="date"
+                            aria-label="Amendment effective date"
+                            value={newChangeFrom}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => setNewChangeFrom(e.target.value)}
+                            className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div className="w-16">
+                          <label className="block text-xs text-slate-500 mb-0.5">Hours</label>
+                          <input
+                            type="number"
+                            aria-label="Amendment weekly hours"
+                            value={newChangeHours}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => setNewChangeHours(parseInt(e.target.value) || 0)}
+                            className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!newChangeFrom}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!newChangeFrom) return;
+                            // Une seule valeur par date d'effet : ressaisir la meme
+                            // date corrige l'avenant au lieu d'en empiler deux.
+                            const next = [
+                              ...editChanges.filter(c => c.from !== newChangeFrom),
+                              { from: newChangeFrom, weeklyHours: newChangeHours },
+                            ].sort((a, b) => a.from.localeCompare(b.from));
+                            setEditChanges(next);
+                            setNewChangeFrom('');
+                          }}
+                          aria-label="Add amendment"
+                          className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-bold disabled:opacity-40 hover:bg-indigo-700 transition-all whitespace-nowrap"
+                        >
+                          Add
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-slate-500 mt-1.5 leading-snug">
+                        {editChanges.length > 0
+                          ? 'Each week counts against the amendment in force that week — past months keep the hours they were signed under.'
+                          : 'Add one only if the contract changed. Without an amendment, the hours above apply to every week.'}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Google Email Address</label>
@@ -490,11 +592,11 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Weekly Target (h)</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Contract hours / week</label>
                     <input 
                       type="number" 
-                      value={newTargetHours}
-                      onChange={(e) => setNewTargetHours(parseInt(e.target.value))}
+                      value={newContractHours}
+                      onChange={(e) => setNewContractHours(parseInt(e.target.value) || 0)}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
                     />
                   </div>

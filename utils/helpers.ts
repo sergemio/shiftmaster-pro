@@ -157,6 +157,30 @@ export const isStaffActiveInWeek = (staff: Staff, weekStart: Date): boolean => {
 export const todayIso = (timeZone: string = 'Europe/Paris'): string =>
   getIsoDateString(new Date(), timeZone);
 
+/**
+ * Heures contractuelles applicables A UNE DATE donnee.
+ *
+ * Un salarie peut signer un avenant en cours d'annee : 24h jusqu'en septembre,
+ * 30h ensuite. Sans cet historique, changer le chiffre du contrat reecrirait
+ * retroactivement tous les mois deja ecoules — et fausserait la paie.
+ *
+ * On prend le dernier avenant dont la date d'effet est deja passee. Aucun
+ * avenant applicable (ou aucun avenant du tout) => le contrat courant.
+ */
+export const contractHoursOn = (staff: Staff, isoDate: string): number => {
+  const applicable = (staff.contractChanges || [])
+    .filter(c => c.from <= isoDate)
+    .sort((a, b) => a.from.localeCompare(b.from));
+  if (applicable.length > 0) return applicable[applicable.length - 1].weeklyHours;
+  // `targetHours` est l'ancien nom du champ : les fiches non reenregistrees
+  // depuis le renommage ne portent que lui.
+  return staff.contractHours ?? staff.targetHours ?? 0;
+};
+
+/** Heures contractuelles aujourd'hui — le cas courant, pour ne pas repeter todayIso(). */
+export const currentContractHours = (staff: Staff): number =>
+  contractHoursOn(staff, todayIso());
+
 /** Someone whose last day is already behind us. They keep their history. */
 export const isFormerStaff = (staff: Staff, today: string = todayIso()): boolean =>
   !!staff.endDate && staff.endDate < today;

@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { Shift, Staff, Language } from '../types';
 import { DAYS_EN, DAYS_FR } from '../constants';
 import { getTranslation } from '../utils/translations';
-import { formatTime, isStaffActiveInWeek } from '../utils/helpers';
+import { formatTime, isStaffActiveInWeek, contractHoursOn, getShiftIsoDate } from '../utils/helpers';
 
 interface EmployeeViewProps {
   shifts: Shift[];
@@ -78,7 +78,7 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
                       </span>
                     </div>
                     <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-tighter self-start">
-                      {member.totalHours.toFixed(1)}h / {member.targetHours}h
+                      {member.totalHours.toFixed(1)}h / {contractHoursOn(member, getShiftIsoDate(currentWeek, 0))}h
                     </span>
                   </div>
                 </div>
