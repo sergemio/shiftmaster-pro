@@ -5,6 +5,27 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Lot 7 : alerte de chevauchement (branche `dev`)
+
+Deux shifts au meme moment pour la meme personne : rien ne le signalait. L erreur se decouvrait
+le jour meme, ou dans les heures de paie.
+
+La carte concernee porte desormais un badge **rouge** — rouge assume, contrairement au badge de
+periode d emploi : personne ne peut etre a deux endroits a la fois, c est une erreur de saisie et
+non une situation normale (R5.2).
+
+**Deux shifts qui se TOUCHENT ne se chevauchent pas** : 11h-15h puis 15h-19h est une coupure
+normale, pas un conflit. La comparaison est stricte.
+
+9 cas testes (`scripts/test-overlaps.mjs`, conserve) : chevauchement simple, shifts qui se
+touchent, un shift inclus dans un autre, double saisie a l identique, personnes ou jours
+differents, liste vide.
+
+`utils/helpers.ts`, `components/Calendar.tsx`, `components/ShiftCard.tsx`,
+`utils/translations.ts`, `scripts/test-overlaps.mjs` (nouveau)
+
+---
+
 ## 2026-09-06 — Lot 2 : compteur mensuel (branche `dev`)
 
 Le contrat, les heures supplementaires et la paie se raisonnent au mois. L'application ne savait

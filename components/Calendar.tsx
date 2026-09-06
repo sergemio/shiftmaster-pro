@@ -5,7 +5,7 @@ import { DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR, H
 import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
 import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
 
 // Branded header stamped on top of the grid in the PNG export only.
@@ -179,6 +179,9 @@ const Calendar: React.FC<CalendarProps> = ({
     // On retombe donc sur le lundi, qui reste un jour valide a afficher.
     setActiveDayIndex(todayIndex !== -1 ? todayIndex : 0);
   }, [todayIndex]);
+
+  // Recalcule seulement quand les shifts changent, pas a chaque rendu.
+  const overlappingIds = useMemo(() => findOverlappingShiftIds(shifts), [shifts]);
 
   const processedShifts = useMemo(() => {
     const layoutShifts: LayoutShift[] = [];
@@ -544,6 +547,7 @@ const Calendar: React.FC<CalendarProps> = ({
                   staff={staffMember}
                   allStaff={staff}
                   orphanReason={orphanReason}
+                  hasOverlap={overlappingIds.has(shift.id)}
                   isReadOnly={isReadOnly}
                   onEdit={() => !isReadOnly && onEditShift(shift.id)}
                   renderStartTime={isDraggingThis ? previewStartTime : undefined}

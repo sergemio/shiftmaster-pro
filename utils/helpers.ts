@@ -1,5 +1,5 @@
 
-import { Language, Staff } from '../types';
+import { Language, Staff, Shift } from '../types';
 
 export const formatTime = (hours: number): string => {
   const h = Math.floor(hours);
@@ -225,6 +225,43 @@ export const monthlyContractHours = (staff: Staff, isoDateInMonth: string): numb
     total += contractHoursOn(staff, iso) * 52 / 12 / n;
   }
   return total;
+};
+
+/**
+ * Les shifts qui se chevauchent POUR LA MEME PERSONNE le meme jour.
+ *
+ * Personne ne peut etre a deux endroits a la fois : c'est une erreur de saisie,
+ * pas un choix. Rien ne la signalait — elle se decouvrait le jour meme, ou dans
+ * les heures de paie. Deux shifts qui se touchent (11h-15h puis 15h-19h) ne se
+ * chevauchent pas : la comparaison est stricte.
+ *
+ * Renvoie les identifiants concernes, pour que la carte puisse se signaler
+ * elle-meme sans recalculer quoi que ce soit.
+ */
+export const findOverlappingShiftIds = (shifts: Shift[]): Set<string> => {
+  const clashing = new Set<string>();
+  const byPersonAndDay = new Map<string, Shift[]>();
+  for (const s of shifts) {
+    const key = `${s.staffId}#${s.dayIndex}`;
+    const list = byPersonAndDay.get(key);
+    if (list) list.push(s);
+    else byPersonAndDay.set(key, [s]);
+  }
+  for (const list of byPersonAndDay.values()) {
+    if (list.length < 2) continue;
+    const sorted = [...list].sort((a, b) => a.startTime - b.startTime);
+    for (let i = 1; i < sorted.length; i++) {
+      // Trie par debut : il suffit de comparer au maximum des fins precedentes.
+      const prevEnd = Math.max(...sorted.slice(0, i).map(x => x.endTime));
+      if (sorted[i].startTime < prevEnd) {
+        clashing.add(sorted[i].id);
+        for (const earlier of sorted.slice(0, i)) {
+          if (earlier.endTime > sorted[i].startTime) clashing.add(earlier.id);
+        }
+      }
+    }
+  }
+  return clashing;
 };
 
 /** Someone whose last day is already behind us. They keep their history. */

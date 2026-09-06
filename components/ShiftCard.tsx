@@ -17,6 +17,8 @@ interface ShiftCardProps {
   language?: Language;
   /** Pourquoi le shift sort de la periode d'emploi, ou null s'il est normal. */
   orphanReason?: OrphanReason;
+  /** Cette personne a un autre shift au meme moment le meme jour. */
+  hasOverlap?: boolean;
 }
 
 const ShiftCard: React.FC<ShiftCardProps> = ({ 
@@ -30,7 +32,8 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   renderStartTime,
   renderEndTime,
   language = 'en',
-  orphanReason = null
+  orphanReason = null,
+  hasOverlap = false
 }) => {
   if (!staff) return null;
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
@@ -106,6 +109,17 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             <span className="bg-slate-200/60 text-slate-600 text-xs font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-slate-300/30">
               {duration.toFixed(duration % 1 === 0 ? 0 : 1)}H
             </span>
+            {hasOverlap && (
+              /* Rouge assume ici, contrairement au badge de periode d'emploi :
+                 personne ne peut etre a deux endroits a la fois, c'est une
+                 erreur de saisie et non une situation normale (R5.2). */
+              <span
+                title={`${staff.name} a deja un autre shift a ce moment-la`}
+                className="bg-red-100 text-red-800 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-red-300 basis-full leading-tight"
+              >
+                ⚠ <span className="@max-[56px]:hidden">{t('overlapWarning')}</span>
+              </span>
+            )}
             {orphanReason && (
               /* Le badge disait « Ghost » : l'utilisateur devait deviner pourquoi.
                  Il enonce maintenant la raison, que l'app connait exactement.
