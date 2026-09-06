@@ -24,7 +24,7 @@ validation de Serge. Detail de ce qui est fait : `CHANGELOG.md`.
 | 2 | Compteur mensuel | ✅ fait |
 | 7 | Alerte de chevauchement | ✅ fait |
 | 5 | Effectif par heure | ✅ fait |
-| 6 | Copier une semaine sur une semaine remplie | ✅ fait |
+| 6 | Copier la semaine precedente (semaine vide seulement) | ✅ fait |
 | 3 | Vue personnelle de l'employe | ✅ fait |
 | 9 | Confort de saisie | ⬜ a faire |
 | 4 | Publication et notification | 🔒 **demande une decision de Serge** |
@@ -71,12 +71,21 @@ l'agenda du telephone.
 
 ---
 
-## Quatre choses a ne pas oublier
+## Six choses a ne pas oublier
 
 **Un ancien salarie qui garde des shifts n'est pas une anomalie.** Confirme par Serge le
 2026-09-06 : plusieurs personnes dont la date de sortie est passee prennent encore des shifts en
 extra. Le badge ambre signale une situation normale. Consequence : un export de paie **ne doit
 pas exclure** quelqu'un au motif que sa date de sortie est passee.
+
+**Une donnee agregee cache ce qu'elle resume.** Le 06/09, la bande d'effectif comptait par heure
+et additionnait des gens qui ne se croisaient pas — le creux disparaissait dans la moyenne. Toute
+vue de synthese doit etre calee sur le pas reel de la donnee, ici la demi-heure.
+
+**Une action de masse ne se propose pas sur un planning deja construit.** Le 06/09, « Copy
+Previous Week » avait ete rendu permanent pour couvrir un cas d appoint ; Serge l a fait retirer
+des les semaines remplies. Un cas d appoint ne justifie pas d exposer une action large la ou elle
+n est pas attendue.
 
 **Ne jamais masquer une information pour regler un cas rare.** Le 06/09, l'horaire a ete masque
 dans les cartes etroites pour eviter un repli disgracieux a trois shifts simultanes ; le seuil

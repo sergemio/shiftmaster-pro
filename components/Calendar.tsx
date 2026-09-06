@@ -6,12 +6,15 @@ import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import MyWeekView from './MyWeekView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, staffingPerHour, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, staffingPerSlot, formatTime, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
 import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
 
 // Branded header stamped on top of the grid in the PNG export only.
 // Fixed height so it can be added to the capture container's height.
 const EXPORT_HEADER_HEIGHT = 76;
+
+/** Pas de la bande d'effectif, en heures. Cale sur le pas des horaires saisis. */
+const COVERAGE_SLOT = 0.5;
 
 /**
  * Un motif d'absence = une couleur qui veut dire quelque chose (R5.2).
@@ -484,7 +487,10 @@ const Calendar: React.FC<CalendarProps> = ({
       {/* -------------------------------------------------------------------
           Effectif par heure. On voyait les heures PAR EMPLOYE, jamais la
           couverture du service : un trou a 20h un samedi restait invisible.
-          Une barre par heure, hauteur proportionnelle au nombre de presents.
+          Une barre par DEMI-HEURE — pas par heure : tous les horaires tombent sur
+          :00 ou :30, donc une barre horaire fusionnait deux realites (une personne
+          a 17h00, trois a 17h30 -> affichait 3) et effacait le creux qu'on veut
+          justement voir. Hauteur proportionnelle au nombre de presents.
           Les heures sans personne sont laissees en creux plutot que colorees en
           rouge : un service ferme n'est pas une anomalie (R5.3), c'est le vide
           qui doit sauter aux yeux, pas une alerte.
@@ -497,7 +503,7 @@ const Calendar: React.FC<CalendarProps> = ({
             </span>
           </div>
           {localizedDays.map((_, i) => {
-            const counts = staffingPerHour(shifts, i, START_HOUR, END_HOUR);
+            const counts = staffingPerSlot(shifts, i, START_HOUR, END_HOUR, COVERAGE_SLOT * 60);
             const peak = Math.max(1, ...counts);
             return (
               <div
@@ -511,7 +517,7 @@ const Calendar: React.FC<CalendarProps> = ({
                       key={h}
                       className="flex-1 rounded-sm bg-indigo-200"
                       style={{ height: `${Math.max(6, (n / peak) * 100)}%`, opacity: n === 0 ? 0.25 : 1 }}
-                      title={`${String(START_HOUR + h).padStart(2, '0')}:00 — ${n}`}
+                      title={`${formatTime(START_HOUR + h * COVERAGE_SLOT)} — ${n}`}
                     />
                   ))}
                 </div>

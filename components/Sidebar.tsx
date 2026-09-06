@@ -433,10 +433,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="mt-auto pt-6 border-t border-slate-100 space-y-4">
         {!isReadOnly && (
           <>
-            {/* Only on a week that is genuinely empty — `shifts` is also [] while
-                a week loads, and offering the copy then would let one click
-                replace a week that does have shifts. */}
-            {!isLoading && (
+            {/* Seulement sur une semaine vide. `shifts` vaut aussi [] pendant le
+                chargement, d'ou le `!isLoading` : sans lui le bouton clignoterait
+                sur une semaine qui, elle, a des shifts. */}
+            {isEmpty && !isLoading && (
               <button
                 type="button"
                 onClick={onCopyLastWeek}

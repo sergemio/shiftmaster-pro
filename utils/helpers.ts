@@ -265,29 +265,41 @@ export const findOverlappingShiftIds = (shifts: Shift[]): Set<string> => {
 };
 
 /**
- * Combien de personnes sont presentes a chaque heure d'un jour donne.
+ * Combien de personnes sont presentes sur chaque tranche de 30 minutes.
  *
  * L'application montrait les heures PAR EMPLOYE, jamais la couverture du
  * service : un trou a 20h un samedi etait invisible tant qu'on ne relisait pas
  * chaque carte une par une.
  *
- * Une personne compte sur une heure des qu'elle en couvre une partie : quelqu'un
- * qui part a 20h30 est bien present sur la tranche de 20h.
- * Un shift couvert par quelqu'un d'autre compte pour le remplacant, pas pour la
- * personne absente.
+ * Pourquoi la demi-heure et pas l'heure. Tous les horaires de l'application
+ * tombent sur :00 ou :30 — les listes des formulaires avancent par 30 minutes,
+ * le glisser-deposer s'aligne sur 0,5. Une tranche d'une heure devait donc
+ * fusionner deux realites differentes : le vendredi 28, une seule personne a
+ * 17h00 puis trois a 17h30, affiche « 3 » sur toute l'heure. Ce nombre ne
+ * correspondait a aucun instant lisible sur le planning, et surtout il effacait
+ * le creux — exactement ce que cette bande existe pour montrer. Signale par
+ * Serge le 2026-09-06. A la demi-heure, chaque barre vaut un instant precis du
+ * planning : plus rien n'est agrege, donc plus rien n'est masque.
+ *
+ * Une personne compte des qu'elle couvre une partie de la tranche. Un shift
+ * couvert par quelqu'un d'autre compte pour le remplacant, pas pour la personne
+ * absente ; deux shifts d'une meme personne ne la comptent qu'une fois.
  */
-export const staffingPerHour = (
+export const staffingPerSlot = (
   shifts: Shift[],
   dayIndex: number,
   startHour: number,
   endHour: number,
+  slotMinutes = 30,
 ): number[] => {
+  const step = slotMinutes / 60;
   const dayShifts = shifts.filter(s => s.dayIndex === dayIndex);
   const counts: number[] = [];
-  for (let h = startHour; h < endHour; h++) {
+  for (let i = 0; i < Math.round((endHour - startHour) / step); i++) {
+    const t = startHour + i * step;
     const present = new Set<string>();
     for (const s of dayShifts) {
-      if (s.startTime < h + 1 && s.endTime > h) present.add(s.coverageBy || s.staffId);
+      if (s.startTime < t + step && s.endTime > t) present.add(s.coverageBy || s.staffId);
     }
     counts.push(present.size);
   }

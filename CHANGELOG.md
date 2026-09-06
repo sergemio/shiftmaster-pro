@@ -5,6 +5,51 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Bande d'effectif : a la demi-heure, et non plus a l'heure
+
+Signale par Serge, capture du vendredi 28 : l'infobulle annoncait « 17:00 — 3 » alors que le
+planning montre Omar 11h30-15h30, Yasmine 12h00-17h30, Sepand et Parthavi 17h30-23h.
+
+Ce n'etait pas une erreur de comptage mais une erreur d'echelle. La barre couvrait l'heure entiere
+17h00-18h00 et comptait toute personne presente a un moment quelconque de cette heure : Yasmine,
+qui part a 17h30, plus Sepand et Parthavi qui arrivent a 17h30. Trois personnes qui ne sont
+**jamais ensemble**, additionnees en un seul nombre. Le maximum reellement simultane est 2, et a
+17h00 pile il n'y a qu'une personne en service.
+
+Le plus grave n'est pas le chiffre faux : l'agregation horaire **effacait le creux**, c'est-a-dire
+exactement ce que cette bande existe pour montrer.
+
+Tous les horaires de l'application tombent sur :00 ou :30 — les listes des formulaires avancent
+par 30 minutes, le glisser-deposer s'aligne sur 0,5. Une barre par demi-heure est donc exacte :
+chaque barre vaut un instant precis du planning, plus rien n'est agrege. `staffingPerHour` devient
+`staffingPerSlot`, avec un pas parametrable (30 minutes par defaut).
+
+Verifie au navigateur sur le vendredi de la capture, rejoue tel quel : « 16:30 — 1 », « 17:00 — 1 »,
+« 17:30 — 2 », « 18:00 — 2 ». 32 barres par jour, 3,3 px chacune, aucun debordement horizontal.
+Deux tests ajoutes qui figent ce cas precis.
+
+`utils/helpers.ts`, `components/Calendar.tsx`, `scripts/test-coverage.mjs`
+
+---
+
+## 2026-09-06 — « Copy Previous Week » : retour au bouton reserve a une semaine vide
+
+Demande de Serge, capture a l appui : sur la semaine du 31 aout deja remplie, le bouton etait
+propose alors qu il n a de sens que sur une semaine vide. Le lot 6 l avait rendu permanent pour
+couvrir « la trame est posee, il manque deux personnes le samedi » ; ce cas ne justifiait pas de
+laisser une action de masse a portee de clic sur un planning deja construit.
+
+Le bouton est de nouveau conditionne a `isEmpty && !isLoading`. La confirmation cote `App.tsx`
+est conservee : deux administrateurs travaillant en meme temps, la semaine peut se remplir entre
+l affichage du bouton et le clic — c est la seule voie qui reste vers ce cas, elle garde son garde-fou.
+
+Verifie au navigateur (bac a sable, semaine courante) : semaine contenant un shift -> bouton
+absent ; semaine vide -> bouton present.
+
+`components/Sidebar.tsx`
+
+---
+
 ## 2026-09-06 — Regles Firestore deployees en PRODUCTION
 
 Le point bloquant est leve : la production accepte desormais les absences et les jours feries.
