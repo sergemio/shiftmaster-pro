@@ -5,6 +5,33 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Lot 5 : effectif par heure (branche `dev`)
+
+L application montrait les heures **par employe**, jamais la couverture du service. Un trou a
+20h un samedi restait invisible tant qu on ne relisait pas chaque carte une par une.
+
+Une ligne **Effectif** sous la bande des absences : une barre par heure et par jour, hauteur
+proportionnelle au nombre de personnes en poste. On voit la forme de la journee — les deux
+services, et le creux entre les deux — sans lire un seul chiffre.
+
+Les heures a zero sont laissees **en creux**, pas colorees en rouge : un service ferme n est pas
+une anomalie (R5.3). C est le vide qui doit sauter aux yeux, pas une alerte.
+
+Details qui comptent : une personne compte des qu elle couvre une partie de l heure (partir a
+20h30, c est etre present sur la tranche de 20h) ; un shift couvert par quelqu un d autre compte
+pour le remplacant ; une meme personne avec deux shifts dans l heure compte pour une.
+
+8 cas testes (`scripts/test-coverage.mjs`, conserve).
+
+Au passage : le badge de chevauchement n affichait que son pictogramme sur une carte etroite —
+exactement le defaut signale par Serge quelques heures plus tot sur les horaires. Le mot est
+court, il se replie desormais au lieu de disparaitre.
+
+`utils/helpers.ts`, `components/Calendar.tsx`, `components/ShiftCard.tsx`,
+`utils/translations.ts`, `scripts/test-coverage.mjs` (nouveau)
+
+---
+
 ## 2026-09-06 — Lot 7 : alerte de chevauchement (branche `dev`)
 
 Deux shifts au meme moment pour la meme personne : rien ne le signalait. L erreur se decouvrait

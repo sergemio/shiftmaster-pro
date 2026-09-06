@@ -5,7 +5,7 @@ import { DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR, H
 import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, staffingPerHour, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
 import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
 
 // Branded header stamped on top of the grid in the PNG export only.
@@ -30,6 +30,7 @@ interface CalendarProps {
   absences?: Absence[];
   holidays?: number[];
   onRemoveAbsence?: (id: string) => void;
+  showCoverage?: boolean;
   staff: Staff[];
   currentWeek: Date;
   navDirection?: 'forward' | 'backward' | 'none';
@@ -114,6 +115,7 @@ const Calendar: React.FC<CalendarProps> = ({
   absences = [],
   holidays = [],
   onRemoveAbsence,
+  showCoverage = true,
   staff, 
   currentWeek, 
   navDirection = 'none',
@@ -446,6 +448,46 @@ const Calendar: React.FC<CalendarProps> = ({
                     </button>
                   );
                 })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------------
+          Effectif par heure. On voyait les heures PAR EMPLOYE, jamais la
+          couverture du service : un trou a 20h un samedi restait invisible.
+          Une barre par heure, hauteur proportionnelle au nombre de presents.
+          Les heures sans personne sont laissees en creux plutot que colorees en
+          rouge : un service ferme n'est pas une anomalie (R5.3), c'est le vide
+          qui doit sauter aux yeux, pas une alerte.
+          ------------------------------------------------------------------- */}
+      {showCoverage && shifts.length > 0 && (
+        <div className="flex border-b bg-white">
+          <div className="w-[54px] md:w-[60px] flex-shrink-0 border-r bg-slate-50/50 flex items-center justify-end pr-1 md:pr-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              {t('coverageShort')}
+            </span>
+          </div>
+          {localizedDays.map((_, i) => {
+            const counts = staffingPerHour(shifts, i, START_HOUR, END_HOUR);
+            const peak = Math.max(1, ...counts);
+            return (
+              <div
+                key={i}
+                className={`flex-1 border-r last:border-r-0 px-0.5 py-1 min-w-0 ${i === activeDayIndex ? 'block' : 'hidden md:block'}`}
+                title={`${t('coverageTitle')} — ${t('peak')} ${peak}`}
+              >
+                <div className="flex items-end gap-px h-6">
+                  {counts.map((n, h) => (
+                    <div
+                      key={h}
+                      className="flex-1 rounded-sm bg-indigo-200"
+                      style={{ height: `${Math.max(6, (n / peak) * 100)}%`, opacity: n === 0 ? 0.25 : 1 }}
+                      title={`${String(START_HOUR + h).padStart(2, '0')}:00 — ${n}`}
+                    />
+                  ))}
+                </div>
               </div>
             );
           })}

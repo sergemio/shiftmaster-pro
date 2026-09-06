@@ -264,6 +264,36 @@ export const findOverlappingShiftIds = (shifts: Shift[]): Set<string> => {
   return clashing;
 };
 
+/**
+ * Combien de personnes sont presentes a chaque heure d'un jour donne.
+ *
+ * L'application montrait les heures PAR EMPLOYE, jamais la couverture du
+ * service : un trou a 20h un samedi etait invisible tant qu'on ne relisait pas
+ * chaque carte une par une.
+ *
+ * Une personne compte sur une heure des qu'elle en couvre une partie : quelqu'un
+ * qui part a 20h30 est bien present sur la tranche de 20h.
+ * Un shift couvert par quelqu'un d'autre compte pour le remplacant, pas pour la
+ * personne absente.
+ */
+export const staffingPerHour = (
+  shifts: Shift[],
+  dayIndex: number,
+  startHour: number,
+  endHour: number,
+): number[] => {
+  const dayShifts = shifts.filter(s => s.dayIndex === dayIndex);
+  const counts: number[] = [];
+  for (let h = startHour; h < endHour; h++) {
+    const present = new Set<string>();
+    for (const s of dayShifts) {
+      if (s.startTime < h + 1 && s.endTime > h) present.add(s.coverageBy || s.staffId);
+    }
+    counts.push(present.size);
+  }
+  return counts;
+};
+
 /** Someone whose last day is already behind us. They keep their history. */
 export const isFormerStaff = (staff: Staff, today: string = todayIso()): boolean =>
   !!staff.endDate && staff.endDate < today;

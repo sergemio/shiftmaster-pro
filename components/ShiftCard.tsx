@@ -117,7 +117,10 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
                 title={`${staff.name} a deja un autre shift a ce moment-la`}
                 className="bg-red-100 text-red-800 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-red-300 basis-full leading-tight"
               >
-                ⚠ <span className="@max-[56px]:hidden">{t('overlapWarning')}</span>
+                {/* Un seul mot court : il se replie plutot que de disparaitre.
+                    Un badge reduit au pictogramme laisse deviner le probleme,
+                    ce qui est precisement le defaut corrige plus tot. */}
+                ⚠ {t('overlapWarning')}
               </span>
             )}
             {orphanReason && (
