@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Staff, Shift, Language } from './types';
+import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, EMPTY_WEEK } from './types';
 import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffActiveInWeek } from './utils/helpers';
-import { INITIAL_STAFF, DAYS_EN, DAYS_FR } from './constants';
+import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT } from './constants';
 import Calendar from './components/Calendar';
 import Sidebar from './components/Sidebar';
 import ShiftModal from './components/ShiftModal';
@@ -11,15 +11,16 @@ import EditShiftModal from './components/EditShiftModal';
 import MonthYearPicker from './components/MonthYearPicker';
 import LogHistoryModal from './components/LogHistoryModal';
 import SettingsModal from './components/SettingsModal';
+import AbsenceModal from './components/AbsenceModal';
 import { getTranslation } from './utils/translations';
 import { 
-  saveShiftsToFirebase, 
+  saveWeekToFirebase, 
   saveStaffToFirebase,
   saveLogToFirebase,
   loginWithGoogle,
   logout,
   subscribeToAuth,
-  subscribeToShifts,
+  subscribeToWeek,
   subscribeToStaff,
   subscribeToGlobalSettings,
   AuthResult,
@@ -107,9 +108,14 @@ const App: React.FC = () => {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [guestEmails, setGuestEmails] = useState<string[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
-  
-  const [past, setPast] = useState<Shift[][]>([]);
-  const [future, setFuture] = useState<Shift[][]>([]);
+  const [absences, setAbsences] = useState<Absence[]>([]);
+  const [holidays, setHolidays] = useState<number[]>([]);
+
+  // L'historique porte la semaine ENTIERE. S'il ne portait que les shifts,
+  // annuler apres avoir saisi une absence remettrait les anciens shifts en
+  // laissant l'absence en place — un etat que personne n'a jamais valide.
+  const [past, setPast] = useState<WeekData[]>([]);
+  const [future, setFuture] = useState<WeekData[]>([]);
 
   const [user, setUser] = useState<any>(null);
   const [isGuest, setIsGuest] = useState(false);
@@ -121,6 +127,7 @@ const App: React.FC = () => {
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isAbsenceModalOpen, setIsAbsenceModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
@@ -248,21 +255,22 @@ const App: React.FC = () => {
   useEffect(() => {
     if (user && !isGuest) {
       setIsLoading(true);
-      const unsubscribe = subscribeToShifts(weekId, (updatedShifts, updatedAt) => {
+      const unsubscribe = subscribeToWeek(weekId, (week, updatedAt) => {
         weekVersion.current = updatedAt;
-        setShifts(updatedShifts);
+        setShifts(week.shifts);
+        setAbsences(week.absences);
+        setHolidays(week.holidays);
         setIsLoading(false);
       });
       return () => unsubscribe();
     } else if (isGuest) {
       setIsLoading(true);
       const timer = setTimeout(() => {
-        const cachedShifts = localStorage.getItem(`sandbox_shifts_${weekId}`);
-        if (cachedShifts) {
-          setShifts(JSON.parse(cachedShifts));
-        } else {
-          setShifts([]);
-        }
+        const cached = localStorage.getItem(`sandbox_week_${weekId}`);
+        const week: WeekData = cached ? { ...EMPTY_WEEK, ...JSON.parse(cached) } : EMPTY_WEEK;
+        setShifts(week.shifts);
+        setAbsences(week.absences);
+        setHolidays(week.holidays);
         setIsLoading(false);
       }, 300);
       return () => clearTimeout(timer);
@@ -291,18 +299,27 @@ const App: React.FC = () => {
     });
   };
 
-  const handleUpdateShifts = useCallback(async (newShifts: Shift[], isHistoryAction = false) => {
+  /**
+   * Point de passage UNIQUE pour toute modification de la semaine. Shifts,
+   * absences et jours feries partent ensemble : Firestore remplace le document
+   * entier, donc sauvegarder les shifts seuls effacerait les absences.
+   */
+  const commitWeek = useCallback(async (next: Partial<WeekData>, isHistoryAction = false) => {
     if (isReadOnly) return;
+    const before: WeekData = { shifts, absences, holidays };
+    const after: WeekData = { ...before, ...next };
     if (!isHistoryAction) {
-      setPast(prev => [shifts, ...prev].slice(0, 10));
+      setPast(prev => [before, ...prev].slice(0, 10));
       setFuture([]);
     }
-    setShifts(newShifts);
+    setShifts(after.shifts);
+    setAbsences(after.absences);
+    setHolidays(after.holidays);
 
     if (user && !isGuest) {
       writeQueue.current = writeQueue.current.then(async () => {
         try {
-          const stamp = await saveShiftsToFirebase(weekId, newShifts, weekVersion.current);
+          const stamp = await saveWeekToFirebase(weekId, after, weekVersion.current);
           // Adopt the version we just wrote, so consecutive edits by the same
           // person are not mistaken for someone else's changes.
           if (stamp) weekVersion.current = stamp;
@@ -319,30 +336,34 @@ const App: React.FC = () => {
       });
       await writeQueue.current;
     } else if (isGuest) {
-      localStorage.setItem(`sandbox_shifts_${weekId}`, JSON.stringify(newShifts));
+      localStorage.setItem(`sandbox_week_${weekId}`, JSON.stringify(after));
       triggerSyncFeedback();
     }
-  }, [weekId, user, isGuest, isReadOnly, shifts]);
+  }, [weekId, user, isGuest, isReadOnly, shifts, absences, holidays]);
+
+  // Ancien point d'entree, conserve pour tout ce qui ne touche que les shifts.
+  const handleUpdateShifts = useCallback(
+    (newShifts: Shift[], isHistoryAction = false) => commitWeek({ shifts: newShifts }, isHistoryAction),
+    [commitWeek]
+  );
 
   const undo = useCallback(() => {
     if (past.length === 0) return;
     const previous = past[0];
-    const newPast = past.slice(1);
-    setFuture(prev => [shifts, ...prev]);
-    handleUpdateShifts(previous, true);
-    setPast(newPast);
-    createLog('UNDO', 'Performed an undo action on shifts');
-  }, [past, shifts, handleUpdateShifts]);
+    setFuture(prev => [{ shifts, absences, holidays }, ...prev]);
+    commitWeek(previous, true);
+    setPast(past.slice(1));
+    createLog('UNDO', 'Performed an undo action');
+  }, [past, shifts, absences, holidays, commitWeek]);
 
   const redo = useCallback(() => {
     if (future.length === 0) return;
     const next = future[0];
-    const newFuture = future.slice(1);
-    setPast(prev => [shifts, ...prev]);
-    handleUpdateShifts(next, true);
-    setFuture(newFuture);
-    createLog('REDO', 'Performed a redo action on shifts');
-  }, [future, shifts, handleUpdateShifts]);
+    setPast(prev => [{ shifts, absences, holidays }, ...prev]);
+    commitWeek(next, true);
+    setFuture(future.slice(1));
+    createLog('REDO', 'Performed a redo action');
+  }, [future, shifts, absences, holidays, commitWeek]);
 
   const handleAddShift = useCallback((staffId: string, dayIndex: number, startTime: number, endTime: number) => {
     if (isReadOnly) return;
@@ -381,6 +402,61 @@ const App: React.FC = () => {
     const dayLabel = getShiftDate(toWeekId(currentWeek), shift.dayIndex, language);
     createLog('DELETE SHIFT', `Removed shift for ${target?.name || 'Unknown'} on ${dayLabel}`, target);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
+
+  /**
+   * Sur telephone, la barre laterale est un tiroir en z-[110] et les fenetres
+   * modales sont en dessous : ouvrir « Add Shift » depuis le tiroir affichait
+   * donc la fenetre DERRIERE lui, hors d'atteinte. Le tiroir a fait son travail
+   * des qu'on a choisi une action — on le referme.
+   */
+  const fromSidebar = (open: () => void) => () => {
+    setIsMobileSidebarOpen(false);
+    open();
+  };
+
+  // ---------------------------------------------------------------- absences
+  // Une absence se saisit souvent sur PLUSIEURS jours d'un coup (des conges ne
+  // durent pas un jour), d'ou la liste de jours plutot qu'un jour unique.
+  const addAbsences = useCallback((staffId: string, dayIndexes: number[], kind: AbsenceKind) => {
+    if (isReadOnly || dayIndexes.length === 0) return;
+    const target = staffList.find(s => s.id === staffId) || null;
+    // Une personne ne peut pas etre deux fois absente le meme jour : on remplace
+    // le motif au lieu d'empiler deux lignes contradictoires dans la bande.
+    const kept = absences.filter(a => !(a.staffId === staffId && dayIndexes.includes(a.dayIndex)));
+    const added: Absence[] = dayIndexes.map(dayIndex => ({
+      id: Math.random().toString(36).substr(2, 9),
+      staffId,
+      dayIndex,
+      kind,
+    }));
+    commitWeek({ absences: [...kept, ...added] });
+    const days = dayIndexes
+      .slice()
+      .sort((a, b) => a - b)
+      .map(d => getShiftDate(toWeekId(currentWeek), d, language))
+      .join(', ');
+    createLog('CREATE ABSENCE', `Marked ${target?.name || 'Unknown'} as ${kind} on ${days}`, target);
+  }, [absences, commitWeek, isReadOnly, staffList, currentWeek, language]);
+
+  const removeAbsence = useCallback((id: string) => {
+    if (isReadOnly) return;
+    const gone = absences.find(a => a.id === id);
+    if (!gone) return;
+    const target = staffList.find(s => s.id === gone.staffId) || null;
+    commitWeek({ absences: absences.filter(a => a.id !== id) });
+    const dayLabel = getShiftDate(toWeekId(currentWeek), gone.dayIndex, language);
+    createLog('DELETE ABSENCE', `Removed ${gone.kind} for ${target?.name || 'Unknown'} on ${dayLabel}`, target);
+  }, [absences, commitWeek, isReadOnly, staffList, currentWeek, language]);
+
+  // Un jour ferie est un etat du JOUR, pas l'absence d'une personne : il ne
+  // rentre donc pas dans la liste des absences mais dans celle des jours.
+  const toggleHoliday = useCallback((dayIndex: number) => {
+    if (isReadOnly) return;
+    const on = holidays.includes(dayIndex);
+    commitWeek({ holidays: on ? holidays.filter(d => d !== dayIndex) : [...holidays, dayIndex] });
+    const dayLabel = getShiftDate(toWeekId(currentWeek), dayIndex, language);
+    createLog(on ? 'UNSET HOLIDAY' : 'SET HOLIDAY', `${on ? 'Cleared' : 'Marked'} ${dayLabel} as a public holiday`);
+  }, [holidays, commitWeek, isReadOnly, currentWeek, language]);
 
   const handleUpdateStaffList = async (newList: Staff[], newGuests: string[] = guestEmails) => {
     setStaffList(newList);
@@ -661,6 +737,9 @@ const App: React.FC = () => {
             language={language}
             timezone={timezone}
             viewType={viewType}
+            absences={absences}
+            holidays={holidays}
+            onRemoveAbsence={removeAbsence}
           />
         </div>
       </div>
@@ -668,11 +747,13 @@ const App: React.FC = () => {
         shifts={shifts}
         staff={staffList}
         currentWeek={currentWeek}
-        onAddClick={() => setIsShiftModalOpen(true)}
-        onManageStaffClick={() => setIsStaffModalOpen(true)}
+        onAddClick={fromSidebar(() => setIsShiftModalOpen(true))}
+        onAbsenceClick={fromSidebar(() => setIsAbsenceModalOpen(true))}
+        absences={absences}
+        onManageStaffClick={fromSidebar(() => setIsStaffModalOpen(true))}
         onCopyLastWeek={handleCopyLastWeek}
         onDeleteWeek={handleDeleteWeek}
-        onOpenHistory={() => setIsHistoryModalOpen(true)}
+        onOpenHistory={fromSidebar(() => setIsHistoryModalOpen(true))}
         onExportSnapshot={handleExportSnapshot}
         isReadOnly={isReadOnly}
         isLoading={isLoading}
@@ -698,6 +779,19 @@ const App: React.FC = () => {
       />
       <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
       <LogHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} language={language} />
+      <AbsenceModal
+        isOpen={isAbsenceModalOpen}
+        onClose={() => setIsAbsenceModalOpen(false)}
+        staff={assignableStaff}
+        absences={absences}
+        holidays={holidays}
+        days={language === 'fr' ? DAYS_FR : DAYS_EN}
+        shortDays={language === 'fr' ? DAYS_FR_SHORT : DAYS_EN_SHORT}
+        onAdd={addAbsences}
+        onRemove={removeAbsence}
+        onToggleHoliday={toggleHoliday}
+        language={language}
+      />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} />
     </div>
   );

@@ -5,6 +5,99 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Lot 1 : les absences (branche `dev`)
+
+Maquette validee par Serge (« ok go »), puis codee. Repond au probleme de depart :
+**une colonne vide voulait dire deux choses opposees** — la personne est en conge, ou on a
+oublie de la placer. Le planning ne faisait pas la difference.
+
+### Ou elles s'affichent
+
+Une bande dediee, **sous l'en-tete du jour et au-dessus de la premiere heure**. Une absence n'a
+ni debut ni fin : la poser dans la grille horaire lui inventerait une plage. Des hachures la
+distinguent d'un shift plein avant meme qu'on lise l'etiquette. Plusieurs absences le meme jour
+s'empilent. La bande n'existe que s'il y a quelque chose a montrer.
+
+Un **jour ferie** n'est pas l'absence d'une personne mais un etat du jour : il teinte la colonne
+entiere et vit dans `holidays`, pas dans la liste des absences.
+
+### Trois motifs, aucun rouge (R5.2)
+
+| Motif | Couleur | Pourquoi |
+|---|---|---|
+| Conges payes | bleu | Prevu de longue date. Une information, pas une alerte. |
+| Arret maladie | ambre | **Seul motif non prevu**, seul qui oblige a recomposer un service. |
+| Repos | gris | Present pour lever le doute, discret pour ne pas encombrer. |
+
+Un conge n'est pas un incident : une interface qui crie pour une information normale finit
+ignoree quand elle crie pour de vrai.
+
+### Weekly Stats : un zero cesse d'etre ambigu
+
+Une personne absente affiche son motif (« Conges payes · toute la semaine ») **a la place** de
+la barre vide. La barre ne disait rien ; le motif repond a la question.
+
+### Saisie
+
+Bouton dedie a cote de « Add Shift ». Le formulaire prend **plusieurs jours d'un coup** — des
+conges ne durent pas un jour. Une personne ne peut pas etre deux fois absente le meme jour :
+saisir un nouveau motif remplace l'ancien au lieu d'empiler deux lignes contradictoires. Les
+absences deja saisies se suppriment depuis la liste, ou en touchant la puce dans le calendrier.
+
+### Trois choses qu'il a fallu reparer en chemin
+
+1. **La sauvegarde aurait efface les absences.** Firestore remplace le document entier :
+   `saveShiftsToFirebase` ecrivait `{shifts, updatedAt}` et aurait supprime les absences a chaque
+   deplacement de shift. Devenu `saveWeekToFirebase`, qui ecrit la semaine entiere en une
+   transaction — la detection de conflit entre admins reste intacte.
+2. **Annuler aurait laisse un etat que personne n'a valide.** L'historique ne portait que les
+   shifts : annuler apres avoir saisi une absence aurait remis les anciens shifts en gardant
+   l'absence. Il porte desormais la semaine entiere.
+3. **L'export PNG rognait la derniere heure.** La hauteur du conteneur etait une somme ecrite en
+   dur ; la bande s'intercalait sans y etre comptee — **50px de debordement** avec deux absences
+   le meme jour, mesures au navigateur. Passe en `minHeight`, chaque morceau portant deja sa
+   hauteur. Une semaine sans absence garde exactement son allure d'avant (914px, verifie).
+
+### Un defaut pre-existant corrige au passage
+
+Sur telephone, la barre laterale est un tiroir en `z-[110]` et les fenetres modales etaient en
+dessous : **« Add Shift » et « Manage Staff » ouvraient leur fenetre DERRIERE le tiroir**, hors
+d'atteinte. Le tiroir se referme maintenant des qu'on choisit une action — les quatre fenetres
+sont reparees d'un coup.
+
+### Regles Firestore
+
+`absences` et `holidays` sont **optionnels** : les ~38 semaines ecrites avant leur existence, et
+toute restauration depuis une vieille sauvegarde, restent acceptees. Un motif inconnu, un jour
+hors 0-6, une absence sans `staffId` ou plus de 7 feries sont refuses.
+
+**24 tests passent dans l'emulateur**, dont 8 nouveaux. ⚠️ **Les regles ne sont PAS encore
+deployees** — a faire avant de fusionner dans `master`, sinon les absences seront refusees en
+production.
+
+### Verification
+
+Parcours complet joue au navigateur sur 390px et 1440px : ouverture, saisie multi-jours,
+suppression, ferie, affichage de la bande, puce dans Weekly Stats. Aucune erreur JavaScript,
+aucun debordement horizontal, aucun bouton sous 44px. **Aucune ecriture sur la base de
+production** : le mode bac a sable ecrit dans le navigateur.
+
+### Points laisses ouverts (les 4 questions de la maquette)
+
+Tranches par defaut, en gardant les portes ouvertes :
+
+1. **Trois motifs**, pas plus — chaque motif en plus est une couleur a retenir.
+2. **Demi-journees** : le champ `half` existe dans le modele mais l'interface ne le propose pas.
+   Pas de migration de donnees le jour ou on en voudra.
+3. **Admins seulement**, comme pour les shifts. Ouvrir a l'equipe demanderait de changer les regles.
+4. **Le repos est saisissable mais pas obligatoire.**
+
+`types.ts`, `services/firebaseService.ts`, `App.tsx`, `components/Calendar.tsx`,
+`components/Sidebar.tsx`, `components/AbsenceModal.tsx` (nouveau), `utils/translations.ts`,
+`firestore.rules`, `scripts/test-rules.mjs`
+
+---
+
 ## 2026-09-06 — Le badge « Ghost » dit maintenant POURQUOI
 
 **Demande de Serge** apres avoir vu un badge « ⚠ Ghost » sur un shift d'Omar sans pouvoir en

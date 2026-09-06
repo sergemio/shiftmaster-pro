@@ -23,6 +23,41 @@ export interface Shift {
   notes?: string;
 }
 
+/**
+ * Une absence n'a ni heure de debut ni heure de fin : elle ne peut donc pas
+ * etre un Shift avec des horaires bidons. Elle vit dans sa propre bande, sous
+ * l'en-tete du jour — sinon elle sous-entendrait une plage horaire.
+ */
+export type AbsenceKind = 'conge' | 'maladie' | 'repos';
+
+export interface Absence {
+  id: string;
+  staffId: string;
+  dayIndex: number; // 0 (Lun) a 6 (Dim), meme convention que Shift
+  kind: AbsenceKind;
+  /**
+   * Demi-journee. Absent = journee entiere. Le champ existe des maintenant pour
+   * ne pas avoir a migrer les donnees le jour ou on en aura besoin ; l'interface
+   * ne le propose pas encore.
+   */
+  half?: 'am' | 'pm';
+  note?: string;
+}
+
+/**
+ * Tout ce que porte un document de semaine, hors `updatedAt`. Regroupe pour que
+ * la sauvegarde soit atomique : ecrire les shifts seuls effacerait les absences,
+ * puisque Firestore remplace le document entier.
+ */
+export interface WeekData {
+  shifts: Shift[];
+  absences: Absence[];
+  /** dayIndex des jours feries : un etat du JOUR, pas l'absence d'une personne. */
+  holidays: number[];
+}
+
+export const EMPTY_WEEK: WeekData = { shifts: [], absences: [], holidays: [] };
+
 export type DragType = 'move' | 'resize-top' | 'resize-bottom';
 
 export interface DragState {

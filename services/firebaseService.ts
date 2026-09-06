@@ -1,4 +1,4 @@
-import { Shift, Staff, LogEntry } from '../types';
+import { Shift, Staff, LogEntry, Absence, WeekData, EMPTY_WEEK } from '../types';
 
 // Use the Official Google Firebase ESM CDN to ensure total compatibility
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -165,9 +165,12 @@ export class WeekConflictError extends Error {
 }
 
 /**
- * Saves a week's shifts.
+ * Saves a week — shifts, absences and public holidays together.
  *
- * The whole `shifts` array is replaced, so a plain setDoc means last-write-wins:
+ * Ils partent dans la MEME ecriture parce que Firestore remplace le document
+ * entier : sauvegarder les shifts seuls effacerait les absences du jour meme.
+ *
+ * The whole document is replaced, so a plain setDoc means last-write-wins:
  * with three admins, one person's afternoon of work could vanish under another's
  * save, silently. The transaction compares `updatedAt` against what the caller
  * last saw and refuses the write if the document moved underneath them.
@@ -175,15 +178,19 @@ export class WeekConflictError extends Error {
  * @param baseUpdatedAt the `updatedAt` the caller loaded, or null when the week
  *                      did not exist yet. Pass undefined to force the write.
  */
-export const saveShiftsToFirebase = async (
+export const saveWeekToFirebase = async (
   weekId: string,
-  shifts: Shift[],
+  week: WeekData,
   baseUpdatedAt?: string | null
 ): Promise<string> => {
   if (!auth.currentUser) return '';
   const path = `weeks/${weekId}`;
   const weekRef = doc(db, 'weeks', weekId);
-  const cleanShifts = sanitizeData(shifts);
+  const payload = {
+    shifts: sanitizeData(week.shifts),
+    absences: sanitizeData(week.absences),
+    holidays: [...week.holidays].sort((a, b) => a - b),
+  };
   const stamp = new Date().toISOString();
 
   try {
@@ -193,7 +200,7 @@ export const saveShiftsToFirebase = async (
         const theirs = snap.exists() ? (snap.data().updatedAt ?? null) : null;
         if (theirs !== baseUpdatedAt) throw new WeekConflictError(weekId, theirs);
       }
-      tx.set(weekRef, { shifts: cleanShifts, updatedAt: stamp });
+      tx.set(weekRef, { ...payload, updatedAt: stamp });
     });
     return stamp;
   } catch (e) {
@@ -259,22 +266,30 @@ export const saveLogToFirebase = async (log: Omit<LogEntry, 'id'>): Promise<void
  * FIRESTORE DATA METHODS (READ-TIME SUBSCRIPTIONS)
  */
 /**
- * @param callback receives the shifts and the document's `updatedAt`, which the
- *                 caller must hand back to saveShiftsToFirebase for conflict
- *                 detection. null means the week does not exist yet.
+ * @param callback receives the week's content and the document's `updatedAt`,
+ *                 which the caller must hand back to saveWeekToFirebase for
+ *                 conflict detection. null means the week does not exist yet.
+ *
+ * `absences` et `holidays` sont absents des ~38 semaines ecrites avant leur
+ * existence : on retombe sur une liste vide plutot que de faire confiance au
+ * document, et l'ancien planning reste lisible tel quel.
  */
-export const subscribeToShifts = (
+export const subscribeToWeek = (
   weekId: string,
-  callback: (shifts: Shift[], updatedAt: string | null) => void
+  callback: (week: WeekData, updatedAt: string | null) => void
 ) => {
   if (!auth.currentUser) return () => {};
   const path = `weeks/${weekId}`;
   const weekRef = doc(db, 'weeks', weekId);
   return onSnapshot(weekRef, (snap) => {
-    if (!snap.exists()) return callback([], null);
+    if (!snap.exists()) return callback(EMPTY_WEEK, null);
     const data = snap.data();
     // `as Shift[]` would be a lie if the field were missing or malformed.
-    callback(Array.isArray(data.shifts) ? data.shifts as Shift[] : [], data.updatedAt ?? null);
+    callback({
+      shifts: Array.isArray(data.shifts) ? data.shifts as Shift[] : [],
+      absences: Array.isArray(data.absences) ? data.absences as Absence[] : [],
+      holidays: Array.isArray(data.holidays) ? data.holidays.filter((d: unknown) => typeof d === 'number') : [],
+    }, data.updatedAt ?? null);
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, path);
   });

@@ -73,6 +73,26 @@ await check('Planning invalide refuse (jour 9)',    assertFails(setDoc(doc(as(SE
   updatedAt: 'x', shifts: [{ id: 'a', staffId: '3', dayIndex: 9, startTime: 11, endTime: 17 }] })));
 await check('Planning invalide refuse (fin < debut)', assertFails(setDoc(doc(as(SERGE), 'weeks/2026-08-09'), {
   updatedAt: 'x', shifts: [{ id: 'a', staffId: '3', dayIndex: 2, startTime: 17, endTime: 11 }] })));
+// --- absences (ajoutees le 2026-09-06) ------------------------------------
+await check('Semaine AVEC absences acceptee',       assertSucceeds(setDoc(doc(as(SERGE), 'weeks/2026-08-09'), {
+  ...VALID_WEEK,
+  absences: [{ id: 'x1', staffId: '3', dayIndex: 2, kind: 'conge' },
+             { id: 'x2', staffId: '4', dayIndex: 5, kind: 'maladie' }],
+  holidays: [6] })));
+await check('Semaine SANS absences encore acceptee', assertSucceeds(setDoc(doc(as(SERGE), 'weeks/2026-08-09'), VALID_WEEK)));
+await check('Absences vides acceptees',             assertSucceeds(setDoc(doc(as(SERGE), 'weeks/2026-08-09'), {
+  ...VALID_WEEK, absences: [], holidays: [] })));
+await check('Motif d absence inconnu refuse',       assertFails(setDoc(doc(as(SERGE), 'weeks/2026-08-09'), {
+  ...VALID_WEEK, absences: [{ id: 'x', staffId: '3', dayIndex: 2, kind: 'vacances_imaginaires' }] })));
+await check('Absence jour 9 refusee',               assertFails(setDoc(doc(as(SERGE), 'weeks/2026-08-09'), {
+  ...VALID_WEEK, absences: [{ id: 'x', staffId: '3', dayIndex: 9, kind: 'conge' }] })));
+await check('Absence sans staffId refusee',         assertFails(setDoc(doc(as(SERGE), 'weeks/2026-08-09'), {
+  ...VALID_WEEK, absences: [{ id: 'x', dayIndex: 2, kind: 'conge' }] })));
+await check('Plus de 7 feries refuse',              assertFails(setDoc(doc(as(SERGE), 'weeks/2026-08-09'), {
+  ...VALID_WEEK, holidays: [0,1,2,3,4,5,6,7] })));
+await check('Omar (staff) n ecrit PAS d absence',   assertFails(setDoc(doc(as(OMAR), 'weeks/2026-08-09'), {
+  ...VALID_WEEK, absences: [{ id: 'x', staffId: '3', dayIndex: 2, kind: 'conge' }] })));
+
 await check('Collection inconnue fermee',           assertFails(getDoc(doc(as(SERGE), 'autre/doc'))));
 
 await env.cleanup();

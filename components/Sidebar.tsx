@@ -1,6 +1,14 @@
 
 import React, { useState } from 'react';
-import { Shift, Staff, Language } from '../types';
+import { Shift, Staff, Language, Absence } from '../types';
+
+// Meme vocabulaire que la bande du calendrier : un motif porte le meme nom
+// partout, sinon on croit lire deux choses differentes.
+const ABSENCE_LABELS: Record<string, string> = {
+  conge: 'absenceConge',
+  maladie: 'absenceMaladie',
+  repos: 'absenceRepos',
+};
 import { getTranslation } from '../utils/translations';
 import { exportWeeksData, loadStaffFromFirebase } from '../services/firebaseService';
 import { toWeekId, isStaffActiveInWeek } from '../utils/helpers';
@@ -10,6 +18,8 @@ interface SidebarProps {
   staff: Staff[];
   currentWeek: Date;
   onAddClick: () => void;
+  onAbsenceClick: () => void;
+  absences?: Absence[];
   onManageStaffClick: () => void;
   onCopyLastWeek: () => void;
   onDeleteWeek: () => void;
@@ -31,6 +41,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   staff, 
   currentWeek, 
   onAddClick, 
+  onAbsenceClick,
+  absences = [],
   onManageStaffClick, 
   onCopyLastWeek,
   onDeleteWeek,
@@ -220,7 +232,22 @@ const Sidebar: React.FC<SidebarProps> = ({
           const workedHours = worked[person.id] || 0;
           const extraHours = extra[person.id] || 0;
           const totalWorked = workedHours + extraHours;
-          
+
+          // Un 0.0 ressemble a un oubli de planification. Quand la personne est
+          // notee absente, on affiche le motif A LA PLACE de la barre vide : la
+          // barre ne dirait rien, alors que le motif repond a la question.
+          const myAbsences = absences.filter(a => a.staffId === person.id);
+          const absenceLabel = (() => {
+            if (totalWorked > 0 || myAbsences.length === 0) return null;
+            const kinds = [...new Set(myAbsences.map(a => a.kind))];
+            const kindLabel = kinds.length === 1
+              ? t(ABSENCE_LABELS[kinds[0]] ?? 'absenceRepos')
+              : t('absences');
+            return myAbsences.length >= 5
+              ? `${kindLabel} · ${t('allWeek')}`
+              : `${kindLabel} · ${myAbsences.length}${t('daysShort')}`;
+          })();
+
           return (
             <div key={person.id} className="space-y-1">
               <div className="flex justify-between text-xs font-medium">
@@ -232,6 +259,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {totalWorked.toFixed(1)} / {person.targetHours}h
                 </span>
               </div>
+              {absenceLabel ? (
+                <span
+                  className="inline-block text-xs font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200"
+                  style={{
+                    backgroundImage:
+                      'repeating-linear-gradient(-45deg, rgba(255,255,255,.55) 0 5px, transparent 5px 10px)',
+                  }}
+                >
+                  {absenceLabel}
+                </span>
+              ) : (
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
                 {totalWorked > person.targetHours ? (
                   // Over target: target portion in person color + overtime in darker shade
@@ -265,6 +303,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </>
                 )}
               </div>
+              )}
             </div>
           );
         })}
@@ -281,6 +320,16 @@ const Sidebar: React.FC<SidebarProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
             <span className="text-base flex items-center gap-2">{t('addShift')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onAbsenceClick}
+            title={t('absences')}
+            className="w-14 h-14 flex items-center justify-center bg-sky-50 text-sky-600 border border-sky-100 rounded-2xl hover:bg-sky-100 transition-all active:scale-90 shadow-sm"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
           </button>
           <button 
             type="button"

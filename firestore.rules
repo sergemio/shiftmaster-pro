@@ -8,6 +8,8 @@ service cloud.firestore {
     //
     // weeks/{weekId}         weekId = ISO date of the SUNDAY before the week.
     //                        shifts: Shift[], updatedAt: ISO string.
+    //                        absences: Absence[] (optionnel, ajoute le 06/09/2026)
+    //                        holidays: int[] (optionnel, dayIndex des feries)
     //                        dayIndex 0 = Monday .. 6 = Sunday.
     //
     // settings/staff         list: Staff[]         (full objects, for the app)
@@ -77,15 +79,34 @@ service cloud.firestore {
              && shift.endTime > shift.startTime;
     }
 
+    function isValidAbsence(a) {
+      return a.id is string
+             && a.staffId is string
+             && a.dayIndex is int
+             && a.dayIndex >= 0 && a.dayIndex <= 6
+             && a.kind in ['conge', 'maladie', 'repos'];
+    }
+
     // Rules have no loops. Validating a sample of the array is a deliberate
     // trade-off: it catches a malformed client without making the rule
     // unreadable. The shape is enforced end-to-end by the app's types.
+    //
+    // `absences` et `holidays` sont OPTIONNELS : les ~38 semaines ecrites avant
+    // leur existence n'ont pas ces champs, et un restore depuis une vieille
+    // sauvegarde serait refuse si on les exigeait.
     function isValidWeeklyData(data) {
       return data.shifts is list
              && data.shifts.size() <= 100
              && data.updatedAt is string
              && (data.shifts.size() == 0 || isValidShift(data.shifts[0]))
-             && (data.shifts.size() <= 1 || isValidShift(data.shifts[data.shifts.size() - 1]));
+             && (data.shifts.size() <= 1 || isValidShift(data.shifts[data.shifts.size() - 1]))
+             && (!('absences' in data) || (
+                  data.absences is list
+                  && data.absences.size() <= 100
+                  && (data.absences.size() == 0 || isValidAbsence(data.absences[0]))
+                  && (data.absences.size() <= 1 || isValidAbsence(data.absences[data.absences.size() - 1]))
+                ))
+             && (!('holidays' in data) || (data.holidays is list && data.holidays.size() <= 7));
     }
 
     function isValidLog(data) {

@@ -1,6 +1,6 @@
 
 import React, { useRef, useState, useMemo, useEffect } from 'react';
-import { Shift, Staff, DragState, DragType, Language } from '../types';
+import { Shift, Staff, DragState, DragType, Language, Absence } from '../types';
 import { DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR, HOUR_HEIGHT, TOTAL_HOURS } from '../constants';
 import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
@@ -12,8 +12,24 @@ import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
 // Fixed height so it can be added to the capture container's height.
 const EXPORT_HEADER_HEIGHT = 76;
 
+/**
+ * Un motif d'absence = une couleur qui veut dire quelque chose (R5.2).
+ * AUCUN ROUGE : un conge n'est pas un incident, et une interface qui crie pour
+ * une information normale finit ignoree quand elle crie pour de vrai. L'ambre
+ * est reserve a l'arret maladie, seul motif non prevu — le seul qui oblige a
+ * recomposer un service.
+ */
+const ABSENCE_STYLES: Record<string, { cls: string; label: string }> = {
+  conge:   { cls: 'bg-sky-100 text-sky-800 border-sky-300',          label: 'absenceConge' },
+  maladie: { cls: 'bg-amber-100 text-amber-800 border-amber-300',    label: 'absenceMaladie' },
+  repos:   { cls: 'bg-slate-100 text-slate-600 border-slate-300',    label: 'absenceRepos' },
+};
+
 interface CalendarProps {
   shifts: Shift[];
+  absences?: Absence[];
+  holidays?: number[];
+  onRemoveAbsence?: (id: string) => void;
   staff: Staff[];
   currentWeek: Date;
   navDirection?: 'forward' | 'backward' | 'none';
@@ -95,6 +111,9 @@ const CurrentTimeIndicator: React.FC<{ timezone?: string }> = ({ timezone = 'Eur
 
 const Calendar: React.FC<CalendarProps> = ({ 
   shifts, 
+  absences = [],
+  holidays = [],
+  onRemoveAbsence,
   staff, 
   currentWeek, 
   navDirection = 'none',
@@ -297,7 +316,15 @@ const Calendar: React.FC<CalendarProps> = ({
       id="calendar-grid-capture"
       ref={gridRef}
       className="relative select-none min-w-0 md:min-w-[1000px] transition-all duration-300 bg-white"
-      style={{ height: (TOTAL_HOURS + 1) * HOUR_HEIGHT + 64 + (isExporting ? EXPORT_HEADER_HEIGHT : 0) }}
+      /* La hauteur etait la somme, ecrite en dur, de l'en-tete et de la grille.
+         La bande des absences est venue s'intercaler sans y etre comptee : avec
+         deux absences le meme jour, le conteneur debordait de 50px et l'export
+         PNG rognait la derniere heure. Chaque morceau porte deja sa propre
+         hauteur — on laisse donc le conteneur les additionner, au lieu de tenir
+         un total a jour a la main a chaque fois qu'on ajoute une rangee.
+         `minHeight` conserve la hauteur d'origine pour qu'une semaine vide
+         garde exactement l'allure qu'elle avait. */
+      style={{ minHeight: (TOTAL_HOURS + 1) * HOUR_HEIGHT + 64 + (isExporting ? EXPORT_HEADER_HEIGHT : 0) }}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
@@ -366,6 +393,62 @@ const Calendar: React.FC<CalendarProps> = ({
         })}
       </div>
 
+      {/* -------------------------------------------------------------------
+          Bande des absences. Elle est SOUS l'en-tete du jour et AU-DESSUS de la
+          premiere heure, parce qu'une absence n'a ni debut ni fin : la poser
+          dans la grille horaire lui inventerait une plage. Elle n'apparait que
+          s'il y a quelque chose a montrer, pour ne pas voler 34px a la grille
+          les semaines ordinaires.
+          ------------------------------------------------------------------- */}
+      {(absences.length > 0 || holidays.length > 0) && (
+        <div className="flex border-b bg-white">
+          <div className="w-[54px] md:w-[60px] flex-shrink-0 border-r bg-slate-50/50 flex items-center justify-end pr-1 md:pr-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              {t('absencesShort')}
+            </span>
+          </div>
+          {localizedDays.map((_, i) => {
+            const dayAbsences = absences.filter(a => a.dayIndex === i);
+            const isHoliday = holidays.includes(i);
+            return (
+              <div
+                key={i}
+                className={`flex-1 border-r last:border-r-0 p-1 flex flex-col gap-1 min-w-0 ${i === activeDayIndex ? 'block' : 'hidden md:flex'}`}
+              >
+                {isHoliday && (
+                  <div className="rounded px-1.5 py-0.5 text-xs font-bold text-center truncate bg-violet-100 text-violet-700 border border-violet-200">
+                    {t('publicHoliday')}
+                  </div>
+                )}
+                {dayAbsences.map(a => {
+                  const person = staff.find(p => p.id === a.staffId);
+                  const style = ABSENCE_STYLES[a.kind] ?? ABSENCE_STYLES.repos;
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      disabled={isReadOnly || !onRemoveAbsence}
+                      onClick={() => onRemoveAbsence?.(a.id)}
+                      title={`${person?.name || '?'} — ${t(style.label)}${isReadOnly ? '' : ` · ${t('tapToRemove')}`}`}
+                      className={`w-full text-left rounded px-1.5 py-0.5 text-xs font-semibold truncate border ${style.cls} ${isReadOnly ? '' : 'hover:brightness-95 active:scale-[0.98]'} transition-all`}
+                      style={{
+                        // Hachures : une absence n'est pas un bloc de travail.
+                        // La texture le dit avant meme qu'on lise l'etiquette.
+                        backgroundImage:
+                          'repeating-linear-gradient(-45deg, rgba(255,255,255,.55) 0 5px, transparent 5px 10px)',
+                      }}
+                    >
+                      <span className="font-bold">{person?.name || '?'}</span>
+                      <span className="@max-[104px]:hidden"> · {t(style.label)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="flex relative bg-white">
         <div className="w-[54px] md:w-[60px] flex-shrink-0 bg-white z-10">
           {Array.from({ length: TOTAL_HOURS + 1 }).map((_, i) => (
@@ -377,7 +460,7 @@ const Calendar: React.FC<CalendarProps> = ({
 
         <div className={`flex-1 flex calendar-grid relative transition-all duration-300 bg-white ${visualStateClass}`} key={weekId}>
           {localizedDays.map((_, i) => (
-            <div key={i} className={`flex-1 border-r last:border-r-0 h-full relative bg-transparent ${i === activeDayIndex ? 'block' : 'hidden md:block'}`}>
+            <div key={i} className={`flex-1 border-r last:border-r-0 h-full relative ${holidays.includes(i) ? 'bg-violet-50/60' : 'bg-transparent'} ${i === activeDayIndex ? 'block' : 'hidden md:block'}`}>
               {i === todayIndex && !isExporting && <CurrentTimeIndicator timezone={timezone} />}
             </div>
           ))}
