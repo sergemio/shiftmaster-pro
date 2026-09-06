@@ -23,7 +23,7 @@ periode d emploi, qui prend deja toute la largeur de la carte et se replie.
 Mesure au navigateur, cartes de 63px (deux shifts qui se chevauchent) et 130px :
 horaire absent avant, present apres, aux deux largeurs.
 
-
+`components/ShiftCard.tsx`
 
 ---
 
