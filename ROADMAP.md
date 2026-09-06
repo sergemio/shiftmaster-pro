@@ -33,11 +33,16 @@ validation de Serge. Detail de ce qui est fait : `CHANGELOG.md`.
 
 ---
 
-## ⛔ Bloquant avant toute mise en production
+## ✅ Regles Firestore : deployees le 2026-09-06
 
-**Les regles Firestore acceptant les absences ne sont pas deployees.** Fusionner `dev` dans
-`master` sans les deployer ferait refuser toute saisie d'absence en production. 24 tests passent
-dans l'emulateur ; il reste a publier. Ordre : **deployer les regles, PUIS fusionner**.
+La production accepte les absences et les jours feries. Les deux champs sont optionnels, donc la
+version en ligne continue de fonctionner telle quelle. 24 tests passes dans l emulateur sur le
+fichier exact publie, puis relecture depuis l API pour verifier.
+
+Outil : `node scripts/rules-deploy.mjs --show | --diff | --publish`.
+
+**Il reste a fusionner `dev` dans `master`** pour que l equipe recoive les huit lots — a faire
+apres validation de Serge sur la preview.
 
 ---
 

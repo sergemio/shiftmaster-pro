@@ -5,6 +5,47 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Regles Firestore deployees en PRODUCTION
+
+Le point bloquant est leve : la production accepte desormais les absences et les jours feries.
+
+### Ce qui a change en production
+
+19 lignes ajoutees, 1 remplacee. **Aucune regle d acces n a ete touchee** : ni `isAdmin`, ni
+`isTeamMember`, ni `isOwner`, ni aucun `allow read/write`. Seule la validation de forme du
+document de semaine est etendue :
+
+- `absences` doit etre une liste de 100 elements au plus, chaque element ayant un `id`, un
+  `staffId`, un `dayIndex` entre 0 et 6 et un motif parmi `conge`, `maladie`, `repos`.
+- `holidays` doit etre une liste de 7 elements au plus.
+- Les deux sont **optionnels**.
+
+### Pourquoi l ordre comptait
+
+Deployer AVANT de fusionner `dev` dans `master`. Les deux champs etant optionnels, la version
+actuellement en ligne — qui n ecrit que `{shifts, updatedAt}` — continue de fonctionner sans
+rien changer. L inverse aurait casse la saisie d absence pour toute l equipe.
+
+### Verification
+
+Les **24 cas** de `scripts/test-rules.mjs` passent dans l emulateur sur le fichier exact publie,
+dont « Semaine SANS absences encore acceptee » qui garantit la compatibilite avec l existant et
+avec une restauration de sauvegarde.
+
+Apres publication, les regles servies ont ete **relues depuis l API** et comparees au fichier :
+identiques. Donnees de production intactes (26 shifts sur la semaine courante, 9 personnes au
+roster, 3 admins).
+
+Ruleset `3ccb266c` remplace par `df592cd3`.
+
+### Nouvel outil
+
+`scripts/rules-deploy.mjs` : `--show` affiche ce qui tourne reellement, `--diff` le compare au
+depot, `--publish` publie et **relit pour verifier**. Le fichier du depot n est pas une preuve de
+ce qui est deploye — c est la lecon du 09/08, ou les regles servies n etaient pas celles du code.
+
+---
+
 ## 2026-09-06 — Lot 3 : « ma semaine », la vue de l employe (branche `dev`)
 
 L equipe recevait la **grille complete en lecture seule** : sept colonnes, tout le monde, a lire
