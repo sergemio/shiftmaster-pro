@@ -24,4 +24,94 @@
   --color-violet-800: #5b21b6;
   --color-violet-900: #4c1d95;
   --color-violet-950: #2e1065;
+
+  /* ------------------------------------------------------------------
+     Échelle typographique — fermée à 6 tailles (R4.4), profil « dashboard »
+     (R4.6). Elle redéfinit les 6 noms Tailwind : tout `text-sm` du code hérite
+     donc de ces valeurs, sans avoir à toucher aux composants.
+
+     Interligne choisi par rôle (R4.7) : plus le texte est grand, plus il est
+     serré. Un titre qui hérite de l'interligne du corps flotte.
+
+     Toute taille écrite en dur (`text-[10px]`) est une infraction : elle
+     échappe à l'arbitrage tactile ci-dessous et ne suit plus l'échelle.
+     ------------------------------------------------------------------ */
+  --text-xs: 12px;   --text-xs--line-height: 16px;   /* méta, badges, libellés capitales */
+  --text-sm: 14px;   --text-sm--line-height: 20px;   /* secondaire */
+  --text-base: 16px; --text-base--line-height: 24px; /* texte courant */
+  --text-lg: 18px;   --text-lg--line-height: 24px;   /* H3 */
+  --text-xl: 20px;   --text-xl--line-height: 26px;   /* H2 */
+  --text-2xl: 24px;  --text-2xl--line-height: 30px;  /* H1 */
+
+  /* Seule taille hors échelle UI, et volontairement : le titre de l'écran de
+     connexion, qui est une page d'accueil et non un écran de travail (R4.5
+     admet une taille display pour les grands titres). Elle suit la largeur
+     de l'écran pour ne pas toucher les bords sur un téléphone.
+     Un seul usage dans toute l'app — si un deuxième apparaît, c'est que
+     l'échelle UI ci-dessus est mal utilisée. */
+  --text-display: clamp(44px, 13vw, 72px);
+  --text-display--line-height: 1.05;
+}
+
+/* --------------------------------------------------------------------
+   Arbitrage tactile (R4.6). Les mêmes rapports, le plancher relevé d'un
+   cran : au doigt on tient l'écran plus loin et on vise moins bien qu'à la
+   souris. Le texte courant ne descend jamais sous 16px, sinon iOS Safari
+   zoome la page au focus d'un champ et n'en revient pas.
+
+   Un seul endroit à modifier pour toute l'app : les utilitaires Tailwind
+   lisent ces variables, ils ne figent pas les valeurs à la compilation.
+   -------------------------------------------------------------------- */
+/* --------------------------------------------------------------------
+   Compatibilité Tailwind v3 -> v4.
+
+   Jusqu'ici la page chargeait DEUX Tailwind : la v3 servie par
+   cdn.tailwindcss.com dans index.html, et la v4 compilée par Vite. La v3
+   arrivait après et gagnait, ce qui masquait les différences entre les deux.
+   Le CDN retiré, un défaut change de façon visible : en v3 une bordure sans
+   couleur (`border-b`, `border-r`) valait gris 200 ; en v4 elle vaut
+   `currentColor`, donc la couleur du texte — soit du quasi-noir.
+
+   111 bordures du code sont dans ce cas, à commencer par toute la grille du
+   calendrier. On rétablit donc l'ancien défaut, comme le préconise le guide
+   de migration, plutôt que d'aller colorer 111 endroits à la main.
+   -------------------------------------------------------------------- */
+@layer base {
+  *, ::before, ::after, ::backdrop {
+    border-color: var(--color-gray-200);
+  }
+}
+
+@media (pointer: coarse) {
+  :root {
+    --text-xs: 13px;   --text-xs--line-height: 18px;
+    --text-sm: 15px;   --text-sm--line-height: 22px;
+    --text-base: 17px; --text-base--line-height: 26px;
+    --text-lg: 19px;   --text-lg--line-height: 26px;
+    --text-xl: 22px;   --text-xl--line-height: 28px;
+    --text-2xl: 26px;  --text-2xl--line-height: 32px;
+  }
+
+  /* R7.5 — au doigt, 44px est un plancher, pas un objectif. Posé ici plutôt
+     que classe par classe : un bouton ajouté demain en hérite sans y penser.
+     Les cartes de shift ne sont pas des <button> : leur hauteur reste
+     proportionnelle à la durée, elle n'est pas touchée. */
+  button,
+  select,
+  [role="button"] {
+    min-height: 44px;
+  }
+
+  /* Un bouton qui ne contient qu'une icône n'a pas de texte pour lui donner
+     de la largeur : il faut la lui donner explicitement. */
+  button:has(> svg:only-child) {
+    min-width: 44px;
+  }
+
+  /* Échappatoire pour les rares boutons réellement en ligne dans du texte,
+     où 44px casserait la phrase. À utiliser en le justifiant. */
+  button.tap-inline {
+    min-height: 0;
+    min-width: 0;
+  }
 }

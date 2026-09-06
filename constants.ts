@@ -9,6 +9,17 @@ export const DAYS_FR = [
   'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'
 ];
 
+// Version courte pour l'en-tete du calendrier sur telephone : a la taille de
+// texte lisible au doigt, 'Wednesday' deborde d'une colonne de 60px et vient
+// mordre sur ses voisines. Meme information, trois lettres.
+export const DAYS_EN_SHORT = [
+  'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
+];
+
+export const DAYS_FR_SHORT = [
+  'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'
+];
+
 export const HOUR_HEIGHT = 50; // Increased from 40 to 50 (25px per 30-min unit)
 export const START_HOUR = 8; // 8 AM
 export const END_HOUR = 24; // Midnight

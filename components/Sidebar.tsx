@@ -300,14 +300,14 @@ const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <div className="bg-slate-50 rounded-2xl p-4 mb-8 border border-slate-100 shadow-sm">
-        <h3 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5">{t('leaveCoverage')}</h3>
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">{t('leaveCoverage')}</h3>
         <div className="space-y-2.5">
           {coverageEvents.length > 0 ? coverageEvents.map((ev, idx) => (
             <div key={idx} className="flex justify-between text-xs items-center bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
                <div className="flex flex-col">
-                 <span className="text-slate-500 font-bold text-[10px] uppercase mb-0.5">{ev.dateInfo}</span>
+                 <span className="text-slate-500 font-bold text-xs uppercase mb-0.5">{ev.dateInfo}</span>
                  <span className="text-slate-400 font-medium truncate max-w-[120px]">Leave: <b className="text-slate-700">{ev.from}</b></span>
-                 <span className="text-indigo-600 font-bold text-[10px] truncate max-w-[120px]">Cover: {ev.to}</span>
+                 <span className="text-indigo-600 font-bold text-xs truncate max-w-[120px]">Cover: {ev.to}</span>
                </div>
                <span className="font-black text-slate-800 bg-slate-100 px-2 py-1 rounded-lg flex-shrink-0">{ev.hours}h</span>
             </div>

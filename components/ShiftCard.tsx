@@ -43,7 +43,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
 
   return (
     <div 
-      className={`rounded-md px-2 py-1.5 md:px-2 md:py-1.5 shadow-sm flex flex-col overflow-hidden border-l-4 group relative transition-transform ${isReadOnly ? '' : 'active:scale-[0.98]'} ${shift.coverageBy ? 'opacity-90' : ''}`}
+      className={`@container rounded-md px-2 py-1.5 md:px-2 md:py-1.5 @max-[64px]:px-1 shadow-sm flex flex-col overflow-hidden border-l-4 group relative transition-transform ${isReadOnly ? '' : 'active:scale-[0.98]'} ${shift.coverageBy ? 'opacity-90' : ''}`}
       onMouseDown={(e) => {
         if (isReadOnly) return;
         // Prevent drag start on mobile to avoid accidental moves/deletions during tap
@@ -90,17 +90,17 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
         </div>
         
         <div className="flex flex-col gap-1 md:gap-1.5">
-          <span className="text-[9px] md:text-[11px] font-bold text-slate-600 leading-tight">
+          <span className="text-xs font-bold text-slate-600 leading-tight whitespace-nowrap @max-[104px]:hidden">
             {formatTime(startTime)} - {formatTime(endTime)}
           </span>
           <div className="flex gap-1 flex-wrap">
-            <span className="bg-slate-200/60 text-slate-600 text-[10px] md:text-[12px] font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-slate-300/30">
+            <span className="bg-slate-200/60 text-slate-600 text-xs font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-slate-300/30">
               {duration.toFixed(duration % 1 === 0 ? 0 : 1)}H
             </span>
             {isOrphan && (
               <span
                 title="Shift outside this employee's contract dates"
-                className="bg-amber-100 text-amber-800 text-[9px] md:text-[10px] font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-amber-300"
+                className="bg-amber-100 text-amber-800 text-xs font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-amber-300"
               >
                 ⚠ Ghost
               </span>
@@ -116,8 +116,13 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
 
         {shift.coverageBy && coverStaff && (
           <div className="mt-auto pt-2 pb-0.5">
-             <div className="px-2 py-1 bg-indigo-600 rounded text-[10px] font-black text-white uppercase leading-tight break-words whitespace-normal shadow-sm">
-               {t('coveredBy')}: {coverStaff.name}
+             {/* Deux lignes plutot qu'une phrase qui se replie : a la taille de
+                 texte lisible, « COVERED BY: ABDELRAHMAN » coupait le prenom en
+                 plein milieu d'un mot. Le libelle tient seul, le nom est tronque
+                 proprement s'il est trop long pour la colonne. */}
+             <div className="px-2 py-1 bg-indigo-600 rounded text-white uppercase shadow-sm">
+               <div className="text-xs font-bold leading-tight opacity-80">{t('coveredBy')}</div>
+               <div className="text-xs font-black leading-tight truncate">{coverStaff.name}</div>
              </div>
           </div>
         )}

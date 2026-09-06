@@ -200,7 +200,7 @@ const LogHistoryModal: React.FC<LogHistoryModalProps> = ({ isOpen, onClose, lang
                   className={`px-3 py-1.5 rounded-xl border-2 text-xs font-bold flex items-center gap-2 transition-all disabled:opacity-40 ${role === key ? 'bg-indigo-50 border-indigo-500 text-indigo-800' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-200'}`}
                 >
                   {label}
-                  <span className={`text-[10px] font-black px-1.5 rounded-full ${role === key ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{n}</span>
+                  <span className={`text-xs font-black px-1.5 rounded-full ${role === key ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{n}</span>
                 </button>
               ))}
             </div>
@@ -223,7 +223,7 @@ const LogHistoryModal: React.FC<LogHistoryModalProps> = ({ isOpen, onClose, lang
           </div>
         </div>
 
-        <div className="px-5 md:px-6 pt-3 pb-1 flex items-center justify-between text-[11px] font-black uppercase tracking-widest text-slate-400 flex-none">
+        <div className="px-5 md:px-6 pt-3 pb-1 flex items-center justify-between text-xs font-black uppercase tracking-widest text-slate-400 flex-none">
           <span>
             {loading ? (fr ? 'Chargement…' : 'Loading…')
               : rows.length
@@ -265,8 +265,8 @@ const LogHistoryModal: React.FC<LogHistoryModalProps> = ({ isOpen, onClose, lang
                   <svg className={`w-3.5 h-3.5 text-slate-400 flex-none transition-transform ${isOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
                     <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  <span className="text-[13px] font-extrabold text-slate-800 capitalize flex-none">{dayName(day)}</span>
-                  <span className="text-[11px] font-bold text-slate-400">
+                  <span className="text-sm font-extrabold text-slate-800 capitalize flex-none">{dayName(day)}</span>
+                  <span className="text-xs font-bold text-slate-400">
                     {items.length} {fr ? 'action' : 'action'}{items.length > 1 ? 's' : ''}
                   </span>
                   <span className="ml-auto flex items-center gap-2">
@@ -278,7 +278,7 @@ const LogHistoryModal: React.FC<LogHistoryModalProps> = ({ isOpen, onClose, lang
                         <span
                           key={a}
                           title={a}
-                          className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-[8px] font-black text-white"
+                          className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-xs font-black text-white"
                           style={{ backgroundColor: colorFor(a), marginLeft: i ? -6 : 0 }}
                         >
                           {initials(a)}
@@ -296,25 +296,25 @@ const LogHistoryModal: React.FC<LogHistoryModalProps> = ({ isOpen, onClose, lang
                       const target = targetOf(log);
                       return (
                         <div key={log.id} className="flex gap-3 py-2 px-2 rounded-lg hover:bg-slate-50">
-                          <span className="text-[11px] font-extrabold text-slate-400 w-10 flex-none pt-0.5 tabular-nums">
+                          <span className="text-xs font-extrabold text-slate-400 w-10 flex-none pt-0.5 tabular-nums">
                             {new Date(log.timestamp).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
                           </span>
                           <span
-                            className="w-6 h-6 rounded-full flex-none flex items-center justify-center text-[9px] font-black text-white"
+                            className="w-6 h-6 rounded-full flex-none flex items-center justify-center text-xs font-black text-white"
                             style={{ backgroundColor: colorFor(log.userName || '?') }}
                           >
                             {initials(log.userName || '?')}
                           </span>
                           <div className="min-w-0 flex-1">
-                            <p className="text-[13px] text-slate-800 leading-snug">
-                              <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded mr-1.5 align-[1px] ${TONE_CLASS[meta.tone]}`}>
+                            <p className="text-sm text-slate-800 leading-snug">
+                              <span className={`inline-block text-xs font-black uppercase tracking-wider px-1.5 py-0.5 rounded mr-1.5 align-[1px] ${TONE_CLASS[meta.tone]}`}>
                                 {meta.tag}
                               </span>
                               <b className="font-extrabold">{highlight(who)}</b>{' '}
                               {fr ? meta.verbFr : meta.verb}
                               {target && <> <b className="font-extrabold">{highlight(target)}</b></>}
                             </p>
-                            <p className="text-[11px] text-slate-400 mt-0.5 truncate">{detailOf(log)}</p>
+                            <p className="text-xs text-slate-400 mt-0.5 truncate">{detailOf(log)}</p>
                           </div>
                         </div>
                       );

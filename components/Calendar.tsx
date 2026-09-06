@@ -1,7 +1,7 @@
 
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { Shift, Staff, DragState, DragType, Language } from '../types';
-import { DAYS_EN, DAYS_FR, START_HOUR, END_HOUR, HOUR_HEIGHT, TOTAL_HOURS } from '../constants';
+import { DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR, HOUR_HEIGHT, TOTAL_HOURS } from '../constants';
 import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import { getTranslation } from '../utils/translations';
@@ -112,9 +112,26 @@ const Calendar: React.FC<CalendarProps> = ({
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
+  const dayStripRef = useRef<HTMLDivElement>(null);
   const weekId = getIsoDateString(currentWeek);
   const t = getTranslation(language as Language);
   const localizedDays = language === 'fr' ? DAYS_FR : DAYS_EN;
+  const shortDays = language === 'fr' ? DAYS_FR_SHORT : DAYS_EN_SHORT;
+
+  // Sur telephone la bande de jours defile horizontalement et n'en montre que
+  // cinq ou six. Le jour actif pouvait donc etre hors champ — on regardait une
+  // colonne sans pouvoir lire de quel jour il s'agissait, typiquement le
+  // dimanche. On le ramene au centre a chaque changement de jour ou de semaine.
+  useEffect(() => {
+    const strip = dayStripRef.current;
+    if (!strip || strip.scrollWidth <= strip.clientWidth) return;
+    const btn = strip.querySelectorAll('button')[activeDayIndex] as HTMLElement | undefined;
+    if (!btn) return;
+    strip.scrollTo({
+      left: btn.offsetLeft - (strip.clientWidth - btn.clientWidth) / 2,
+      behavior: 'smooth',
+    });
+  }, [activeDayIndex, weekId]);
 
   const todayIndex = useMemo(() => {
     const { isoDate, dayIndex } = getNowInTimezone(timezone);
@@ -287,7 +304,7 @@ const Calendar: React.FC<CalendarProps> = ({
         <div className="absolute inset-0 z-50 bg-white/40 backdrop-blur-[1px] flex items-start justify-center pt-32 transition-all duration-500 animate-in fade-in">
           <div className="flex flex-col items-center gap-3">
              <div className="w-8 h-8 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
-             <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600/60">Updating...</span>
+             <span className="text-xs font-black uppercase tracking-widest text-indigo-600/60">Updating...</span>
           </div>
         </div>
       )}
@@ -299,21 +316,21 @@ const Calendar: React.FC<CalendarProps> = ({
         >
           <img src={SEZAM_LOGO_DATA_URI} alt="Sezam&Co" className="block w-auto" style={{ height: 46 }} />
           <div className="flex-1">
-            <div className="text-[9px] font-black uppercase tracking-[0.2em]" style={{ color: '#417f0a' }}>
+            <div className="text-xs font-black uppercase tracking-[0.2em]" style={{ color: '#417f0a' }}>
               Weekly Schedule
             </div>
-            <div className="mt-0.5 text-[20px] font-extrabold tracking-tight text-slate-800">
+            <div className="mt-0.5 text-xl font-extrabold tracking-tight text-slate-800">
               {getWeekRangeLongEn(currentWeek)}
             </div>
           </div>
-          <div className="text-right text-[10px] font-extrabold uppercase tracking-[0.12em] leading-tight text-slate-400 whitespace-nowrap">
+          <div className="text-right text-xs font-extrabold uppercase tracking-[0.12em] leading-tight text-slate-400 whitespace-nowrap">
             Sezam&amp;Co<br />Week {getIsoWeekNumber(currentWeek)}
           </div>
         </div>
       )}
 
-      <div className="flex border-b sticky top-0 z-20 bg-white shadow-sm overflow-x-auto hide-scrollbar md:overflow-visible">
-        <div className="w-[40px] md:w-[60px] border-r bg-slate-50/50 flex-shrink-0" />
+      <div ref={dayStripRef} className="flex border-b sticky top-0 z-20 bg-white shadow-sm overflow-x-auto hide-scrollbar md:overflow-visible">
+        <div className="w-[54px] md:w-[60px] border-r bg-slate-50/50 flex-shrink-0" />
         {localizedDays.map((day, idx) => {
           const date = new Date(currentWeek);
           date.setDate(date.getDate() + idx + 1); // +1: weekStart is Sunday, dayIndex 0 = Monday
@@ -331,8 +348,9 @@ const Calendar: React.FC<CalendarProps> = ({
               onClick={() => setActiveDayIndex(idx)}
               className={`flex-1 h-12 md:h-14 flex flex-col items-center justify-center border-r last:border-r-0 transition-all min-w-[60px] md:min-w-0 ${isToday ? 'bg-indigo-50/30' : 'bg-white'} ${isActive ? 'bg-indigo-50/50' : ''}`}
             >
-              <span className={`font-bold text-[8px] md:text-[9px] uppercase tracking-widest ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
-                {day}
+              <span className={`font-bold text-xs uppercase tracking-widest ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
+                <span className="md:hidden">{shortDays[idx]}</span>
+                <span className="hidden md:inline">{day}</span>
               </span>
               <div className={`
                 mt-0.5 md:mt-1 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center rounded-full font-black text-sm md:text-base transition-all
@@ -347,9 +365,9 @@ const Calendar: React.FC<CalendarProps> = ({
       </div>
 
       <div className="flex relative bg-white">
-        <div className="w-[40px] md:w-[60px] flex-shrink-0 bg-white z-10">
+        <div className="w-[54px] md:w-[60px] flex-shrink-0 bg-white z-10">
           {Array.from({ length: TOTAL_HOURS + 1 }).map((_, i) => (
-            <div key={i} className="border-b text-[8px] md:text-[10px] text-gray-400 text-right pr-1 md:pr-2 pt-1 flex flex-col justify-start bg-white" style={{ height: HOUR_HEIGHT }}>
+            <div key={i} className="border-b text-xs text-gray-400 text-right pr-1 md:pr-2 pt-1 flex flex-col justify-start bg-white" style={{ height: HOUR_HEIGHT }}>
               {String(START_HOUR + i).padStart(2, '0')}:00
             </div>
           ))}

@@ -40,10 +40,10 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
         <thead>
           <tr className="bg-slate-50 border-b">
             <th className="p-4 text-left border-r w-[200px] sticky left-0 bg-slate-50 z-10">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('manageStaff')}</span>
+              <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{t('manageStaff')}</span>
             </th>
             <th className="p-4 text-left border-r w-[150px] sticky left-[200px] bg-slate-50 z-10 hidden md:table-cell">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Poste</span>
+              <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Poste</span>
             </th>
             {localizedDays.map((day, idx) => {
               const date = new Date(currentWeek);
@@ -51,7 +51,7 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
               return (
                 <th key={day} className="p-4 text-center border-r last:border-r-0 min-w-[120px]">
                   <div className="flex flex-col items-center">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{day}</span>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{day}</span>
                     <span className="text-lg font-black text-slate-800">{date.getDate()}</span>
                   </div>
                 </th>
@@ -73,11 +73,11 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
                   <div className="flex flex-col">
                     <div className="flex items-center gap-1.5 mb-1">
                       <span className="text-sm font-bold text-slate-800 leading-none">{member.name}</span>
-                      <span className={`text-[8px] px-1 py-0.5 rounded uppercase font-black tracking-widest ${member.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <span className={`text-xs px-1 py-0.5 rounded uppercase font-black tracking-widest ${member.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
                         {member.role}
                       </span>
                     </div>
-                    <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-tighter self-start">
+                    <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-tighter self-start">
                       {member.totalHours.toFixed(1)}h / {member.targetHours}h
                     </span>
                   </div>
@@ -104,16 +104,16 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
                           }}
                         >
                           <div className="flex flex-col">
-                            <span className="text-[10px] font-bold text-slate-800">
+                            <span className="text-xs font-bold text-slate-800">
                               {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
                             </span>
-                            <span className="text-[9px] font-medium text-slate-500 uppercase tracking-tight">
+                            <span className="text-xs font-medium text-slate-500 uppercase tracking-tight">
                               {(shift.endTime - shift.startTime).toFixed(1)}h
                             </span>
                           </div>
                           {shift.notes && (
                             <div className="mt-1 pt-1 border-t border-slate-200/50">
-                              <p className="text-[8px] text-slate-400 italic truncate">{shift.notes}</p>
+                              <p className="text-xs text-slate-400 italic truncate">{shift.notes}</p>
                             </div>
                           )}
                           {shift.coverageBy && (

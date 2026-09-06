@@ -40,7 +40,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
         <div className="p-6 md:p-8 space-y-6">
           <section className="space-y-4">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">{t('language')}</label>
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">{t('language')}</label>
             <div className="grid grid-cols-2 gap-3">
               <button 
                 onClick={() => onLanguageChange('en')}
@@ -60,7 +60,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           </section>
 
           <section className="space-y-4">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">{t('viewType')}</label>
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">{t('viewType')}</label>
             <div className="grid grid-cols-2 gap-3">
               <button 
                 onClick={() => onViewTypeChange('day')}

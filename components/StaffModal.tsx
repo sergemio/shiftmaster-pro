@@ -182,7 +182,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
         <div className="p-4 md:p-6 border-b border-slate-100 flex justify-between items-center">
           <div>
             <h2 className="text-lg md:text-xl font-bold text-slate-800">Manage Staff Roster</h2>
-            <p className="text-[8px] md:text-[10px] text-slate-400 font-medium uppercase tracking-widest">Tap a member to edit details</p>
+            <p className="text-xs text-slate-400 font-medium uppercase tracking-widest">Tap a member to edit details</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors p-2">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -190,7 +190,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-white">
-          <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
+          <h3 className="text-xs md:text-xs font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
             <span>Current Team ({orderedStaff.filter(s => !isFormerStaff(s)).length})</span>
           </h3>
           <div className="space-y-2">
@@ -203,7 +203,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
               <React.Fragment key={staff.id}>
               {startsFormerSection && (
                 <div className="flex items-center gap-3 pt-4 pb-1">
-                  <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                  <span className="text-xs md:text-xs font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">
                     Former Team ({orderedStaff.filter(s => isFormerStaff(s)).length})
                   </span>
                   <span className="h-px flex-1 bg-slate-100" />
@@ -226,13 +226,13 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     <div>
                       <p className="font-bold text-slate-800 flex items-center gap-1.5 leading-none">
                         {staff.name}
-                        <span className={`text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest ${staff.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-500'}`}>
+                        <span className={`text-xs px-1.5 py-0.5 rounded uppercase font-black tracking-widest ${staff.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-500'}`}>
                           {staff.role}
                         </span>
                       </p>
-                      <p className="text-[10px] text-slate-400 mt-1 font-medium truncate max-w-[200px]">{staff.email}</p>
+                      <p className="text-xs text-slate-400 mt-1 font-medium truncate max-w-[200px]">{staff.email}</p>
                       {isFormer && (
-                        <p className="text-[10px] text-amber-700 font-bold mt-0.5">
+                        <p className="text-xs text-amber-700 font-bold mt-0.5">
                           Left on {staff.endDate} · history kept
                         </p>
                       )}
@@ -242,7 +242,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                   {editingId !== staff.id && (
                     <div className="flex items-center gap-2">
                       {showSavedId === staff.id && (
-                        <span className="text-[10px] font-bold text-green-600 animate-in fade-in slide-in-from-right-2">Saved! ✓</span>
+                        <span className="text-xs font-bold text-green-600 animate-in fade-in slide-in-from-right-2">Saved! ✓</span>
                       )}
                       {/* Nobody is ever deleted: an end date is set instead, so
                           their past shifts and hours stay usable for payroll. */}
@@ -250,7 +250,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         <button
                           onClick={(e) => { e.stopPropagation(); setConfirming({ staff, action: 'reinstate' }); }}
                           title="Bring back to the active team"
-                          className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-all"
+                          className="px-2.5 py-1.5 text-xs font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-all"
                         >
                           Reinstate
                         </button>
@@ -271,7 +271,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                   <div className="mt-3 pt-3 border-t border-indigo-100 animate-in slide-in-from-top-2 duration-200 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">Weekly Target (h)</label>
+                        <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Weekly Target (h)</label>
                         <input 
                           type="number"
                           value={editTargetHours}
@@ -280,7 +280,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">Access Role</label>
+                        <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Access Role</label>
                         <select 
                           value={editRole}
                           onChange={(e) => setEditRole(e.target.value as 'admin' | 'staff')}
@@ -292,7 +292,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       </div>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">Google Email Address</label>
+                      <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Google Email Address</label>
                       <input 
                         type="email"
                         value={editEmail}
@@ -303,7 +303,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">First Day on the Job</label>
+                        <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">First Day on the Job</label>
                         <input
                           type="date"
                           value={editStartDate}
@@ -312,7 +312,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">Last Day on the Job <span className="text-slate-400 normal-case font-medium">(leave empty if still employed)</span></label>
+                        <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Last Day on the Job <span className="text-slate-400 normal-case font-medium">(leave empty if still employed)</span></label>
                         <input
                           type="date"
                           value={editEndDate}
@@ -322,7 +322,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       </div>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-indigo-700 uppercase mb-1">Brand Color</label>
+                      <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Brand Color</label>
                       <div className="flex gap-2">
                         <input 
                           type="color" 
@@ -334,7 +334,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                           type="text" 
                           value={editColor}
                           onChange={(e) => setEditColor(e.target.value)}
-                          className="flex-1 px-2 py-1 bg-white border border-indigo-200 rounded text-[10px] font-mono outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="flex-1 px-2 py-1 bg-white border border-indigo-200 rounded text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
                     </div>
@@ -342,14 +342,14 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       <button 
                         type="button"
                         onClick={(e) => saveEdit(e, staff)}
-                        className="flex-1 py-2 bg-indigo-600 text-white text-[10px] font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200 active:scale-95"
+                        className="flex-1 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200 active:scale-95"
                       >
                         Apply Changes
                       </button>
                       <button 
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setEditingId(null); }}
-                        className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 text-[10px] font-bold rounded-lg hover:bg-indigo-50 transition-colors"
+                        className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 text-xs font-bold rounded-lg hover:bg-indigo-50 transition-colors"
                       >
                         Cancel
                       </button>
@@ -364,7 +364,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
 
           {/* Guest Admins Section */}
           <div className="pt-6 border-t border-slate-100 space-y-4">
-            <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
+            <h3 className="text-xs md:text-xs font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
               <span>Approved Guest Admins ({guestEmails.length})</span>
             </h3>
             
@@ -377,7 +377,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     </div>
                     <div>
                       <p className="text-xs font-bold text-slate-800 leading-none">{email}</p>
-                      <p className="text-[9px] text-amber-600 mt-1 font-black uppercase tracking-tighter">External Admin Access</p>
+                      <p className="text-xs text-amber-600 mt-1 font-black uppercase tracking-tighter">External Admin Access</p>
                     </div>
                   </div>
                   <button 
@@ -415,13 +415,13 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         setNewGuestEmail('');
                         setIsAddingGuest(false);
                       }}
-                      className="px-3 py-1.5 bg-amber-500 text-white text-[10px] font-bold rounded-lg hover:bg-amber-600 transition-colors"
+                      className="px-3 py-1.5 bg-amber-500 text-white text-xs font-bold rounded-lg hover:bg-amber-600 transition-colors"
                     >
                       Add
                     </button>
                     <button 
                       onClick={() => setIsAddingGuest(false)}
-                      className="px-2 py-1.5 text-slate-400 hover:text-slate-600 text-[10px] font-bold"
+                      className="px-2 py-1.5 text-slate-400 hover:text-slate-600 text-xs font-bold"
                     >
                       Cancel
                     </button>
@@ -430,7 +430,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
               ) : (
                 <button 
                   onClick={() => setIsAddingGuest(true)}
-                  className="w-full py-2.5 border border-dashed border-amber-200 rounded-xl text-amber-600 text-[10px] font-bold hover:bg-amber-50 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-2.5 border border-dashed border-amber-200 rounded-xl text-amber-600 text-xs font-bold hover:bg-amber-50 transition-all flex items-center justify-center gap-2"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                   Add Guest Admin Email
@@ -468,7 +468,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-1">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Full Name</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Full Name</label>
                     <input 
                       required
                       type="text" 
@@ -479,7 +479,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     />
                   </div>
                   <div className="col-span-1">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Google Email</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Google Email</label>
                     <input 
                       required
                       type="email" 
@@ -490,7 +490,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Weekly Target (h)</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Weekly Target (h)</label>
                     <input 
                       type="number" 
                       value={newTargetHours}
@@ -499,7 +499,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Initial Role</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Initial Role</label>
                     <select 
                       value={newRole}
                       onChange={(e) => setNewRole(e.target.value as 'admin' | 'staff')}
@@ -510,7 +510,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">First Day on the Job</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">First Day on the Job</label>
                     <input
                       required
                       type="date"
@@ -520,7 +520,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Last Day on the Job <span className="text-slate-400 normal-case font-medium">(leave empty if still employed)</span></label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Last Day on the Job <span className="text-slate-400 normal-case font-medium">(leave empty if still employed)</span></label>
                     <input
                       type="date"
                       value={newEndDate}
@@ -529,7 +529,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">Brand Color</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Brand Color</label>
                     <div className="flex gap-2">
                       <input 
                         type="color" 

@@ -518,7 +518,7 @@ const App: React.FC = () => {
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v12a2 2 0 002 2z" />
              </svg>
           </div>
-          <h1 className="text-7xl font-black mb-4 tracking-tighter drop-shadow-2xl">{t('appName')}</h1>
+          <h1 className="text-display font-black mb-4 tracking-tighter drop-shadow-2xl">{t('appName')}</h1>
           <p className="text-emerald-100/60 font-bold text-xl uppercase tracking-[0.3em]">Enterprise Weekly Scheduling</p>
         </div>
         <div className="flex flex-col gap-5 w-full max-w-sm relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
@@ -590,20 +590,20 @@ const App: React.FC = () => {
               </button>
               <div className="flex items-center gap-2 ml-1 md:ml-3">
                 {saveError ? (
-                  <div className="bg-red-100 text-red-700 text-[8px] md:text-[10px] font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-red-200 flex items-center gap-1 md:gap-2">
+                  <div className="bg-red-100 text-red-700 text-xs font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-red-200 flex items-center gap-1 md:gap-2">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
                     <span className="hidden xs:inline">Not saved</span>
                   </div>
                 ) : isLoading ? (
-                  <div className="bg-indigo-50 text-indigo-600 text-[8px] md:text-[10px] font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-indigo-100 flex items-center gap-1 md:gap-2">
+                  <div className="bg-indigo-50 text-indigo-600 text-xs font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-indigo-100 flex items-center gap-1 md:gap-2">
                     <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-ping" /> <span className="hidden xs:inline">{t('syncing')}</span>
                   </div>
                 ) : showSyncSuccess ? (
-                  <div className="bg-green-100 text-green-700 text-[8px] md:text-[10px] font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-green-200 flex items-center gap-1 md:gap-2 animate-in fade-in slide-in-from-left-2">
+                  <div className="bg-green-100 text-green-700 text-xs font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-green-200 flex items-center gap-1 md:gap-2 animate-in fade-in slide-in-from-left-2">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg> <span className="hidden xs:inline">{t('saved')}</span>
                   </div>
                 ) : (
-                  <div className="bg-green-50 text-green-600 text-[8px] md:text-[10px] font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-green-100 flex items-center gap-1 md:gap-2">
+                  <div className="bg-green-50 text-green-600 text-xs font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-green-100 flex items-center gap-1 md:gap-2">
                     <div className="w-1.5 h-1.5 bg-green-600 rounded-full" /> <span className="hidden xs:inline">{t('live')}</span>
                   </div>
                 )}
@@ -623,7 +623,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2 md:gap-3 pl-2 border-l">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold text-slate-900 leading-none truncate max-w-[80px]">{user?.displayName || "User"}</p>
-                <button onClick={handleLogout} className="text-[10px] text-red-500 hover:underline cursor-pointer">{t('signOut')}</button>
+                <button onClick={handleLogout} className="text-xs text-red-500 hover:underline cursor-pointer whitespace-nowrap">{t('signOut')}</button>
               </div>
               <div className="w-8 h-8 md:w-9 md:h-9 rounded-full border-2 border-indigo-100 p-0.5 overflow-hidden">
                 <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'User')}&background=6366f1&color=fff`} className="w-full h-full rounded-full object-cover" alt="User" />

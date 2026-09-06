@@ -5,6 +5,121 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-06 — Lot 0 : fondations typographiques et tactiles (branche `dev`)
+
+Premier lot du chantier UX. **Aucune fonctionnalite ajoutee** : on remet d'aplomb les
+fondations sur lesquelles vont se poser les absences, le compteur mensuel et la vue
+personnelle de l'equipe. Fait sur `dev`, visible sur
+https://sergemio.github.io/shiftmaster-pro/preview/
+
+### 1. L'app chargeait DEUX Tailwind (cause racine)
+
+`index.html` chargeait `cdn.tailwindcss.com` — la version **3**, generee dans le navigateur —
+en plus de la version **4** compilee par Vite. Le CDN passait apres et gagnait, ce qui
+rendait toute redefinition de l'echelle typographique sans effet.
+
+Retire, avec l'`importmap` React vers esm.sh qui l'accompagnait (verifie : aucune trace
+d'`esm.sh` dans le bundle, React etait deja empaquete). Verifie aussi qu'aucune classe n'est
+assemblee dynamiquement dans le code — le compilateur les voit donc toutes.
+
+**Effet de bord traite** : en v4 une bordure sans couleur vaut `currentColor`, la ou la v3
+donnait gris 200. 111 bordures du code sont dans ce cas, dont toute la grille du calendrier,
+qui est passee au quasi-noir. Couche de compatibilite ajoutee dans `index.css`.
+
+### 2. Echelle typographique fermee (R4.4 / R4.6 / R4.7)
+
+11 tailles distinctes cohabitaient, dont 77 ecrites en dur (`text-[8px]` a `text-[20px]`).
+Pire, le motif dominant etait `text-[8px] md:text-[10px]` : **le texte etait plus petit sur
+telephone que sur ordinateur**, l'inverse de ce qu'il faut.
+
+Mesure avant correction, sur un telephone de 390px : **25 elements rendus en 8px**.
+
+Les 6 noms Tailwind sont redefinis dans `@theme`, et les 77 valeurs en dur remplacees par ces
+noms. Une paire responsive s'effondre sur le cran du plus grand des deux.
+
+| | souris | doigt |
+|---|---|---|
+| meta, badges | 12 | 13 |
+| secondaire | 14 | 15 |
+| texte courant | 16 | 17 |
+| H3 | 18 | 19 |
+| H2 | 20 | 22 |
+| H1 | 24 | 26 |
+
+Le basculement se fait par `@media (pointer: coarse)` sur les variables : **un seul endroit**
+pour toute l'app. Seule taille hors echelle, assumee et documentee : le titre de l'ecran de
+connexion (`--text-display`), qui suit desormais la largeur de l'ecran.
+
+### 3. Plancher tactile de 44px (R7.5)
+
+10 boutons sur 23 mesuraient entre 28 et 40px de haut sur telephone. Regle posee une fois dans
+`index.css` sous `pointer: coarse`, plutot que classe par classe — un bouton ajoute demain en
+herite. Les cartes de shift sont des `div`, leur hauteur reste proportionnelle a la duree.
+
+Sur ordinateur a la souris, rien ne change : R7.5 vise le tactile.
+
+### 4. Trois debordements provoques par le texte plus grand
+
+Corriges apres mesure, pas au jugé :
+
+- **Noms de jours** : « Wednesday » a 13px mordait sur ses voisins. Version courte
+  (`Mon`/`Lun`) sur telephone, nom complet des qu'il y a la place.
+- **Gouttiere des heures** : 40px ne contenait plus « 08:00 », coupe a gauche. Passee a 54px.
+- **Badge de remplacement** : « COVERED BY: ABDELRAHMAN » coupait le prenom en plein milieu
+  d'un mot. Passe sur deux lignes, nom tronque proprement.
+
+### 5. Cartes de shift etroites (requete de conteneur)
+
+Trois shifts simultanes se partagent une colonne de 134px, soit ~40px chacun — c'est le cas
+d'un samedi, et **c'est ce que montre l'export PNG hebdomadaire**. A 13px l'horaire s'y
+repliait sur trois lignes tronquees.
+
+La carte devient un conteneur de requete : sous 104px de large elle masque l'horaire et garde
+le nom et la duree (`5H`), qui portent l'information utile. Le choix depend de la largeur de
+**la carte**, pas de celle de l'ecran.
+
+**Limite connue, non traitee** : a 40px de large un nom reste illisible (« T… »). C'est une
+contrainte de la vue jour, pas une regression ; la vue employe existe pour ce cas. A rouvrir
+dans un lot ulterieur.
+
+### 6. Jour actif hors champ sur telephone
+
+La bande de jours defile horizontalement et n'en montre que cinq ou six. Un dimanche etait
+donc selectionne sans etre visible : on regardait une colonne sans savoir laquelle. Elle se
+recentre maintenant sur le jour actif a chaque changement de jour ou de semaine.
+
+### Verification
+
+Banc d'essai Playwright, trois gabarits (390 / 820 / 1440), mesures et non estimations.
+Le banc de rendu des cartes etait temporaire et a ete supprime.
+
+| | avant | apres |
+|---|---|---|
+| Boutons sous 44px (telephone) | 10 / 23 | **0** |
+| Boutons sous 44px (tablette) | 9 / 22 | **0** |
+| Plus petit texte (telephone) | 8px | **13px** |
+| Tailles distinctes | 11 | **6 + 1 display** |
+| Debordement horizontal | 0 | 0 |
+
+⚠️ **Non verifie** : le rendu avec des shifts reels. Le mode « Developer Sandbox » n'est pas
+authentifie, donc les regles Firestore refusent la lecture des semaines — l'app s'ouvre sur une
+grille vide. Les cartes ont ete verifiees isolement sur donnees fabriquees. **Aucune ecriture
+n'a ete faite sur la base.**
+
+### Ce qui change a l'oeil pour l'equipe
+
+Le texte est plus grand partout, nettement sur telephone. L'export PNG hebdomadaire sortira
+donc avec un texte plus lisible qu'avant. C'est le seul changement d'apparence : aucune couleur,
+aucun espacement, aucune mise en page n'a ete retouche.
+
+### Fichiers
+
+`index.css`, `index.html`, `constants.ts`, `App.tsx`, `components/Calendar.tsx`,
+`components/ShiftCard.tsx`, `components/EmployeeView.tsx`, `components/LogHistoryModal.tsx`,
+`components/SettingsModal.tsx`, `components/Sidebar.tsx`, `components/StaffModal.tsx`
+
+---
+
 ## 2026-08-11 — Sauvegarde decalee a 08:30 UTC (suite de l'incident quota)
 
 ### Ce qui s'est passe
