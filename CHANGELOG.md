@@ -12,17 +12,24 @@ bas et occupaient la hauteur utile en permanence. Il tient desormais sur une lig
 la convention — avec un chevron qui ouvre le detail. Le nombre suffit a savoir s'il y a quelque
 chose a regarder ; le detail se demande.
 
-**Le bouton d'ajout garde le « + » et perd le mot.** « Add Shift » repetait ce que l'icone disait
-deja, et son `py-4` avec un texte sur deux lignes le rendait plus haut que ses voisins : la rangee
-n'etait pas alignee. Hauteur fixee a 56 px comme les deux autres, verifie par mesure. Il conserve
-sa largeur et son degrade, qui disent sa place dans la hierarchie.
+**Le bouton d'ajout dit « + Shift ».** Ce qui cassait l'alignement n'etait pas le texte mais le
+`py-4` avec un libelle sur deux lignes : le bouton etait plus haut que ses voisins. Hauteur fixee a
+56 px comme les deux autres, verifie par mesure. Seul le verbe « Add » disparait — il repetait ce
+que l'icone disait deja. *(Premier essai le 08/09 : j'avais retire le mot entier, Serge a demande
+de garder « Shift ».)*
 
 **L'export part dans les reglages.** Quelques usages par an ne justifiaient pas une place
 permanente dans la colonne du planning. Le code est deplace tel quel dans
 `components/ExportDataButton.tsx`, sous une section « Donnees » de la fenetre de reglages.
 
-Verifie au navigateur : 10 controles, dont l'egalite des trois hauteurs et l'absence du bloc
-deplie au chargement. Les 6 suites de calcul et les 4 suites de non-regression passent.
+**Un vrai defaut au passage : le bloc deplie etait coupe net.** La barre laterale est une colonne
+flex ; le bloc heritait de `flex-shrink: 1` et se faisait comprimer, et l'`overflow-hidden` ajoute
+pour arrondir les coins tranchait le contenu — 189 px affiches pour 347 px de contenu, mesure au
+navigateur. `flex-shrink-0` regle ca : la barre laterale defile, le bloc garde sa taille. Verifie
+aussi que les six autres blocs de la colonne ne sont pas comprimes.
+
+Verifie au navigateur : 11 controles, dont l'egalite des trois hauteurs, l'absence du bloc
+deplie au chargement et le fait que le contenu deplie n'est plus coupe. Les 6 suites de calcul et les 4 suites de non-regression passent.
 
 `components/Sidebar.tsx`, `components/SettingsModal.tsx`, `components/ExportDataButton.tsx` (nouveau)
 

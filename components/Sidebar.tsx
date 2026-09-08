@@ -332,20 +332,20 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {!isReadOnly && (
         <div className="mb-6 flex gap-2">
-          {/* Le « + » disait deja tout ce que « Add Shift » repetait a cote.
-              Le mot parti, le bouton prend la meme hauteur que ses voisins et la
-              rangee s'aligne enfin ; il garde la largeur et le degrade, qui
-              disent sa place dans la hierarchie. */}
+          {/* « + Shift » : seul le verbe « Add » etait redondant avec l'icone.
+              Ce qui cassait l'alignement n'etait pas le texte mais le `py-4`
+              avec deux lignes ; la hauteur fixe a 56 px regle ca et garde le mot. */}
           <button 
             type="button"
             onClick={onAddClick}
             title={t('addShift')}
             aria-label={t('addShift')}
-            className="flex-1 h-14 bg-[linear-gradient(135deg,#4f46e5,#7c3aed)] text-white rounded-2xl shadow-lg hover:-translate-y-0.5 transition-all duration-200 active:scale-95 flex items-center justify-center"
+            className="flex-1 h-14 px-4 bg-[linear-gradient(135deg,#4f46e5,#7c3aed)] text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2"
           >
-            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
+            <span className="text-base whitespace-nowrap">{t('shiftNoun')}</span>
           </button>
           <button
             type="button"
@@ -379,7 +379,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           ignore, ce qui est exactement ce qu'on veut eviter pour un avertissement.
           Ambre et non rouge : ce sont des decisions possibles, pas des erreurs. */}
       {compliance.length > 0 && (
-        <div className="bg-amber-50 rounded-2xl mb-8 border border-amber-200 shadow-sm overflow-hidden">
+        <div className="bg-amber-50 rounded-2xl mb-8 border border-amber-200 shadow-sm overflow-hidden flex-shrink-0">
           {/* Replie par defaut : cinq points deplies poussaient les boutons du
               planning hors de l'ecran, alors que le nombre suffit a savoir s'il
               y a quelque chose a regarder. On ouvre quand on veut le detail. */}
