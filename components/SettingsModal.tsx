@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Language, ViewType } from '../types';
+import ExportDataButton from './ExportDataButton';
 import { getTranslation } from '../utils/translations';
 
 interface SettingsModalProps {
@@ -96,6 +97,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               )}
             </div>
+          </section>
+
+          {/* L'export vit ici depuis le 08/09/2026 : quelques usages par an ne
+              justifiaient pas une place permanente dans la colonne du planning. */}
+          <section>
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">
+              {language === 'fr' ? 'Données' : 'Data'}
+            </h3>
+            <ExportDataButton language={language as Language} />
           </section>
 
           <div className="pt-4">

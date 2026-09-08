@@ -10,8 +10,7 @@ const ABSENCE_LABELS: Record<string, string> = {
   repos: 'absenceRepos',
 };
 import { getTranslation } from '../utils/translations';
-import { exportWeeksData, loadStaffFromFirebase } from '../services/firebaseService';
-import { toWeekId, isStaffActiveInWeek, contractHoursOn, monthlyContractHours, getShiftIsoDate } from '../utils/helpers';
+import { isStaffActiveInWeek, contractHoursOn, monthlyContractHours, getShiftIsoDate } from '../utils/helpers';
 
 interface SidebarProps {
   shifts: Shift[];
@@ -113,58 +112,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   }));
 
   const isEmpty = shifts.length === 0;
+  const [complianceOpen, setComplianceOpen] = useState(false);
 
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [exportMonth, setExportMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [isExporting, setIsExporting] = useState(false);
 
-  const handleExportData = async () => {
-    setIsExporting(true);
-    try {
-      const [year, month] = exportMonth.split('-').map(Number);
-      // Generate all Sundays that start a week overlapping with the selected month
-      const weekIds: string[] = [];
-      // Find the Sunday on or before the 1st of the month
-      const firstDay = new Date(Date.UTC(year, month - 1, 1));
-      const startSunday = new Date(firstDay);
-      startSunday.setUTCDate(startSunday.getUTCDate() - startSunday.getUTCDay());
-      // Iterate week by week until the Sunday is past the last day of the month
-      const lastDay = new Date(Date.UTC(year, month, 0)); // last day of month
-      const runner = new Date(startSunday);
-      while (runner <= lastDay) {
-        weekIds.push(toWeekId(runner));
-        runner.setUTCDate(runner.getUTCDate() + 7);
-      }
-
-      const [weeksData, staffData] = await Promise.all([
-        exportWeeksData(weekIds),
-        loadStaffFromFirebase()
-      ]);
-
-      const exportPayload = {
-        exportedAt: new Date().toISOString(),
-        month: exportMonth,
-        staff: staffData?.staff || [],
-        guests: staffData?.guests || [],
-        weeks: weeksData
-      };
-
-      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
-      const link = document.createElement('a');
-      link.download = `shiftmaster-${exportMonth}.json`;
-      link.href = URL.createObjectURL(blob);
-      link.click();
-      URL.revokeObjectURL(link.href);
-      setShowExportModal(false);
-    } catch (e) {
-      console.error('Export failed:', e);
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   return (
     <>
@@ -382,15 +332,20 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {!isReadOnly && (
         <div className="mb-6 flex gap-2">
+          {/* Le « + » disait deja tout ce que « Add Shift » repetait a cote.
+              Le mot parti, le bouton prend la meme hauteur que ses voisins et la
+              rangee s'aligne enfin ; il garde la largeur et le degrade, qui
+              disent sa place dans la hierarchie. */}
           <button 
             type="button"
             onClick={onAddClick}
-            className="flex-1 py-4 px-6 bg-[linear-gradient(135deg,#4f46e5,#7c3aed)] text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all duration-200 active:scale-95 flex items-center justify-center gap-3"
+            title={t('addShift')}
+            aria-label={t('addShift')}
+            className="flex-1 h-14 bg-[linear-gradient(135deg,#4f46e5,#7c3aed)] text-white rounded-2xl shadow-lg hover:-translate-y-0.5 transition-all duration-200 active:scale-95 flex items-center justify-center"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
-            <span className="text-base flex items-center gap-2">{t('addShift')}</span>
           </button>
           <button
             type="button"
@@ -424,21 +379,41 @@ const Sidebar: React.FC<SidebarProps> = ({
           ignore, ce qui est exactement ce qu'on veut eviter pour un avertissement.
           Ambre et non rouge : ce sont des decisions possibles, pas des erreurs. */}
       {compliance.length > 0 && (
-        <div className="bg-amber-50 rounded-2xl p-4 mb-8 border border-amber-200 shadow-sm">
-          <h3 className="text-xs font-black text-amber-700 uppercase tracking-widest mb-1">
-            {t(compliance.length > 1 ? 'compliancePointsPlural' : 'compliancePoints').replace('{n}', String(compliance.length))}
-          </h3>
-          {conventionLabel && (
-            <p className="text-xs text-amber-600/80 font-medium mb-2.5">{conventionLabel}</p>
+        <div className="bg-amber-50 rounded-2xl mb-8 border border-amber-200 shadow-sm overflow-hidden">
+          {/* Replie par defaut : cinq points deplies poussaient les boutons du
+              planning hors de l'ecran, alors que le nombre suffit a savoir s'il
+              y a quelque chose a regarder. On ouvre quand on veut le detail. */}
+          <button
+            type="button"
+            onClick={() => setComplianceOpen(v => !v)}
+            aria-expanded={complianceOpen}
+            className="w-full min-h-14 px-4 py-3 flex items-center gap-3 text-left hover:bg-amber-100/60 transition-colors active:scale-[0.99]"
+          >
+            <div className="flex-1 min-w-0">
+              <span className="block text-xs font-black text-amber-700 uppercase tracking-widest">
+                {t(compliance.length > 1 ? 'compliancePointsPlural' : 'compliancePoints').replace('{n}', String(compliance.length))}
+              </span>
+              {conventionLabel && (
+                <span className="block text-xs text-amber-600/80 font-medium truncate">{conventionLabel}</span>
+              )}
+            </div>
+            <svg
+              className={`w-4 h-4 flex-shrink-0 text-amber-600 transition-transform duration-200 ${complianceOpen ? 'rotate-180' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {complianceOpen && (
+            <div className="px-4 pb-4 space-y-2">
+              {compliance.map((c, idx) => (
+                <div key={idx} className="text-xs bg-white p-2.5 rounded-xl border border-amber-100">
+                  <span className="font-bold text-slate-700 block">{c.who}</span>
+                  <span className="text-slate-500 font-medium leading-snug">{c.text}</span>
+                </div>
+              ))}
+            </div>
           )}
-          <div className="space-y-2">
-            {compliance.map((c, idx) => (
-              <div key={idx} className="text-xs bg-white p-2.5 rounded-xl border border-amber-100">
-                <span className="font-bold text-slate-700 block">{c.who}</span>
-                <span className="text-slate-500 font-medium leading-snug">{c.text}</span>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
@@ -491,48 +466,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </>
         )}
 
-        <button
-          type="button"
-          onClick={() => setShowExportModal(true)}
-          className="w-full py-3 px-6 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-2xl font-semibold hover:bg-indigo-100 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 text-sm"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          {language === 'fr' ? 'Exporter les données' : 'Export Data'}
-        </button>
 
-        {showExportModal && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setShowExportModal(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-[300px] space-y-4" onClick={e => e.stopPropagation()}>
-              <h3 className="text-lg font-bold text-slate-800">{language === 'fr' ? 'Exporter les données' : 'Export Data'}</h3>
-              <div>
-                <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">{language === 'fr' ? 'Mois' : 'Month'}</label>
-                <input
-                  type="month"
-                  value={exportMonth}
-                  onChange={e => setExportMonth(e.target.value)}
-                  className="mt-1 w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowExportModal(false)}
-                  className="flex-1 py-2.5 px-4 border border-slate-200 text-slate-600 rounded-xl font-medium hover:bg-slate-50 transition-all text-sm"
-                >
-                  {language === 'fr' ? 'Annuler' : 'Cancel'}
-                </button>
-                <button
-                  onClick={handleExportData}
-                  disabled={isExporting}
-                  className="flex-1 py-2.5 px-4 bg-[linear-gradient(135deg,#4f46e5,#7c3aed)] text-white rounded-xl font-bold hover:-translate-y-0.5 transition-all disabled:opacity-50 text-sm"
-                >
-                  {isExporting ? '...' : (language === 'fr' ? 'Exporter' : 'Export')}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {isReadOnly && (
           <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-center">

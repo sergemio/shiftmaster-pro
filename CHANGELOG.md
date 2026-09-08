@@ -5,6 +5,29 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-08 — Colonne de droite : trois corrections demandees par Serge
+
+**Le bloc de vigilance se replie.** Cinq points deplies poussaient les boutons du planning vers le
+bas et occupaient la hauteur utile en permanence. Il tient desormais sur une ligne — le nombre et
+la convention — avec un chevron qui ouvre le detail. Le nombre suffit a savoir s'il y a quelque
+chose a regarder ; le detail se demande.
+
+**Le bouton d'ajout garde le « + » et perd le mot.** « Add Shift » repetait ce que l'icone disait
+deja, et son `py-4` avec un texte sur deux lignes le rendait plus haut que ses voisins : la rangee
+n'etait pas alignee. Hauteur fixee a 56 px comme les deux autres, verifie par mesure. Il conserve
+sa largeur et son degrade, qui disent sa place dans la hierarchie.
+
+**L'export part dans les reglages.** Quelques usages par an ne justifiaient pas une place
+permanente dans la colonne du planning. Le code est deplace tel quel dans
+`components/ExportDataButton.tsx`, sous une section « Donnees » de la fenetre de reglages.
+
+Verifie au navigateur : 10 controles, dont l'egalite des trois hauteurs et l'absence du bloc
+deplie au chargement. Les 6 suites de calcul et les 4 suites de non-regression passent.
+
+`components/Sidebar.tsx`, `components/SettingsModal.tsx`, `components/ExportDataButton.tsx` (nouveau)
+
+---
+
 ## 2026-09-06 — Regles de duree du travail : l'app previent, elle ne bloque jamais
 
 Cadrage donne par Serge : « les gens qui font les schedules ne connaissent pas toutes ces regles.
