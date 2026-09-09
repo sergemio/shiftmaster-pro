@@ -199,7 +199,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
               <span
                 title={
                   orphanReason.kind === 'after-end'
-                    ? `${staff.name} a quitte l'equipe le ${formatShortDate(orphanReason.date, language)} — ce shift est apres son depart`
+                    ? `${staff.name} a quitte l'equipe le ${formatShortDate(orphanReason.date, language)} — shift attribue hors contrat`
                     : `${staff.name} arrive le ${formatShortDate(orphanReason.date, language)} — ce shift est avant son arrivee`
                 }
                 className="bg-amber-100 text-amber-800 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-amber-300 basis-full leading-tight"
@@ -210,7 +210,11 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
                     rien de textuel ne tient. Seuil bas, pour la meme raison que
                     l'horaire ci-dessus. */}
                 <span className="@max-[56px]:hidden">
-                  {orphanReason.kind === 'after-end' ? t('leftOn') : t('startsOn')}{' '}
+                  {/* Apres la sortie, le shift est permis (trois semaines de
+                      tolerance) mais dit clairement ce qu'il est : « Hors
+                      contrat · Parti le 3 sept 26 ». Avant l'entree, c'est
+                      une donnee ancienne — l'app ne le permet plus. */}
+                  {orphanReason.kind === 'after-end' ? `${t('offContract')} · ${t('leftOn')}` : t('startsOn')}{' '}
                   {formatShortDate(orphanReason.date, language)}
                 </span>
               </span>

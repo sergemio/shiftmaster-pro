@@ -14,9 +14,11 @@ interface ShiftModalProps {
   language?: Language;
   /** Ce que ce shift enfreindrait, calcule a chaque changement. */
   onCheck?: (staffId: string, dayIndexes: number[], start: number, end: number) => string[];
+  /** Periode d'emploi : `errors` interdit le shift, `notes` le marque hors contrat. */
+  onEmployment?: (staffId: string, dayIndexes: number[]) => { errors: string[]; notes: string[] };
 }
 
-const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, language = 'en', onCheck }) => {
+const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, language = 'en', onCheck, onEmployment }) => {
   if (!isOpen) return null;
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
   const t = getTranslation(language as Language);
@@ -47,6 +49,14 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
     [onCheck, selectedStaff, selectedDays, startTime, endTime],
   );
 
+  // Rouge et bloquant, contrairement aux regles de duree du travail (ambre,
+  // informatives) : avant la date d'entree il n'y a pas de contrat, donc pas
+  // de shift. La decision est prise ici et non laissee a l'utilisateur.
+  const employment = useMemo(
+    () => onEmployment?.(selectedStaff, selectedDays) || { errors: [], notes: [] },
+    [onEmployment, selectedStaff, selectedDays],
+  );
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (endTime <= startTime) {
@@ -57,6 +67,7 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
       alert(t('pickAtLeastOneDay'));
       return;
     }
+    if (employment.errors.length > 0) return;
     onAdd(selectedStaff, selectedDays, startTime, endTime);
     onClose();
   };
@@ -134,25 +145,34 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
             </div>
           </div>
 
-          {warnings.length > 0 && (
+          {employment.errors.length > 0 && (
+            <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2.5 space-y-1">
+              {employment.errors.map((w, i) => (
+                <p key={i} className="text-xs font-semibold text-red-800 leading-snug">⛔ {w}</p>
+              ))}
+            </div>
+          )}
+
+          {(warnings.length > 0 || employment.notes.length > 0) && (
             <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 space-y-1">
-              {warnings.map((w, i) => (
+              {[...employment.notes, ...warnings].map((w, i) => (
                 <p key={i} className="text-xs font-semibold text-amber-800 leading-snug">⚠ {w}</p>
               ))}
             </div>
           )}
 
           <div className="pt-4 flex gap-4">
-            <button 
+            <button
               type="button"
               onClick={onClose}
               className="flex-1 px-6 py-4 border border-slate-200 text-slate-500 font-bold rounded-xl hover:bg-slate-50 transition-all text-base shadow-sm active:scale-95"
             >
               {t('cancel')}
             </button>
-            <button 
+            <button
               type="submit"
-              className="flex-1 px-6 py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 text-base active:scale-95"
+              disabled={employment.errors.length > 0}
+              className="flex-1 px-6 py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 text-base active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
             >
               {t('addShift')}
             </button>

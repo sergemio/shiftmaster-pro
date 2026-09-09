@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, EMPTY_WEEK, ViewType } from './types';
-import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffActiveInWeek, getShiftIsoDate, weekIdsForMonth } from './utils/helpers';
+import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth } from './utils/helpers';
 import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR } from './constants';
 import { CONVENTIONS, DEFAULT_CONVENTION, findViolations, DatedShift, Violation } from './utils/laborRules';
 import { violationText, violationWho } from './utils/violationText';
@@ -516,6 +516,42 @@ const App: React.FC = () => {
       .map(v => violationText(v, language, index));
   }, [shifts, neighbourWeeks, currentWeek, staffList, convention, language]);
 
+  /**
+   * La periode d'emploi, jour par jour, pour un shift qu'on s'apprete a poser.
+   *
+   * `errors` : ce qui INTERDIT le shift (avant la date d'entree, ou plus de
+   * trois semaines apres la sortie). `notes` : ce qui est permis mais sera
+   * marque « hors contrat » (entre la sortie et la fin des trois semaines).
+   * Le filtre `assignableStaff` travaille a la semaine ; ici on regarde le jour,
+   * sinon quelqu'un qui arrive mercredi pourrait etre pose le lundi.
+   */
+  const employmentCheck = useCallback((staffId: string, dayIndexes: number[]) => {
+    const errors: string[] = [];
+    const notes: string[] = [];
+    const staff = staffList.find(s => s.id === staffId);
+    if (!staff) return { errors, notes };
+    const say = (key: string, date: string) => t(key)
+      .replace('{name}', staff.name)
+      .replace('{date}', formatShortDate(date, language))
+      .replace('{days}', String(POST_CONTRACT_GRACE_DAYS));
+    let blocked: string | null = null;
+    let offContract: string | null = null;
+    for (const dayIndex of dayIndexes) {
+      const date = getShiftIsoDate(currentWeek, dayIndex);
+      const block = getAssignmentBlock(staff, date);
+      if (block) {
+        blocked ??= say(block.kind === 'before-start' ? 'blockedBeforeStart' : 'blockedAfterGrace', block.date);
+      } else if (getOrphanReason(staff, date)?.kind === 'after-end') {
+        offContract ??= say('offContractHint', staff.endDate!);
+      }
+    }
+    // Un seul message par categorie : cinq jours coches avant l'arrivee donnent
+    // une phrase, pas cinq fois la meme.
+    if (blocked) errors.push(blocked);
+    if (offContract) notes.push(offContract);
+    return { errors, notes };
+  }, [staffList, currentWeek, language, t]);
+
   const triggerSyncFeedback = () => {
     setShowSyncSuccess(true);
     setTimeout(() => setShowSyncSuccess(false), 2000);
@@ -611,6 +647,10 @@ const App: React.FC = () => {
    */
   const handleAddShift = useCallback((staffId: string, dayIndexes: number[], startTime: number, endTime: number) => {
     if (isReadOnly || dayIndexes.length === 0) return;
+    // La fenetre bloque deja l'envoi ; on refuse aussi ici pour que la regle
+    // tienne quel que soit le chemin qui cree un shift.
+    const { errors } = employmentCheck(staffId, dayIndexes);
+    if (errors.length > 0) { setSaveError(errors[0]); return; }
     const created: Shift[] = dayIndexes.map(dayIndex => ({
       id: Math.random().toString(36).substr(2, 9), staffId, dayIndex, startTime, endTime,
     }));
@@ -618,7 +658,7 @@ const App: React.FC = () => {
     const target = staffList.find(s => s.id === staffId) || null;
     const days = dayIndexes.map(d => getShiftDate(toWeekId(currentWeek), d, language)).join(', ');
     createLog('CREATE SHIFT', `Added ${created.length} shift(s) for ${target?.name || 'Unknown'} on ${days} (${formatTime(startTime)}-${formatTime(endTime)})`, target);
-  }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language]);
+  }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language, employmentCheck]);
 
   const updateShift = useCallback((updatedShift: Shift) => {
     if (isReadOnly) return;
@@ -631,12 +671,20 @@ const App: React.FC = () => {
                           (original.coverageBy || '') === (updatedShift.coverageBy || '') &&
                           (original.notes || '') === (updatedShift.notes || '');
       if (isUnchanged) return;
+      // Seulement quand le shift change de jour ou de personne (glisser vers un
+      // autre jour, reassignation). Retoucher l'horaire d'un vieux shift deja
+      // hors periode doit rester possible : ce sont des donnees passees.
+      const moved = original.dayIndex !== updatedShift.dayIndex || original.staffId !== updatedShift.staffId;
+      if (moved) {
+        const { errors } = employmentCheck(updatedShift.staffId, [updatedShift.dayIndex]);
+        if (errors.length > 0) { setSaveError(errors[0]); return; }
+      }
     }
     handleUpdateShifts(shifts.map(s => s.id === updatedShift.id ? updatedShift : s));
     const target = staffList.find(s => s.id === updatedShift.staffId) || null;
     const dayLabel = getShiftDate(toWeekId(currentWeek), updatedShift.dayIndex, language);
     createLog('UPDATE SHIFT', `Updated shift for ${target?.name || 'Unknown'} on ${dayLabel} (${formatTime(updatedShift.startTime)}-${formatTime(updatedShift.endTime)})`, target);
-  }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
+  }, [shifts, handleUpdateShifts, isReadOnly, staffList, employmentCheck]);
 
   /**
    * Recopie un shift sur d'autres jours de la semaine affichee.
@@ -656,11 +704,13 @@ const App: React.FC = () => {
       .filter(d => d !== source.dayIndex)
       .map(dayIndex => ({ ...source, id: Math.random().toString(36).substr(2, 9), dayIndex }));
     if (copies.length === 0) return;
+    const { errors } = employmentCheck(source.staffId, copies.map(c => c.dayIndex));
+    if (errors.length > 0) { setSaveError(errors[0]); return; }
     handleUpdateShifts([...shifts.map(s => (s.id === source.id ? source : s)), ...copies]);
     const target = staffList.find(s => s.id === source.staffId) || null;
     const days = copies.map(c => getShiftDate(toWeekId(currentWeek), c.dayIndex, language)).join(', ');
     createLog('REPEAT SHIFT', `Copied shift for ${target?.name || 'Unknown'} onto ${days}`, target);
-  }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language]);
+  }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language, employmentCheck]);
 
   // -------------------------------------------------------------- selection
   const toggleShiftSelection = useCallback((id: string) => {
@@ -698,10 +748,17 @@ const App: React.FC = () => {
     if (isReadOnly || selectedShiftIds.length === 0) return;
     const chosen = shifts.filter(s => selectedShiftIds.includes(s.id));
     if (chosen.every(s => s.dayIndex === dayIndex)) return;
+    // Tout ou rien, comme pour le decalage horaire : si une seule des personnes
+    // ne peut pas travailler ce jour-la, rien ne bouge.
+    for (const s of chosen) {
+      const { errors } = employmentCheck(s.staffId, [dayIndex]);
+      if (errors.length > 0) { setSaveError(errors[0]); return; }
+    }
+    setSaveError(null);
     handleUpdateShifts(shifts.map(s => selectedShiftIds.includes(s.id) ? { ...s, dayIndex } : s));
     const dayLabel = getShiftDate(toWeekId(currentWeek), dayIndex, language);
     createLog('MOVE SHIFTS', `Moved ${chosen.length} shift(s) to ${dayLabel}`);
-  }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, currentWeek, language]);
+  }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, currentWeek, language, employmentCheck]);
 
   const deleteSelected = useCallback(() => {
     if (isReadOnly || selectedShiftIds.length === 0) return;
@@ -980,11 +1037,13 @@ const App: React.FC = () => {
 
   const editingShift = shifts.find(s => s.id === editingShiftId) || null;
 
-  // People you can still assign work to on the week being viewed. Someone who
-  // left in March must not be offered on a May week — but their past shifts stay
-  // on the calendar, flagged, rather than being hidden.
+  // People you can still assign work to on the week being viewed : pas avant la
+  // date d'entree, et jusqu'a trois semaines apres la date de sortie (voir
+  // `getAssignmentBlock`). Someone who left in March must not be offered on a
+  // May week — but their past shifts stay on the calendar, flagged, rather than
+  // being hidden. Le controle jour par jour est fait par `employmentCheck`.
   const assignableStaff = useMemo(
-    () => staffList.filter(s => isStaffActiveInWeek(s, currentWeek)),
+    () => staffList.filter(s => isStaffAssignableInWeek(s, currentWeek)),
     [staffList, currentWeek]
   );
 
@@ -1182,7 +1241,7 @@ const App: React.FC = () => {
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
       />
-      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} onAdd={handleAddShift} onCheck={previewViolations} language={language} />
+      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} onAdd={handleAddShift} onCheck={previewViolations} onEmployment={employmentCheck} language={language} />
       <StaffModal 
         isOpen={isStaffModalOpen} 
         onClose={() => setIsStaffModalOpen(false)} 
@@ -1194,7 +1253,7 @@ const App: React.FC = () => {
         onRemoveGuest={handleRemoveGuest}
         language={language} 
       />
-      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onCheck={previewViolations} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
+      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onCheck={previewViolations} onEmployment={employmentCheck} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
       {/* La barre n'existe que pendant une selection : elle occupe le bas de
           l'ecran, et rien ne justifie de manger cette place le reste du temps. */}
       {selectedShiftIds.length > 0 && !isReadOnly && (

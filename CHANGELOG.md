@@ -5,6 +5,29 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-09 — Periode d'emploi : rien avant l'entree, 21 jours de tolerance apres la sortie
+
+Regle fixee par Serge : un contrat a une date d'entree, aucun shift avant. Apres la date de
+sortie, la personne depanne souvent encore deux ou trois semaines — ces shifts doivent rester
+possibles, marques « hors contrat ». Au-dela, plus rien.
+
+- `utils/helpers.ts` : `POST_CONTRACT_GRACE_DAYS = 21`, `getAssignmentBlock(staff, date)`
+  (`before-start` / `after-grace` / null), `isStaffAssignableInWeek` (filtre semaine, remplace
+  `isStaffActiveInWeek` dans `assignableStaff` uniquement — les listes d'affichage ne changent pas).
+- `App.tsx` : `employmentCheck(staffId, days)` -> `{ errors, notes }`, verifie JOUR PAR JOUR
+  (le filtre semaine laissait poser un lundi quelqu'un qui arrive le mercredi). Garde-fou sur
+  les quatre chemins qui posent ou deplacent un shift : creation, edition (seulement si le jour
+  ou la personne change — retoucher l'horaire d'un vieux shift reste possible), repetition,
+  deplacement de selection, glisser vers un autre jour (refuse + bandeau rouge, rien n'est ecrit).
+- `ShiftModal` / `EditShiftModal` : bloc rouge ⛔ + bouton desactive quand c'est interdit ;
+  note ambre « sera marque hors contrat » quand c'est permis apres la sortie.
+- `ShiftCard` : badge `after-end` devient « Hors contrat · Parti le 3 sept 26 ».
+- Test `scripts/test-employment-window.mjs` (16 cas, dont Stephanie 14/09 et Omar 03/09) ;
+  verifie en navigateur sur le bac a sable (12 scenarios, dont le drag refuse).
+
+Consequence pour les donnees actuelles : Omar et Harshil (sortis le 3 sept) restent posables
+jusqu'au 24 sept, puis disparaissent des listes. Stephanie n'apparait qu'a partir de la semaine du 14.
+
 ## 2026-09-09 — Champs date : l'app redit ce qu'elle a compris
 
 Signale par Tatiana en note vocale : elle ajoute Stephanie Azar, veut la faire commencer le

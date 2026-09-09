@@ -19,11 +19,13 @@ interface EditShiftModalProps {
   /** Ce que ce shift enfreindrait une fois modifie. `excludeShiftId` retire la
    *  version actuelle du calcul, sinon elle se comparerait a elle-meme. */
   onCheck?: (staffId: string, dayIndexes: number[], start: number, end: number, excludeShiftId?: string) => string[];
+  /** Periode d'emploi : `errors` interdit le shift, `notes` le marque hors contrat. */
+  onEmployment?: (staffId: string, dayIndexes: number[]) => { errors: string[]; notes: string[] };
   isReadOnly?: boolean;
   language: string;
 }
 
-const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, onDelete, onCheck, isReadOnly = false, language }) => {
+const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, onDelete, onCheck, onEmployment, isReadOnly = false, language }) => {
   if (!isOpen || !shift) return null;
 
   const [staffId, setStaffId] = useState(shift.staffId);
@@ -68,6 +70,14 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
     [onCheck, staffId, shift.dayIndex, shift.id, repeatOn, startTime, endTime],
   );
 
+  // Periode d'emploi, verifiee sur les jours de COPIE, et sur le jour du shift
+  // seulement si on change de personne. Retoucher l'horaire d'un vieux shift
+  // deja hors periode reste possible : ce sont des donnees passees.
+  const employment = useMemo(() => {
+    const days = staffId !== shift.staffId ? [shift.dayIndex, ...repeatOn] : repeatOn;
+    return days.length > 0 && onEmployment ? onEmployment(staffId, days) : { errors: [], notes: [] };
+  }, [onEmployment, staffId, shift.staffId, shift.dayIndex, repeatOn]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
@@ -75,6 +85,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
       alert("End time must be after start time");
       return;
     }
+    if (employment.errors.length > 0) return;
 
     // PREVENT REDUNDANT UPDATES: Compare form state with original shift
     const sanitizedCoverage = coverageBy.trim() || null as any;
@@ -240,9 +251,17 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                 </div>
               )}
 
-              {warnings.length > 0 && (
+              {employment.errors.length > 0 && (
+                <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2.5 space-y-1">
+                  {employment.errors.map((w, i) => (
+                    <p key={i} className="text-xs font-semibold text-red-800 leading-snug">⛔ {w}</p>
+                  ))}
+                </div>
+              )}
+
+              {(warnings.length > 0 || employment.notes.length > 0) && (
                 <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 space-y-1">
-                  {warnings.map((w, i) => (
+                  {[...employment.notes, ...warnings].map((w, i) => (
                     <p key={i} className="text-xs font-semibold text-amber-800 leading-snug">⚠ {w}</p>
                   ))}
                 </div>
@@ -260,7 +279,8 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                   {!isReadOnly && (
                     <button 
                       type="submit"
-                      className="flex-1 px-6 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 text-base active:scale-95"
+                      disabled={employment.errors.length > 0}
+                      className="flex-1 px-6 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 text-base active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
                     >
                       Save Changes
                     </button>

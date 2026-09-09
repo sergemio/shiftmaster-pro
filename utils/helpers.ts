@@ -153,6 +153,50 @@ export const isStaffActiveInWeek = (staff: Staff, weekStart: Date): boolean => {
   return true;
 };
 
+/**
+ * A qui peut-on DONNER un shift, et quand. Regle fixee par Serge le 09/09/2026 :
+ *
+ * - Avant la date d'entree : jamais. Le contrat n'a pas commence.
+ * - Apres la date de sortie : encore possible pendant trois semaines — quelqu'un
+ *   qui vient de partir depanne souvent sur quelques services. Ces shifts sont
+ *   marques « hors contrat » sur le planning (badge `after-end`), rien de plus.
+ * - Au-dela de ces trois semaines : plus possible.
+ *
+ * Distinct de `isStaffActiveOnDate` (est-ce que le contrat court ce jour-la),
+ * qui reste la reference pour l'affichage et les badges.
+ */
+export const POST_CONTRACT_GRACE_DAYS = 21;
+
+export const addDaysIso = (isoDate: string, days: number): string => {
+  const d = new Date(isoDate + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+/** Dernier jour ou un shift peut encore etre donne, ou null sans date de sortie. */
+export const lastAssignableDate = (staff: Staff): string | null =>
+  staff.endDate ? addDaysIso(staff.endDate, POST_CONTRACT_GRACE_DAYS) : null;
+
+/** Pourquoi on ne peut PAS donner ce shift, ou null si c'est permis. */
+export type AssignmentBlock = { kind: 'before-start' | 'after-grace'; date: string } | null;
+
+export const getAssignmentBlock = (staff: Staff, isoDate: string): AssignmentBlock => {
+  if (staff.startDate && isoDate < staff.startDate) return { kind: 'before-start', date: staff.startDate };
+  const last = lastAssignableDate(staff);
+  if (last && isoDate > last) return { kind: 'after-grace', date: staff.endDate! };
+  return null;
+};
+
+/** Au moins un jour de la semaine ou cette personne peut recevoir un shift. */
+export const isStaffAssignableInWeek = (staff: Staff, weekStart: Date): boolean => {
+  const monday = getShiftIsoDate(weekStart, 0);
+  const sunday = getShiftIsoDate(weekStart, 6);
+  if (staff.startDate && staff.startDate > sunday) return false;
+  const last = lastAssignableDate(staff);
+  if (last && last < monday) return false;
+  return true;
+};
+
 /** Today as YYYY-MM-DD in the app's timezone. */
 export const todayIso = (timeZone: string = 'Europe/Paris'): string =>
   getIsoDateString(new Date(), timeZone);
