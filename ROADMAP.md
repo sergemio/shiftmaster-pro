@@ -68,12 +68,18 @@ l'agenda du telephone.
 
 ---
 
-## Six choses a ne pas oublier
+## Sept choses a ne pas oublier
 
 **Un ancien salarie qui garde des shifts n'est pas une anomalie.** Confirme par Serge le
 2026-09-06 : plusieurs personnes dont la date de sortie est passee prennent encore des shifts en
 extra. Le badge ambre signale une situation normale. Consequence : un export de paie **ne doit
 pas exclure** quelqu'un au motif que sa date de sortie est passee.
+
+**Un champ date natif ne parle pas la langue de l'application.** `input type="date"` affiche ses
+segments dans l'ordre du NAVIGATEUR : mois/jour/annee sur un navigateur anglais. Le 09/09/2026,
+Tatiana a saisi le 14 septembre et obtenu le 9 decembre. Tout champ date doit relire la date en
+toutes lettres. Et une date d'emploi fausse ne se voit pas comme une date fausse : elle se voit
+comme quelqu'un d'absent du planning.
 
 **Une donnee agregee cache ce qu'elle resume.** Le 06/09, la bande d'effectif comptait par heure
 et additionnait des gens qui ne se croisaient pas — le creux disparaissait dans la moyenne. Toute

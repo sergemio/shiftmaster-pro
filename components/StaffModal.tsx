@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Staff } from '../types';
+import { Staff, Language } from '../types';
 import { isFormerStaff, todayIso, currentContractHours, formatShortDate } from '../utils/helpers';
+import DateField from './DateField';
 
 interface StaffModalProps {
   isOpen: boolean;
@@ -254,6 +255,17 @@ const StaffModal: React.FC<StaffModalProps> = ({
                           Left on {staff.endDate} · history kept
                         </p>
                       )}
+                      {/* Le pendant de « Left on » : une personne dont l'arrivee est
+                          a venir n'apparait dans AUCUNE semaine avant cette date. Sans
+                          cette ligne, une date d'arrivee fausse ne se manifeste que par
+                          une absence — quelqu'un qu'on a cree et qu'on ne retrouve pas.
+                          Vecu le 09/09/2026 : Stephanie enregistree au 9 decembre par
+                          erreur, donc invisible en septembre, sans rien pour l'expliquer. */}
+                      {!isFormer && staff.startDate && staff.startDate > todayIso() && (
+                        <p className="text-xs text-sky-700 font-bold mt-0.5">
+                          Starts {formatShortDate(staff.startDate, language as Language)} · not in the planning before then
+                        </p>
+                      )}
                     </div>
                   </div>
                   
@@ -344,14 +356,13 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       )}
 
                       <div className="flex gap-2 items-end">
-                        <div className="flex-1">
-                          <label className="block text-xs text-slate-500 mb-0.5">Effective from</label>
-                          <input
-                            type="date"
-                            aria-label="Amendment effective date"
+                        <div className="flex-1" onClick={(e) => e.stopPropagation()}>
+                          <DateField
+                            label="Effective from"
+                            labelClassName="block text-xs text-slate-500 mb-0.5"
                             value={newChangeFrom}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => setNewChangeFrom(e.target.value)}
+                            onChange={setNewChangeFrom}
+                            language={language as Language}
                             className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
                           />
                         </div>
@@ -407,24 +418,22 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">First Day on the Job</label>
-                        <input
-                          type="date"
-                          value={editStartDate}
-                          onChange={(e) => setEditStartDate(e.target.value)}
-                          className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Last Day on the Job <span className="text-slate-400 normal-case font-medium">(leave empty if still employed)</span></label>
-                        <input
-                          type="date"
-                          value={editEndDate}
-                          onChange={(e) => setEditEndDate(e.target.value)}
-                          className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
+                      <DateField
+                        label="First Day on the Job"
+                        labelClassName="block text-xs font-bold text-indigo-700 uppercase mb-1"
+                        value={editStartDate}
+                        onChange={setEditStartDate}
+                        language={language as Language}
+                        className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <DateField
+                        label={<>Last Day on the Job <span className="text-slate-400 normal-case font-medium">(leave empty if still employed)</span></>}
+                        labelClassName="block text-xs font-bold text-indigo-700 uppercase mb-1"
+                        value={editEndDate}
+                        onChange={setEditEndDate}
+                        language={language as Language}
+                        className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
                     </div>
                     {/* Une ligne partagee — « Extra » — n'est pas une personne :
                         les regles de duree du travail y produiraient une fausse
@@ -631,25 +640,23 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       <option value="admin">Admin</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">First Day on the Job</label>
-                    <input
-                      required
-                      type="date"
-                      value={newStartDate}
-                      onChange={(e) => setNewStartDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Last Day on the Job <span className="text-slate-400 normal-case font-medium">(leave empty if still employed)</span></label>
-                    <input
-                      type="date"
-                      value={newEndDate}
-                      onChange={(e) => setNewEndDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
-                    />
-                  </div>
+                  <DateField
+                    label="First Day on the Job"
+                    labelClassName="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider"
+                    required
+                    value={newStartDate}
+                    onChange={setNewStartDate}
+                    language={language as Language}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+                  />
+                  <DateField
+                    label={<>Last Day on the Job <span className="text-slate-400 normal-case font-medium">(leave empty if still employed)</span></>}
+                    labelClassName="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider"
+                    value={newEndDate}
+                    onChange={setNewEndDate}
+                    language={language as Language}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+                  />
                   <div className="col-span-2">
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Brand Color</label>
                     <div className="flex gap-2">

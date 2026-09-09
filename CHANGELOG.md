@@ -5,6 +5,50 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-09 — Champs date : l'app redit ce qu'elle a compris
+
+Signale par Tatiana en note vocale : elle ajoute Stephanie Azar, veut la faire commencer le
+14 septembre, et « j'ecris 14 et ca affiche 12 ». Stephanie n'apparait ensuite dans aucun planning.
+
+### Une seule cause pour les deux symptomes
+
+En base : `startDate = 2026-12-09`. Elle voulait le 14 septembre.
+
+Un `input type="date"` affiche ses segments dans l'ordre de la langue du **navigateur**, pas de
+l'application. Sur un navigateur en anglais, c'est mois/jour/annee. Elle tape « 14 » en croyant
+saisir le jour — c'est le mois, qui plafonne a 12 — puis « 09 » tombe dans le jour. Resultat :
+9 decembre. Et une arrivee en decembre fait disparaitre la personne des plannings de septembre
+(`isStaffActiveInWeek` l'ecarte). La date fausse ne se manifestait donc pas comme une date fausse,
+mais comme **quelqu'un qu'on a cree et qu'on ne retrouve pas**.
+
+Reproduit au navigateur en locale `en-US` : taper 14-09-2026 produit bien `2026-12-09`, la valeur
+exacte trouvee en production.
+
+### Le correctif
+
+`components/DateField.tsx` : sous chaque champ date, la date relue **en toutes lettres**, avec le
+jour de la semaine. « mercredi 9 decembre 2026 » ne se confond avec rien, alors que 12/09 et 14/09
+se ressemblent beaucoup. On ne peut pas imposer l'ordre des segments — il appartient au navigateur ;
+on peut rendre l'erreur visible a la seconde ou elle est commise. Applique aux quatre champs date
+de la fiche d'equipe, avenants compris.
+
+Pas de seuil « date trop lointaine » : l'erreur etait a trois mois, une embauche prevue a trois mois
+est normale, et un seuil pose entre les deux crierait au loup sur des dates justes.
+
+Le second filet est ailleurs : la liste d'equipe annonce desormais les arrivees a venir —
+« Starts Sep 14, 26 · not in the planning before then », pendant du « Left on » existant. Une date
+fausse se voit donc aussi dans la liste, sans avoir a ouvrir la fiche.
+
+### Donnee corrigee en production
+
+`startDate` de Stephanie remis au 2026-09-14. Roster sauvegarde avant ecriture
+(`scripts/_backup-staff-*.json`), champ `list` seul modifie, relecture depuis le serveur pour
+verifier : 10 lignes avant, 10 apres.
+
+`components/DateField.tsx` (nouveau), `components/StaffModal.tsx`
+
+---
+
 ## 2026-09-08 — Colonne de droite : trois corrections demandees par Serge
 
 **Le bloc de vigilance se replie.** Cinq points deplies poussaient les boutons du planning vers le
