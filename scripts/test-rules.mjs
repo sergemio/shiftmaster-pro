@@ -12,7 +12,7 @@ import {
   assertSucceeds,
   assertFails,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { readFileSync } from 'fs';
 
 const STAFF = {
@@ -43,6 +43,7 @@ await env.withSecurityRulesDisabled(async (ctx) => {
     userId: 'u', userName: 'n', action: 'a', details: 'd', timestamp: 't',
   });
   await setDoc(doc(ctx.firestore(), 'settings/rates'), RATES);
+  await setDoc(doc(ctx.firestore(), 'drafts/2026-08-09'), VALID_WEEK);
 });
 
 const as = (email) =>
@@ -109,7 +110,19 @@ await check('Plus de 7 feries refuse',              assertFails(setDoc(doc(as(SE
 await check('Omar (staff) n ecrit PAS d absence',   assertFails(setDoc(doc(as(OMAR), 'weeks/2026-08-09'), {
   ...VALID_WEEK, absences: [{ id: 'x', staffId: '3', dayIndex: 2, kind: 'conge' }] })));
 
-await check('Collection inconnue fermee',           assertFails(getDoc(doc(as(SERGE), 'autre/doc'))));
+// --- brouillons (lot 12) : invisibles de l'equipe ---------------------------
+await check('Serge (admin) lit un brouillon',        assertSucceeds(getDoc(doc(as(SERGE), 'drafts/2026-08-09'))));
+await check('Omar (staff) NE LIT PAS un brouillon',  assertFails(getDoc(doc(as(OMAR), 'drafts/2026-08-09'))));
+await check('Invite NE LIT PAS un brouillon',        assertFails(getDoc(doc(as(GUEST), 'drafts/2026-08-09'))));
+await check('INCONNU NE LIT PAS un brouillon',       assertFails(getDoc(doc(as(STRANGER), 'drafts/2026-08-09'))));
+await check('Omar (staff) N ECRIT PAS un brouillon', assertFails(setDoc(doc(as(OMAR), 'drafts/2026-08-09'), VALID_WEEK)));
+await check('Serge (admin) ecrit un brouillon',      assertSucceeds(setDoc(doc(as(SERGE), 'drafts/2026-08-09'), VALID_WEEK)));
+await check('Brouillon invalide refuse (jour 9)',    assertFails(setDoc(doc(as(SERGE), 'drafts/2026-08-09'), {
+  updatedAt: 'x', shifts: [{ id: 'a', staffId: '3', dayIndex: 9, startTime: 11, endTime: 17 }] })));
+await check('Omar (staff) NE SUPPRIME PAS un brouillon', assertFails(deleteDoc(doc(as(OMAR), 'drafts/2026-08-09'))));
+await check('Serge (admin) supprime un brouillon',   assertSucceeds(deleteDoc(doc(as(SERGE), 'drafts/2026-08-09'))));
+
+await check('Collection inconnue fermee',          assertFails(getDoc(doc(as(SERGE), 'autre/doc'))));
 
 await env.cleanup();
 console.log(`\n${failed === 0 ? 'TOUT EST CONFORME' : failed + ' CAS EN ECHEC'}`);

@@ -35,6 +35,8 @@ interface CalendarProps {
   holidays?: number[];
   onRemoveAbsence?: (id: string) => void;
   showCoverage?: boolean;
+  /** La semaine affichee est un brouillon : les cartes le montrent. */
+  isDraft?: boolean;
   /** Couts horaires charges, par identifiant. Vide pour un non-admin : l'app ne
    *  les charge meme pas, et les regles Firestore les lui refuseraient. */
   rates?: Record<string, number>;
@@ -131,6 +133,7 @@ const Calendar: React.FC<CalendarProps> = ({
   holidays = [],
   onRemoveAbsence,
   showCoverage = true,
+  isDraft = false,
   rates = {},
   staff, 
   currentWeek, 
@@ -637,6 +640,7 @@ const Calendar: React.FC<CalendarProps> = ({
                   hasOverlap={overlappingIds.has(shift.id)}
                   ruleWarnings={ruleWarnings[shift.id]}
                   cost={shiftCost(shift, rates) ?? undefined}
+                  isDraft={isDraft}
                   isReadOnly={isReadOnly}
                   isSelected={selectedShiftIds.includes(shift.id)}
                   selectionMode={selectedShiftIds.length > 0}

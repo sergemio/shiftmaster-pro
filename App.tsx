@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, EMPTY_WEEK, ViewType } from './types';
+import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, DraftData, EMPTY_WEEK, ViewType } from './types';
 import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth } from './utils/helpers';
 import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR } from './constants';
 import { CONVENTIONS, DEFAULT_CONVENTION, findViolations, DatedShift, Violation } from './utils/laborRules';
@@ -24,6 +24,9 @@ import {
   logout,
   subscribeToAuth,
   subscribeToWeek,
+  subscribeToDraft,
+  saveDraft,
+  deleteDraft,
   subscribeToStaff,
   subscribeToRates,
   saveRates,
@@ -116,9 +119,20 @@ const App: React.FC = () => {
   // DEMANDE meme pas, et les regles Firestore les refuseraient de toute facon.
   const [rates, setRates] = useState<Record<string, number>>({});
   const [guestEmails, setGuestEmails] = useState<string[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [absences, setAbsences] = useState<Absence[]>([]);
-  const [holidays, setHolidays] = useState<number[]>([]);
+  // La semaine officielle, telle qu'en base. Ce que l'ecran montre et modifie
+  // (`shifts`, `absences`, `holidays`) est elle, OU le brouillon en mode
+  // brouillon : toutes les actions existantes travaillent sur l'un ou l'autre
+  // sans avoir a le savoir, et `commitWeek` decide ou ecrire.
+  const [officialWeek, setOfficialWeek] = useState<WeekData>(EMPTY_WEEK);
+  /** Brouillon de la semaine affichee (admins seulement), null s'il n'y en a pas. */
+  const [draft, setDraft] = useState<DraftData | null>(null);
+  const [draftMode, setDraftMode] = useState(false);
+  const inDraft = draftMode && draft !== null;
+  // Lu au moment du geste par commitWeek et createLog : plusieurs actions sont
+  // memorisees et garderaient sinon la valeur du moment de leur creation.
+  const draftModeRef = useRef(false);
+  draftModeRef.current = inDraft;
+  const { shifts, absences, holidays } = inDraft ? draft! : officialWeek;
 
   // L'historique porte la semaine ENTIERE. S'il ne portait que les shifts,
   // annuler apres avoir saisi une absence remettrait les anciens shifts en
@@ -320,19 +334,19 @@ const App: React.FC = () => {
   // Undo/redo history belongs to ONE week. Carrying it across a week change
   // meant Undo wrote the previous week's shifts onto the week now on screen,
   // wiping it. Clearing on every weekId change is what keeps undo scoped.
+  // Meme raison pour l'entree et la sortie du brouillon : annuler ne doit jamais
+  // faire passer un etat du brouillon dans la semaine officielle, ni l'inverse.
   useEffect(() => {
     setPast([]);
     setFuture([]);
-  }, [weekId]);
+  }, [weekId, inDraft]);
 
   useEffect(() => {
     if (user && !isGuest) {
       setIsLoading(true);
       const unsubscribe = subscribeToWeek(weekId, (week, updatedAt) => {
         weekVersion.current = updatedAt;
-        setShifts(week.shifts);
-        setAbsences(week.absences);
-        setHolidays(week.holidays);
+        setOfficialWeek(week);
         setIsLoading(false);
       });
       return () => unsubscribe();
@@ -341,14 +355,30 @@ const App: React.FC = () => {
       const timer = setTimeout(() => {
         const cached = localStorage.getItem(`sandbox_week_${weekId}`);
         const week: WeekData = cached ? { ...EMPTY_WEEK, ...JSON.parse(cached) } : EMPTY_WEEK;
-        setShifts(week.shifts);
-        setAbsences(week.absences);
-        setHolidays(week.holidays);
+        setOfficialWeek(week);
         setIsLoading(false);
       }, 300);
       return () => clearTimeout(timer);
     }
   }, [weekId, user, isGuest]);
+
+  /**
+   * Brouillon de la semaine. Changer de semaine sort du mode brouillon.
+   *
+   * Admins seulement, comme les couts : la regle Firestore refuse la lecture a
+   * tout autre compte, et s'abonner quand meme afficherait un bandeau d'erreur.
+   */
+  useEffect(() => {
+    setDraftMode(false);
+    setDraft(null);
+    if (isGuest) {
+      const cached = localStorage.getItem(`sandbox_draft_${weekId}`);
+      setDraft(cached ? { ...EMPTY_WEEK, baseUpdatedAt: null, ...JSON.parse(cached) } : null);
+      return;
+    }
+    if (!user || isReadOnly) return;
+    return subscribeToDraft(weekId, setDraft);
+  }, [weekId, user, isGuest, isReadOnly]);
 
   /**
    * Total d'heures du mois par employe.
@@ -598,6 +628,8 @@ const App: React.FC = () => {
    *               only existing buried inside the English sentence.
    */
   const createLog = (action: string, details: string, target?: Staff | null) => {
+    // Un brouillon, ce sont des essais : rien n'entre au journal avant la validation.
+    if (draftModeRef.current) return;
     saveLogToFirebase({
       userId: user?.uid || 'guest',
       userName: user?.displayName || 'Sandbox Admin',
@@ -622,9 +654,21 @@ const App: React.FC = () => {
       setPast(prev => [before, ...prev].slice(0, 10));
       setFuture([]);
     }
-    setShifts(after.shifts);
-    setAbsences(after.absences);
-    setHolidays(after.holidays);
+
+    // Mode brouillon : on ecrit dans le brouillon, JAMAIS dans la semaine officielle.
+    if (draftModeRef.current) {
+      const nextDraft: DraftData = { ...after, baseUpdatedAt: draft?.baseUpdatedAt ?? null };
+      setDraft(nextDraft);
+      if (user && !isGuest) {
+        saveDraft(weekId, nextDraft).then(triggerSyncFeedback);
+      } else if (isGuest) {
+        localStorage.setItem(`sandbox_draft_${weekId}`, JSON.stringify(nextDraft));
+        triggerSyncFeedback();
+      }
+      return;
+    }
+
+    setOfficialWeek(after);
 
     if (user && !isGuest) {
       writeQueue.current = writeQueue.current.then(async () => {
@@ -649,7 +693,7 @@ const App: React.FC = () => {
       localStorage.setItem(`sandbox_week_${weekId}`, JSON.stringify(after));
       triggerSyncFeedback();
     }
-  }, [weekId, user, isGuest, isReadOnly, shifts, absences, holidays]);
+  }, [weekId, user, isGuest, isReadOnly, shifts, absences, holidays, draft]);
 
   // Ancien point d'entree, conserve pour tout ce qui ne touche que les shifts.
   const handleUpdateShifts = useCallback(
@@ -955,7 +999,7 @@ const App: React.FC = () => {
     // Les ids coches appartiennent a la semaine affichee : en changer, ou passer
     // en lecture seule, laisserait une barre d'actions sans cartes en face.
     setSelectedShiftIds([]);
-  }, [currentWeek, isReadOnly]);
+  }, [currentWeek, isReadOnly, inDraft]);
 
   const changeWeek = (direction: number) => {
     setNavDirection(direction > 0 ? 'forward' : 'backward');
@@ -1025,6 +1069,77 @@ const App: React.FC = () => {
     handleUpdateShifts([]);
     createLog('DELETE WEEK', `Removed all shifts for week ${getWeekRangeString(currentWeek)}`);
   }, [handleUpdateShifts, isReadOnly, currentWeek]);
+
+  // Le brouillon n'existe qu'en vue jour. Ailleurs, un geste ecrirait dans une
+  // semaine que l'ecran ne montre pas : on sort du mode plutot que de le risquer.
+  // Meme sortie si le brouillon disparait (valide ou abandonne sur un autre appareil).
+  useEffect(() => {
+    if (draftMode && (!draft || effectiveViewType !== 'day')) setDraftMode(false);
+  }, [draftMode, draft, effectiveViewType]);
+
+  /** Ouvre le brouillon : copie de la semaine officielle, ou reprise de l'existant. */
+  const startDraft = useCallback(() => {
+    if (isReadOnly || isLoading) return;
+    if (!draft) {
+      const copy: DraftData = {
+        shifts: [...officialWeek.shifts],
+        absences: [...officialWeek.absences],
+        holidays: [...officialWeek.holidays],
+        baseUpdatedAt: weekVersion.current ?? null,
+      };
+      setDraft(copy);
+      if (user && !isGuest) saveDraft(weekId, copy);
+      else if (isGuest) localStorage.setItem(`sandbox_draft_${weekId}`, JSON.stringify(copy));
+    }
+    setDraftMode(true);
+  }, [isReadOnly, isLoading, draft, officialWeek, user, isGuest, weekId]);
+
+  /**
+   * Le brouillon remplace la semaine officielle en UNE ecriture, avec le meme
+   * controle de conflit que toute sauvegarde, puis disparait. Une seule ligne au
+   * journal. Si l'ecriture echoue, le brouillon reste intact.
+   */
+  const publishDraft = useCallback(async () => {
+    if (isReadOnly || !draft) return;
+    const week: WeekData = { shifts: draft.shifts, absences: draft.absences, holidays: draft.holidays };
+    const online = !!user && !isGuest;
+    const stale = online && draft.baseUpdatedAt !== (weekVersion.current ?? null);
+    const question = stale ? t('draftStale') : t('confirmDraftPublish').replace('{n}', String(week.shifts.length));
+    if (!window.confirm(question)) return;
+
+    if (online) {
+      await writeQueue.current;
+      let stamp = '';
+      try {
+        stamp = await saveWeekToFirebase(weekId, week, weekVersion.current);
+      } catch (e) {
+        if (e instanceof WeekConflictError) {
+          setSaveError('Someone else saved this week at the same moment. The draft was not published and is still here.');
+        }
+        return;
+      }
+      if (!stamp) return;
+      weekVersion.current = stamp;
+      await deleteDraft(weekId);
+    } else {
+      localStorage.setItem(`sandbox_week_${weekId}`, JSON.stringify(week));
+      localStorage.removeItem(`sandbox_draft_${weekId}`);
+    }
+    setOfficialWeek(week);
+    setDraft(null);
+    setDraftMode(false);
+    draftModeRef.current = false; // sinon createLog ignorerait CETTE ligne-ci
+    createLog('PUBLISH DRAFT', `Published draft for week ${getWeekRangeString(currentWeek)} — ${week.shifts.length} shifts`);
+    triggerSyncFeedback();
+  }, [isReadOnly, draft, user, isGuest, weekId, currentWeek, t]);
+
+  const discardDraft = useCallback(async () => {
+    if (isReadOnly || !window.confirm(t('confirmDraftDiscard'))) return;
+    setDraft(null);
+    setDraftMode(false);
+    if (user && !isGuest) await deleteDraft(weekId);
+    else localStorage.removeItem(`sandbox_draft_${weekId}`);
+  }, [isReadOnly, user, isGuest, weekId, t]);
 
 
   const handleExportSnapshot = async () => {
@@ -1220,9 +1335,31 @@ const App: React.FC = () => {
             </button>
           </div>
         )}
+        {inDraft && (
+          <div className="bg-amber-50 border-b-2 border-dashed border-amber-300 px-4 md:px-6 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <p className="flex-1 min-w-[12rem] text-sm font-semibold text-amber-900">{t('draftBanner')}</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={discardDraft}
+                className="h-11 px-4 rounded-xl text-sm font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-all active:scale-95"
+              >
+                {t('draftDiscard')}
+              </button>
+              <button
+                type="button"
+                onClick={publishDraft}
+                className="h-11 px-4 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all active:scale-95"
+              >
+                {t('draftPublish')}
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex-1 overflow-auto relative bg-white hide-scrollbar">
           <Calendar
-            shifts={shifts} 
+            isDraft={inDraft}
+            shifts={shifts}
             staff={staffList} 
             currentWeek={currentWeek} 
             navDirection={navDirection}
@@ -1262,6 +1399,8 @@ const App: React.FC = () => {
           language === 'fr' ? 'fr-FR' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
         onManageStaffClick={fromSidebar(() => setIsStaffModalOpen(true))}
         onCopyLastWeek={handleCopyLastWeek}
+        onStartDraft={!inDraft && effectiveViewType === 'day' ? fromSidebar(startDraft) : undefined}
+        draftExists={draft !== null}
         compliance={complianceList}
         conventionLabel={`${convention.label} — IDCC ${convention.idcc}`}
         onDeleteWeek={handleDeleteWeek}

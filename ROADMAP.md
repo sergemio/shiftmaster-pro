@@ -31,8 +31,8 @@ validation de Serge. Detail de ce qui est fait : `CHANGELOG.md`.
 | 4 | Publication et notification | 🔒 **demande une decision de Serge** |
 | 6b | Semaine type et shifts types | ⬜ a faire |
 | 10 | Contraintes legales (4 regles, IDCC 1501) | ✅ fait |
-| 11 | Cout charge sur chaque shift (admins seulement) | ✅ code, ⬜ pas pousse — `PLAN-cout-et-brouillon.md` |
-| 12 | Mode brouillon par semaine, valide en une fois | ⬜ a faire — `PLAN-cout-et-brouillon.md` |
+| 11 | Cout charge sur chaque shift (admins seulement) | ✅ sur la preview (`dev`), pas encore dans `master` |
+| 12 | Mode brouillon par semaine, valide en une fois | ✅ sur la preview (`dev`), pas encore dans `master` |
 
 **Lot 4** : la moitie « brouillon / publie » est desormais le lot 12. Seule la notification reste bloquee.
 
@@ -113,7 +113,8 @@ l'inclure dans `saveWeekToFirebase` l'effacerait a la premiere modification de s
 |---|---|
 | `scripts/test-lazy-subscribe.mjs` | 8 cas du chargement differe de Firestore |
 | `scripts/test-labor-rules.mjs` | 20 cas des regles de duree du travail |
-| `scripts/test-rules.mjs` | 24 cas des regles Firestore (emulateur requis) |
+| `scripts/test-rules.mjs` | 40 cas des regles Firestore, dont couts et brouillons (emulateur requis) |
+| `scripts/test-shift-cost.mjs` | 14 cas du cout charge par shift |
 | `scripts/test-contract-hours.mjs` | 11 cas des avenants dates |
 | `scripts/test-month-hours.mjs` | 7 cas du contrat mensuel |
 | `scripts/test-overlaps.mjs` | 9 cas des chevauchements |

@@ -5,6 +5,43 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-13 — Mode brouillon par semaine (lot 12)
+
+Demande de Serge : pouvoir essayer une semaine entiere — placer, deplacer, supprimer — sans que
+l'equipe voie les essais ni que le journal se remplisse, puis valider d'un coup.
+
+**Comment ca marche.** Un admin clique « Brouillon de la semaine » (colonne de droite, vue jour).
+Le brouillon part d'une copie de la semaine officielle. Un bandeau ambre s'affiche, les cartes
+passent en rayures avec bordure en pointilles. Toutes les actions habituelles marchent et ecrivent
+dans le brouillon. « Valider la semaine » remplace l'officiel en une ecriture, supprime le brouillon
+et ecrit UNE ligne au journal (`PUBLISH DRAFT`). « Abandonner » supprime le brouillon. Changer de
+semaine ou de vue sort du mode ; « Reprendre le brouillon » le rouvre, y compris d'un autre appareil.
+
+**Choix de conception.**
+- L'ecran ne connait qu'une semaine « affichee » : l'officielle, ou le brouillon en mode brouillon.
+  Toutes les actions existantes marchent donc sans modification ; seul `commitWeek` decide ou
+  ecrire, et `createLog` se tait pendant le brouillon.
+- Le brouillon memorise la version officielle dont il est parti (`baseUpdatedAt`). Si un autre
+  admin a modifie la semaine entre-temps, la validation le dit avant d'ecraser son travail.
+- Annuler/retablir est remis a zero en entrant et en sortant du brouillon : un etat d'essai ne doit
+  jamais pouvoir revenir dans l'officiel par un Ctrl+Z.
+
+- `firestore.rules` : bloc `match /drafts/{weekId}`, lecture, ecriture et suppression reservees aux
+  admins, ecriture validee par `isValidWeeklyData`. **Deploye le 13/09/2026**, ruleset `13db29c2`
+  (ancien `7fff7f39`), 6 lignes ajoutees, 0 retiree, `--diff` apres publication : IDENTIQUES.
+- `scripts/test-rules.mjs` : 9 cas de plus (employe, invite, inconnu refuses ; admin lit, ecrit,
+  supprime ; brouillon invalide refuse). 40 cas, tous conformes dans l'emulateur.
+- `services/firebaseService.ts` : `subscribeToDraft`, `saveDraft`, `deleteDraft`.
+- `types.ts` : `DraftData`.
+- `App.tsx` : etat `officialWeek` / `draft` / `draftMode`, abonnement admin seulement, aiguillage
+  dans `commitWeek`, `startDraft`, `publishDraft`, `discardDraft`, bandeau.
+- `components/Sidebar.tsx`, `Calendar.tsx`, `ShiftCard.tsx`, `utils/translations.ts`.
+- Scenario navigateur sur le bac a sable, 21 verifications : copie, modification sans toucher
+  l'officiel ni le journal, abandon, sortie au changement de semaine, reprise, validation avec une
+  seule ligne au journal, journal normal hors brouillon, aucune erreur JavaScript.
+
+---
+
 ## 2026-09-10 — Cout charge sur chaque shift, visible des seuls admins
 
 Demande de Serge apres avoir regarde schedex.me, qui affiche en permanence le cout du travail

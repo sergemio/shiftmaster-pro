@@ -27,6 +27,9 @@ interface SidebarProps {
   monthLabel?: string;
   onManageStaffClick: () => void;
   onCopyLastWeek: () => void;
+  /** Ouvre ou reprend le brouillon. Absent = pas propose (hors vue jour, ou deja dedans). */
+  onStartDraft?: () => void;
+  draftExists?: boolean;
   /** Depassements de duree du travail sur la semaine affichee. */
   compliance?: { who: string; text: string }[];
   /** Nom de la convention appliquee. L'utilisateur doit toujours savoir de
@@ -60,6 +63,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   monthLabel = '',
   onManageStaffClick, 
   onCopyLastWeek,
+  onStartDraft,
+  draftExists = false,
   compliance = [],
   conventionLabel = '',
   onDeleteWeek,
@@ -372,6 +377,16 @@ const Sidebar: React.FC<SidebarProps> = ({
             </svg>
           </button>
         </div>
+      )}
+
+      {!isReadOnly && onStartDraft && (
+        <button
+          type="button"
+          onClick={onStartDraft}
+          className="w-full h-12 -mt-3 mb-6 border-2 border-dashed border-slate-300 text-slate-600 bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(100,116,139,0.08)_6px_12px)] rounded-2xl font-semibold hover:border-indigo-300 hover:text-indigo-700 transition-all active:scale-[0.98] text-sm"
+        >
+          {t(draftExists ? 'draftResume' : 'draftStart')}
+        </button>
       )}
 
       {/* Duree du travail. Le bloc n'apparait que s'il a quelque chose a dire :

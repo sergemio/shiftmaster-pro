@@ -31,7 +31,7 @@ Historique détaillé : `CHANGELOG.md`. Contexte des lots précédents : `ROADMA
 
 ---
 
-## Lot 11 — Coût chargé sur chaque shift ✅ codé, ⬜ pas poussé
+## Lot 11 — Coût chargé sur chaque shift ✅ poussé sur `dev` le 13/09 (commit `f1c0ff5`)
 
 **Ce que c'est.** Sur chaque carte de shift, une pastille grise « 108 € » à côté de « 6H », visible
 des seuls admins. Le taux saisi est le **coût employeur chargé** (brut + charges patronales), un par
@@ -54,7 +54,11 @@ permission dans `scripts/test-rules.mjs`, 6 scénarios navigateur. Fichiers : `u
 
 ---
 
-## Lot 12 — Mode brouillon ⬜ à faire
+## Lot 12 — Mode brouillon ✅ règles déployées et code poussé sur `dev` le 13/09
+
+Écarts assumés par rapport au texte ci-dessous : « Valider » demande une confirmation (elle
+remplace ce que voit l'équipe), et le brouillon garde la version officielle dont il est parti
+pour prévenir si un autre admin a modifié la semaine entre-temps. Détail : `CHANGELOG.md`.
 
 ### Comportement (cahier des charges)
 

@@ -27,6 +27,8 @@ interface ShiftCardProps {
    *  = l'utilisateur n'a pas le droit de voir les montants. Les deux se
    *  traduisent par « rien d'affiche », mais pour des raisons opposees. */
   cost?: number | null;
+  /** Le shift appartient a un brouillon, pas encore a la semaine officielle. */
+  isDraft?: boolean;
   /** Ce shift fait partie de la selection en cours. */
   isSelected?: boolean;
   /** Une selection est ouverte : un simple appui coche au lieu d'ouvrir la fiche. */
@@ -49,6 +51,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   hasOverlap = false,
   ruleWarnings = [],
   cost,
+  isDraft = false,
   isSelected = false,
   selectionMode = false,
   onToggleSelect
@@ -130,6 +133,12 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
         backgroundColor: shift.coverageBy ? '#f1f5f9' : staff.color + '15',
         borderColor: shift.coverageBy ? '#94a3b8' : staff.color,
         borderWidth: '0 0 0 4px',
+        // Brouillon : rayures legeres et bordure en pointilles, sur la couleur de
+        // la personne. Neutre, jamais rouge : un essai n'est pas une erreur.
+        borderStyle: isDraft ? 'dashed' : 'solid',
+        backgroundImage: isDraft
+          ? 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(100,116,139,0.13) 6px 12px)'
+          : undefined,
         // Un CONTOUR, pas une bordure : le contour ne prend pas de place, donc
         // cocher une carte ne decale pas ses voisines dans la colonne.
         outline: isSelected ? '2px solid #4f46e5' : undefined,

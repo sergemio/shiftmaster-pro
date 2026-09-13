@@ -1,4 +1,4 @@
-import { Shift, Staff, LogEntry, Absence, WeekData, EMPTY_WEEK } from '../types';
+import { Shift, Staff, LogEntry, Absence, WeekData, DraftData, EMPTY_WEEK } from '../types';
 
 // Use the Official Google Firebase ESM CDN to ensure total compatibility
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -387,6 +387,62 @@ export const subscribeToWeek = (
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, path);
   }));
+};
+
+/**
+ * Brouillon de la semaine, ou null s'il n'y en a pas.
+ *
+ * La regle Firestore reserve la lecture aux admins : l'app ne s'abonne donc que
+ * pour eux, sinon un employe declencherait un refus et un bandeau d'erreur.
+ */
+export const subscribeToDraft = (weekId: string, callback: (draft: DraftData | null) => void) => {
+  if (!auth.currentUser) return () => {};
+  const path = `drafts/${weekId}`;
+  return lazySubscribe(({ fs, db }) => fs.onSnapshot(fs.doc(db, 'drafts', weekId), (snap) => {
+    if (!snap.exists()) return callback(null);
+    const data = snap.data();
+    callback({
+      shifts: Array.isArray(data.shifts) ? data.shifts as Shift[] : [],
+      absences: Array.isArray(data.absences) ? data.absences as Absence[] : [],
+      holidays: Array.isArray(data.holidays) ? data.holidays.filter((d: unknown) => typeof d === 'number') : [],
+      baseUpdatedAt: data.baseUpdatedAt ?? null,
+    });
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  }));
+};
+
+/**
+ * Ecriture directe, sans la transaction de saveWeekToFirebase : un brouillon n'a
+ * qu'un auteur a la fois, et `setDoc` s'applique aussitot au cache local, dans
+ * l'ordre des gestes — deux glisser rapides ne font donc pas clignoter l'ecran.
+ */
+export const saveDraft = async (weekId: string, draft: DraftData): Promise<void> => {
+  if (!auth.currentUser) return;
+  const { fs, db } = await firestore();
+  const path = `drafts/${weekId}`;
+  try {
+    await fs.setDoc(fs.doc(db, 'drafts', weekId), {
+      shifts: sanitizeData(draft.shifts),
+      absences: sanitizeData(draft.absences),
+      holidays: [...draft.holidays].sort((a, b) => a - b),
+      baseUpdatedAt: draft.baseUpdatedAt,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+};
+
+export const deleteDraft = async (weekId: string): Promise<void> => {
+  if (!auth.currentUser) return;
+  const { fs, db } = await firestore();
+  const path = `drafts/${weekId}`;
+  try {
+    await fs.deleteDoc(fs.doc(db, 'drafts', weekId));
+  } catch (e) {
+    handleFirestoreError(e, OperationType.DELETE, path);
+  }
 };
 
 export const subscribeToStaff = (callback: (staff: Staff[], guests: string[]) => void) => {

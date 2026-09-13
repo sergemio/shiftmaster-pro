@@ -86,6 +86,15 @@ export interface WeekData {
 
 export const EMPTY_WEEK: WeekData = { shifts: [], absences: [], holidays: [] };
 
+/**
+ * Brouillon d'une semaine (document `drafts/{weekId}`). `baseUpdatedAt` est la
+ * version officielle dont il est parti : si la semaine a bouge depuis, valider
+ * le brouillon ecraserait le travail d'un autre, et l'app le dit avant.
+ */
+export interface DraftData extends WeekData {
+  baseUpdatedAt: string | null;
+}
+
 export type DragType = 'move' | 'resize-top' | 'resize-bottom';
 
 export interface DragState {

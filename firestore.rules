@@ -152,6 +152,14 @@ service cloud.firestore {
                    && request.resource.data.updatedAt is string;
     }
 
+    // Brouillon d'une semaine (lot 12) : meme forme que weeks/{weekId}. Reserve
+    // aux admins en LECTURE aussi : l'equipe ne doit voir que la semaine
+    // officielle, et seule une regle de lecture le garantit.
+    match /drafts/{weekId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin() && isValidWeeklyData(request.resource.data);
+    }
+
     match /logs/{logId} {
       // Readable by the team: the journal is a shared record, and restricting
       // reads to admins would make subscribing crash for everyone else.
