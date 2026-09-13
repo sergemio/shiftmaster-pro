@@ -1405,7 +1405,7 @@ const App: React.FC = () => {
         conventionLabel={`${convention.label} — IDCC ${convention.idcc}`}
         onDeleteWeek={handleDeleteWeek}
         onOpenHistory={fromSidebar(() => setIsHistoryModalOpen(true))}
-        onExportSnapshot={handleExportSnapshot}
+        onExportSnapshot={inDraft ? undefined : handleExportSnapshot}
         isReadOnly={isReadOnly}
         isLoading={isLoading}
         onUndo={undo}

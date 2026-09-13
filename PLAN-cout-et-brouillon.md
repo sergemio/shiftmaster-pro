@@ -56,9 +56,12 @@ permission dans `scripts/test-rules.mjs`, 6 scénarios navigateur. Fichiers : `u
 
 ## Lot 12 — Mode brouillon ✅ règles déployées et code poussé sur `dev` le 13/09
 
-Écarts assumés par rapport au texte ci-dessous : « Valider » demande une confirmation (elle
-remplace ce que voit l'équipe), et le brouillon garde la version officielle dont il est parti
-pour prévenir si un autre admin a modifié la semaine entre-temps. Détail : `CHANGELOG.md`.
+Écarts par rapport au texte ci-dessous : « Valider » demande une confirmation (elle remplace ce
+que voit l'équipe) ; le brouillon garde la version officielle dont il est parti pour prévenir si
+un autre admin a modifié la semaine entre-temps ; **décision de Serge le 13/09 : « Brouillon » et
+« Copier la semaine précédente » ne sont proposés que sur une semaine vide**, côte à côte, avec une
+explication au survol (un brouillon existant garde son bouton « Reprendre »). Le point 1 ci-dessous
+(copie d'une semaine remplie) ne s'applique donc plus. Détail : `CHANGELOG.md`.
 
 ### Comportement (cahier des charges)
 

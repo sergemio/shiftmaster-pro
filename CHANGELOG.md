@@ -5,6 +5,27 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-13 — Brouillon et copie de la semaine precedente, cote a cote
+
+Retour de Serge sur la preview. Les deux boutons sont desormais sur une meme ligne, sous « + Shift »,
+et **n'apparaissent que sur une semaine vide** (decision de Serge : ce sont deux facons de COMMENCER
+une semaine, retravailler une semaine construite n'a pas de sens en brouillon). Le geste prevu :
+ouvrir un brouillon sur une semaine vide, y copier la semaine precedente, ajuster, valider.
+Exception : un brouillon qui existe deja garde son bouton « Reprendre », meme si l'officiel s'est
+rempli entre-temps, sinon il deviendrait introuvable.
+
+**Infobulle.** Le `title` natif affichait une ligne unique qui traversait l'ecran, dans le style
+du systeme. Remplace par une bulle sombre calee sur la largeur de la rangee de boutons (elle ne
+deborde jamais de la colonne), une phrase par ligne, apparition apres 300 ms. Fichiers :
+`components/Sidebar.tsx` (composant `HintButton`), `utils/translations.ts`.
+
+**Export en image masque pendant un brouillon** (accord de Serge) : l'icone a cote de « Stats Hebdo »
+aurait photographie le brouillon, qu'on pouvait ensuite envoyer a l'equipe par erreur.
+**Textes francais** du brouillon : accents et apostrophes retablis (« l equipe » s'affichait tel quel).
+Verifie aussi a 400 px de large : boutons cote a cote, pas de defilement horizontal, tiroir referme.
+
+---
+
 ## 2026-09-13 — Mode brouillon par semaine (lot 12)
 
 Demande de Serge : pouvoir essayer une semaine entiere — placer, deplacer, supprimer — sans que
