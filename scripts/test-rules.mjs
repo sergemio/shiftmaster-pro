@@ -22,6 +22,9 @@ const STAFF = {
   guests: ['invite@x.com'],
 };
 
+// Couts horaires charges : la donnee la plus sensible de l'application.
+const RATES = { rates: { '3': 18, '5': 16.5 }, updatedAt: '2026-09-10T12:00:00.000Z' };
+
 const VALID_WEEK = {
   updatedAt: '2026-08-09T12:00:00.000Z',
   shifts: [{ id: 'a1', staffId: '3', dayIndex: 2, startTime: 11, endTime: 17 }],
@@ -39,6 +42,7 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(ctx.firestore(), 'logs/x1'), {
     userId: 'u', userName: 'n', action: 'a', details: 'd', timestamp: 't',
   });
+  await setDoc(doc(ctx.firestore(), 'settings/rates'), RATES);
 });
 
 const as = (email) =>
@@ -62,6 +66,18 @@ await check('Invite lit un planning',               assertSucceeds(getDoc(doc(as
 await check('INCONNU ne lit PAS les plannings',     assertFails(getDoc(doc(as(STRANGER), 'weeks/2026-08-09'))));
 await check('INCONNU n ecrit PAS les plannings',    assertFails(setDoc(doc(as(STRANGER), 'weeks/2026-08-09'), VALID_WEEK)));
 await check('INCONNU ne lit PAS les emails equipe', assertFails(getDoc(doc(as(STRANGER), 'settings/staff'))));
+// --- salaires : le secret de l'application ---------------------------------
+// Masquer un montant dans l'interface ne protege rien : ce qui protege, c'est
+// que la base refuse de l'envoyer. Ces quatre lignes sont ce qui garantit qu'un
+// employe ne peut pas lire le cout horaire de ses collegues.
+await check('Serge (admin) lit les couts horaires',   assertSucceeds(getDoc(doc(as(SERGE), 'settings/rates'))));
+await check('Omar (staff) NE LIT PAS les couts',      assertFails(getDoc(doc(as(OMAR), 'settings/rates'))));
+await check('Invite NE LIT PAS les couts',            assertFails(getDoc(doc(as(GUEST), 'settings/rates'))));
+await check('INCONNU NE LIT PAS les couts',           assertFails(getDoc(doc(as(STRANGER), 'settings/rates'))));
+await check('Omar (staff) N ECRIT PAS les couts',     assertFails(setDoc(doc(as(OMAR), 'settings/rates'), RATES)));
+await check('Serge (admin) ecrit les couts',          assertSucceeds(setDoc(doc(as(SERGE), 'settings/rates'), RATES)));
+await check('Un cout mal forme est refuse',           assertFails(setDoc(doc(as(SERGE), 'settings/rates'), { rates: 'oups', updatedAt: 'x' })));
+
 await check('Non connecte ne lit rien',             assertFails(getDoc(doc(as(null), 'weeks/2026-08-09'))));
 await check('Equipe lit le journal',                assertSucceeds(getDoc(doc(as(OMAR), 'logs/x1'))));
 await check('INCONNU ne lit PAS le journal',        assertFails(getDoc(doc(as(STRANGER), 'logs/x1'))));

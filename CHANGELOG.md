@@ -5,6 +5,57 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-10 — Cout charge sur chaque shift, visible des seuls admins
+
+Demande de Serge apres avoir regarde schedex.me, qui affiche en permanence le cout du travail
+pendant qu'on construit le planning. Chez nous il n'y avait AUCUNE notion de cout : on savait
+combien d'heures chacun faisait, jamais combien il coutait.
+
+**Le taux stocke est le cout CHARGE** (brut + charges patronales), pas le salaire brut. Un brut
+afficherait vingt-cinq a quarante pour cent de moins que ce que le restaurant decaisse — un
+chiffre faux dans le bon sens est plus dangereux que pas de chiffre, parce qu'on decide dessus.
+Le libelle du formulaire l'ecrit noir sur blanc.
+
+**Ou vivent les montants, et pourquoi ailleurs que dans la fiche d'equipe.** `settings/staff` est
+lisible par TOUTE l'equipe : le planning a besoin des noms et des couleurs. Un salaire range la
+serait lisible par n'importe quel employe dans l'onglet reseau du navigateur. Les taux vivent donc
+dans `settings/rates`, dont la regle Firestore limite lecture ET ecriture aux admins. Masquer le
+chiffre dans l'interface ne protege rien ; c'est la base qui doit refuser de l'envoyer.
+Second verrou cote app : on ne s'abonne au document que si l'utilisateur est admin — sinon un
+employe declencherait a chaque ouverture une lecture refusee, donc un bandeau rouge pour une
+situation normale.
+
+- `firestore.rules` : nouveau bloc `match /settings/rates`, admin en lecture et en ecriture.
+  **Deploye en production le 10/09/2026 a 20h12**, ruleset `7fff7f39`, l'ancien etant `df592cd3`.
+  Changement purement additif — 12 lignes ajoutees, zero retiree, aucune regle existante touchee —
+  donc rien de ce qui fonctionnait ne pouvait casser. Publie AVANT le code, exprès : les regles
+  seules sont inertes tant que l'app ne lit pas `settings/rates`, alors que l'inverse aurait
+  montre une erreur de permission aux admins.
+- `services/firebaseService.ts` : `subscribeToRates` / `saveRates`. Un taux vide ou nul n'est pas
+  ecrit — « pas renseigne » n'est pas « gratuit ».
+- `utils/helpers.ts` : `shiftCost` renvoie `null` et non zero quand le taux manque (zero se
+  totalise en silence et fait passer un cout ignore pour un cout nul), `totalCost` rend le total
+  ET le nombre de shifts non chiffres, `formatMoney`.
+- `components/ShiftCard.tsx` : pastille neutre a cote de la duree — « 6H » puis « 108 € ». Grise
+  et jamais ambre : un cout est un fait, pas une alerte (R5.3). Elle disparait avant l'horaire
+  dans une sous-colonne etroite, l'heure du service primant sur son prix.
+- `components/HourlyRatesEditor.tsx` (nouveau) : saisie d'un taux par personne dans les reglages,
+  anciens salaries en bas, avertissement ambre quand des taux manquent, exemple chiffre.
+- Tests : `scripts/test-shift-cost.mjs` (14 cas) et **7 nouveaux cas de permission** dans
+  `scripts/test-rules.mjs`, verifies dans l'emulateur — un employe, un invite et un inconnu se
+  voient tous refuser la lecture des couts.
+
+Le remplacement suit la meme regle que les heures : un shift repris coute le taux de CELUI QUI
+LE FAIT, pas du titulaire.
+
+## 2026-09-09 — dev fusionne dans master (mise en production)
+
+Fast-forward de 26 commits, `dbf906d`. Verifie avant : preview et prod lisent la meme base
+Firestore (dev tournait donc sur les vraies donnees depuis des jours), regles Firestore en
+production identiques au fichier local (`rules-deploy.mjs --diff`), aucune migration de
+donnees (nouveaux champs optionnels, `targetHours` toujours ecrit). Pas de service worker :
+un rechargement de la page suffit pour avoir la nouvelle version.
+
 ## 2026-09-09 — Periode d'emploi : rien avant l'entree, 21 jours de tolerance apres la sortie
 
 Regle fixee par Serge : un contrat a une date d'entree, aucun shift avant. Apres la date de

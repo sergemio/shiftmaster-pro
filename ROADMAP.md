@@ -1,5 +1,5 @@
 # ShiftMaster Pro — Feuille de route
-> Last update: 2026-09-06
+> Last update: 2026-09-13
 
 Etabli le 2026-09-06 apres audit UX de l'existant. Cadrage donne par Serge :
 
@@ -31,6 +31,10 @@ validation de Serge. Detail de ce qui est fait : `CHANGELOG.md`.
 | 4 | Publication et notification | 🔒 **demande une decision de Serge** |
 | 6b | Semaine type et shifts types | ⬜ a faire |
 | 10 | Contraintes legales (4 regles, IDCC 1501) | ✅ fait |
+| 11 | Cout charge sur chaque shift (admins seulement) | ✅ code, ⬜ pas pousse — `PLAN-cout-et-brouillon.md` |
+| 12 | Mode brouillon par semaine, valide en une fois | ⬜ a faire — `PLAN-cout-et-brouillon.md` |
+
+**Lot 4** : la moitie « brouillon / publie » est desormais le lot 12. Seule la notification reste bloquee.
 
 ---
 

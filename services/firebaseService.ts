@@ -404,6 +404,52 @@ export const subscribeToStaff = (callback: (staff: Staff[], guests: string[]) =>
   }));
 };
 
+/**
+ * Couts horaires charges, par identifiant de salarie.
+ *
+ * Deux precautions, et ce sont des choix de securite, pas du detail :
+ *
+ * 1. Document SEPARE de `settings/staff`. Ce dernier est lisible par toute
+ *    l'equipe — le planning a besoin des noms et des couleurs — donc un salaire
+ *    range la serait lisible par n'importe quel employe dans l'onglet reseau.
+ *    Ici la regle Firestore limite la lecture aux admins : ce n'est pas
+ *    l'interface qui cache le chiffre, c'est la base qui refuse de l'envoyer.
+ *
+ * 2. On ne s'abonne QUE si l'utilisateur est admin. Un non-admin qui tenterait
+ *    la lecture recevrait un refus, et le rapporteur d'erreur afficherait un
+ *    bandeau rouge alarmant pour une situation parfaitement normale.
+ */
+export const subscribeToRates = (callback: (rates: Record<string, number>) => void) => {
+  if (!auth.currentUser) return () => {};
+  const path = 'settings/rates';
+  return lazySubscribe(({ fs, db }) => fs.onSnapshot(fs.doc(db, 'settings', 'rates'), (snap) => {
+    callback(snap.exists() ? ((snap.data().rates || {}) as Record<string, number>) : {});
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  }));
+};
+
+export const saveRates = async (rates: Record<string, number>): Promise<void> => {
+  if (!auth.currentUser) return;
+  const { fs, db } = await firestore();
+  const path = 'settings/rates';
+  try {
+    // Un taux vide ou a zero n'est pas « zero euro de l'heure », c'est « pas
+    // renseigne » : on retire la cle plutot que d'ecrire un chiffre qui ferait
+    // passer un cout inconnu pour un cout nul.
+    const clean: Record<string, number> = {};
+    for (const [id, value] of Object.entries(rates)) {
+      if (Number.isFinite(value) && value > 0) clean[id] = value;
+    }
+    await fs.setDoc(fs.doc(db, 'settings', 'rates'), {
+      rates: clean,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+};
+
 export const subscribeToGlobalSettings = (callback: (settings: { timezone?: string, language?: string, convention?: string }) => void) => {
   if (!auth.currentUser) return () => {};
   const path = 'settings/global';

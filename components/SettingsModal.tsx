@@ -1,7 +1,8 @@
 
 import React from 'react';
-import { Language, ViewType } from '../types';
+import { Language, Staff, ViewType } from '../types';
 import ExportDataButton from './ExportDataButton';
+import HourlyRatesEditor from './HourlyRatesEditor';
 import { getTranslation } from '../utils/translations';
 
 interface SettingsModalProps {
@@ -12,6 +13,12 @@ interface SettingsModalProps {
   viewType: ViewType;
   canSeeMyWeek?: boolean;
   onViewTypeChange: (type: ViewType) => void;
+  /** Les montants n'existent que pour un admin : `canSeeMoney` faux retire la
+   *  section entiere, et l'app n'a de toute facon rien charge. */
+  canSeeMoney?: boolean;
+  staff?: Staff[];
+  rates?: Record<string, number>;
+  onRatesChange?: (rates: Record<string, number>) => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -21,7 +28,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onLanguageChange,
   viewType,
   canSeeMyWeek = false,
-  onViewTypeChange
+  onViewTypeChange,
+  canSeeMoney = false,
+  staff = [],
+  rates = {},
+  onRatesChange
 }) => {
   if (!isOpen) return null;
   const t = getTranslation(language);
@@ -98,6 +109,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
             </div>
           </section>
+
+          {canSeeMoney && onRatesChange && (
+            <section>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">
+                {language === 'fr' ? 'Coûts horaires' : 'Hourly costs'}
+              </h3>
+              <HourlyRatesEditor staff={staff} rates={rates} onChange={onRatesChange} language={language} />
+            </section>
+          )}
 
           {/* L'export vit ici depuis le 08/09/2026 : quelques usages par an ne
               justifiaient pas une place permanente dans la colonne du planning. */}

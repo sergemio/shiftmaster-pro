@@ -1,7 +1,7 @@
 
 import React, { useRef } from 'react';
 import { Shift, Staff, DragType, Language } from '../types';
-import { formatTime, formatShortDate, OrphanReason } from '../utils/helpers';
+import { formatTime, formatShortDate, formatMoney, OrphanReason } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
 
 interface ShiftCardProps {
@@ -23,6 +23,10 @@ interface ShiftCardProps {
    *  rouge : depasser 10 h n'est pas une erreur de saisie, c'est une decision
    *  que l'employeur a le droit de prendre en connaissance de cause. */
   ruleWarnings?: string[];
+  /** Cout charge de ce shift, en euros. `null` = taux non renseigne, `undefined`
+   *  = l'utilisateur n'a pas le droit de voir les montants. Les deux se
+   *  traduisent par « rien d'affiche », mais pour des raisons opposees. */
+  cost?: number | null;
   /** Ce shift fait partie de la selection en cours. */
   isSelected?: boolean;
   /** Une selection est ouverte : un simple appui coche au lieu d'ouvrir la fiche. */
@@ -44,6 +48,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   orphanReason = null,
   hasOverlap = false,
   ruleWarnings = [],
+  cost,
   isSelected = false,
   selectionMode = false,
   onToggleSelect
@@ -166,6 +171,19 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             <span className="bg-slate-200/60 text-slate-600 text-xs font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-slate-300/30">
               {duration.toFixed(duration % 1 === 0 ? 0 : 1)}H
             </span>
+            {typeof cost === 'number' && (
+              /* Neutre, jamais rouge ni ambre : un cout n'est ni une alerte ni
+                 une infraction, c'est un fait (R5.3). Il se lit a cote de la
+                 duree parce que c'est la meme information vue autrement, et il
+                 disparait avant l'horaire dans une sous-colonne etroite —
+                 l'heure du service prime toujours sur son prix. */
+              <span
+                title={`${staff.name} · cout charge de ce service`}
+                className="bg-slate-100 text-slate-500 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-slate-200 tabular-nums @max-[88px]:hidden"
+              >
+                {formatMoney(cost, language as Language)}
+              </span>
+            )}
             {hasOverlap && (
               /* Rouge assume ici, contrairement au badge de periode d'emploi :
                  personne ne peut etre a deux endroits a la fois, c'est une

@@ -6,7 +6,7 @@ import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import MyWeekView from './MyWeekView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, staffingPerSlot, formatTime, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, shiftCost, staffingPerSlot, formatTime, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
 import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
 
 // Branded header stamped on top of the grid in the PNG export only.
@@ -35,6 +35,9 @@ interface CalendarProps {
   holidays?: number[];
   onRemoveAbsence?: (id: string) => void;
   showCoverage?: boolean;
+  /** Couts horaires charges, par identifiant. Vide pour un non-admin : l'app ne
+   *  les charge meme pas, et les regles Firestore les lui refuseraient. */
+  rates?: Record<string, number>;
   staff: Staff[];
   currentWeek: Date;
   navDirection?: 'forward' | 'backward' | 'none';
@@ -128,6 +131,7 @@ const Calendar: React.FC<CalendarProps> = ({
   holidays = [],
   onRemoveAbsence,
   showCoverage = true,
+  rates = {},
   staff, 
   currentWeek, 
   navDirection = 'none',
@@ -632,6 +636,7 @@ const Calendar: React.FC<CalendarProps> = ({
                   orphanReason={orphanReason}
                   hasOverlap={overlappingIds.has(shift.id)}
                   ruleWarnings={ruleWarnings[shift.id]}
+                  cost={shiftCost(shift, rates) ?? undefined}
                   isReadOnly={isReadOnly}
                   isSelected={selectedShiftIds.includes(shift.id)}
                   selectionMode={selectedShiftIds.length > 0}

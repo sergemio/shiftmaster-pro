@@ -25,6 +25,8 @@ import {
   subscribeToAuth,
   subscribeToWeek,
   subscribeToStaff,
+  subscribeToRates,
+  saveRates,
   subscribeToGlobalSettings,
   AuthResult,
   loadShiftsFromFirebase,
@@ -110,6 +112,9 @@ const App: React.FC = () => {
   const [currentWeek, setCurrentWeek] = useState<Date>(getWeekStart(new Date()));
   const [navDirection, setNavDirection] = useState<'forward' | 'backward' | 'none'>('none');
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  // Couts horaires charges. Vide tant qu'on n'est pas admin : on ne les
+  // DEMANDE meme pas, et les regles Firestore les refuseraient de toute facon.
+  const [rates, setRates] = useState<Record<string, number>>({});
   const [guestEmails, setGuestEmails] = useState<string[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [absences, setAbsences] = useState<Absence[]>([]);
@@ -281,6 +286,36 @@ const App: React.FC = () => {
       setStaffLoaded(true);
     }
   }, [user, isGuest]);
+
+  /**
+   * Les montants ne sont charges QUE pour un admin.
+   *
+   * Ce n'est pas une optimisation, c'est la seconde moitie du verrou : la
+   * premiere est la regle Firestore qui limite la lecture de `settings/rates`
+   * aux admins. Sans cette condition, un employe declencherait a chaque
+   * ouverture une lecture refusee, donc un bandeau d'erreur rouge pour une
+   * situation parfaitement normale.
+   *
+   * On repart de zero des qu'on cesse d'etre admin — une retrogradation en
+   * cours de session ne doit pas laisser les chiffres a l'ecran.
+   */
+  useEffect(() => {
+    if (isGuest) {
+      const cached = localStorage.getItem('sandbox_rates');
+      setRates(cached ? JSON.parse(cached) : {});
+      return;
+    }
+    if (!user || isReadOnly) { setRates({}); return; }
+    const unsubscribe = subscribeToRates(setRates);
+    return () => unsubscribe();
+  }, [user, isGuest, isReadOnly]);
+
+  const updateRates = useCallback((next: Record<string, number>) => {
+    if (isReadOnly) return;
+    setRates(next);
+    if (isGuest) { localStorage.setItem('sandbox_rates', JSON.stringify(next)); return; }
+    saveRates(next);
+  }, [isReadOnly, isGuest]);
 
   // Undo/redo history belongs to ONE week. Carrying it across a week change
   // meant Undo wrote the previous week's shifts onto the week now on screen,
@@ -1192,6 +1227,7 @@ const App: React.FC = () => {
             currentWeek={currentWeek} 
             navDirection={navDirection}
             onUpdateShift={updateShift} 
+            rates={rates}
             onAddShift={() => !isReadOnly && setIsShiftModalOpen(true)} 
             onEditShift={(id) => !isReadOnly && setEditingShiftId(id)} 
             isReadOnly={isReadOnly} 
@@ -1280,7 +1316,7 @@ const App: React.FC = () => {
         onToggleHoliday={toggleHoliday}
         language={language}
       />
-      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} />
+      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} />
     </div>
   );
 };

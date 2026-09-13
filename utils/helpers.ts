@@ -154,6 +154,55 @@ export const isStaffActiveInWeek = (staff: Staff, weekStart: Date): boolean => {
 };
 
 /**
+ * Cout d'un shift, en euros, pour l'employeur.
+ *
+ * Le taux stocke est le cout CHARGE (salaire brut + charges patronales) : c'est
+ * ce que le restaurant decaisse, et c'est le seul chiffre sur lequel on peut
+ * decider. Un brut afficherait vingt-cinq a quarante pour cent de moins que la
+ * realite, ce qui serait pire que pas de chiffre du tout.
+ *
+ * `coverageBy` prime sur `staffId` : un shift repris par un collegue coute le
+ * taux de CELUI QUI LE FAIT, comme les heures lui sont deja comptees.
+ *
+ * Renvoie `null` — et non zero — quand le taux est inconnu. La difference
+ * compte : zero se totalise silencieusement et fait passer un cout ignore pour
+ * un cout nul, alors que `null` permet de dire « incomplet ».
+ */
+export const shiftCost = (
+  shift: { staffId: string; coverageBy?: string | null; startTime: number; endTime: number },
+  rates: Record<string, number>,
+): number | null => {
+  const rate = rates[shift.coverageBy || shift.staffId];
+  if (!Number.isFinite(rate) || rate <= 0) return null;
+  return (shift.endTime - shift.startTime) * rate;
+};
+
+/**
+ * Total d'une liste de shifts, avec le nombre de ceux qu'on n'a pas pu chiffrer.
+ * Le second nombre est ce qui permet a l'interface d'annoncer un total partiel
+ * au lieu de le presenter comme complet.
+ */
+export const totalCost = (
+  shifts: { staffId: string; coverageBy?: string | null; startTime: number; endTime: number }[],
+  rates: Record<string, number>,
+): { total: number; missing: number } => {
+  let total = 0, missing = 0;
+  for (const s of shifts) {
+    const c = shiftCost(s, rates);
+    if (c === null) missing++; else total += c;
+  }
+  return { total: Math.round(total * 100) / 100, missing };
+};
+
+/** Montant court pour un badge : « 48 € » / « 48,50 € ». */
+export const formatMoney = (amount: number, lang: Language = 'en'): string =>
+  new Intl.NumberFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', {
+    style: 'currency', currency: 'EUR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+  }).format(amount);
+
+/**
  * A qui peut-on DONNER un shift, et quand. Regle fixee par Serge le 09/09/2026 :
  *
  * - Avant la date d'entree : jamais. Le contrat n'a pas commence.

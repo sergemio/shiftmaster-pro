@@ -137,6 +137,21 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Cout horaire charge, par salarie. Document SEPARE de settings/staff, et
+    // c'est tout l'interet : settings/staff est lisible par TOUTE l'equipe (il
+    // porte les noms et les couleurs, dont le planning a besoin), donc y ranger
+    // un salaire l'exposerait a n'importe quel employe via l'onglet reseau du
+    // navigateur. Masquer le chiffre dans l'interface ne protege rien : seule
+    // une regle de lecture le protege.
+    //
+    // Forme : { rates: { <staffId>: number }, updatedAt: string }.
+    match /settings/rates {
+      allow read: if isAdmin();
+      allow write: if isAdmin()
+                   && request.resource.data.rates is map
+                   && request.resource.data.updatedAt is string;
+    }
+
     match /logs/{logId} {
       // Readable by the team: the journal is a shared record, and restricting
       // reads to admins would make subscribing crash for everyone else.
