@@ -254,7 +254,9 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             title={`${staff.name} · coût chargé de ce service`}
             className="mt-auto pt-1 pb-1 text-xs font-semibold text-slate-500 tabular-nums whitespace-nowrap @max-[64px]:hidden"
           >
-            {formatMoney(cost, language as Language)}
+            {/* Arrondi a l'euro (16/09/2026) : un repere, pas une fiche de paie —
+                « 81 € » se lit d'un coup d'oeil, « 81,25 € » non. */}
+            {formatMoney(Math.round(cost), language as Language)}
           </span>
         )}
 

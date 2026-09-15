@@ -5,6 +5,14 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-16 — Montant du shift arrondi a l'euro
+
+Demande de Serge : le montant en pied de carte est informatif, il doit etre visuellement leger.
+Arrondi a l'euro, sans decimales (« 81 € » au lieu de « 81,25 € »). Les totaux du jour et de la
+periode l'etaient deja. Fichier : `ShiftCard.tsx`.
+
+---
+
 ## 2026-09-16 — La grille des heures remplit l'ecran
 
 Signale par Serge : les shifts descendaient sous le bas de l'ecran, il fallait defiler. La hauteur
