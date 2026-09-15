@@ -4,6 +4,7 @@ import { Language, Staff, ViewType } from '../types';
 import ExportDataButton from './ExportDataButton';
 import HourlyRatesEditor from './HourlyRatesEditor';
 import { getTranslation } from '../utils/translations';
+import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -19,6 +20,10 @@ interface SettingsModalProps {
   staff?: Staff[];
   rates?: Record<string, number>;
   onRatesChange?: (rates: Record<string, number>) => void;
+  /** Heures d'ouverture du planning, pour toute l'equipe. `onHoursChange`
+   *  absent = pas admin, la section n'apparait pas. */
+  hours?: OperatingHours;
+  onHoursChange?: (hours: OperatingHours) => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -32,15 +37,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   canSeeMoney = false,
   staff = [],
   rates = {},
-  onRatesChange
+  onRatesChange,
+  hours = DEFAULT_OPERATING_HOURS,
+  onHoursChange
 }) => {
   if (!isOpen) return null;
   const t = getTranslation(language);
 
   return (
-    <div className="fixed inset-0 z-[160] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-t-[2.5rem] sm:rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
-        <div className="p-6 md:p-8 pb-4 flex justify-between items-start">
+    // Clic sur le fond = fermer : tout ce qu'on regle ici s'enregistre au moment du changement.
+    <div onClick={onClose} className="fixed inset-0 z-[160] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+      {/* Jamais plus haut que l'ecran : titre et bouton OK fixes, seul le milieu defile. */}
+      <div onClick={e => e.stopPropagation()} className="bg-white rounded-t-[2.5rem] sm:rounded-[2.5rem] shadow-2xl w-full max-w-sm max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
+        <div className="p-6 md:p-8 pb-4 flex justify-between items-start flex-none">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 md:w-10 md:h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600">
               <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -52,7 +61,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        <div className="p-6 md:p-8 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 md:px-8 pt-2 pb-6 space-y-6">
           <section className="space-y-4">
             <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">{t('language')}</label>
             <div className="grid grid-cols-2 gap-3">
@@ -110,6 +119,47 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </section>
 
+          {/* Heures d'ouverture (16/09/2026) : la grille demarrait a 8 h pour un
+              premier service a 9 h 30. Chaque etablissement regle sa plage ; un
+              shift en dehors elargit quand meme la grille, il n'est jamais cache. */}
+          {onHoursChange && (
+            <section>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">
+                {language === 'fr' ? "Heures d'ouverture" : 'Opening hours'}
+              </h3>
+              <p className="text-xs text-slate-500 leading-snug mb-3">
+                {language === 'fr'
+                  ? "Le planning de toute l'équipe affiche ces heures. Un shift en dehors reste toujours visible."
+                  : "The whole team's schedule shows these hours. A shift outside them always stays visible."}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="block text-xs font-bold text-slate-500 mb-1">{language === 'fr' ? 'Début' : 'From'}</span>
+                  <select
+                    value={hours.start}
+                    onChange={e => {
+                      const start = parseFloat(e.target.value);
+                      onHoursChange({ start, end: Math.max(hours.end, start + 1) });
+                    }}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  >
+                    {halfHourSteps(0, 23).map(v => <option key={v} value={v}>{formatTime(v)}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-bold text-slate-500 mb-1">{language === 'fr' ? 'Fin' : 'To'}</span>
+                  <select
+                    value={hours.end}
+                    onChange={e => onHoursChange({ start: hours.start, end: parseFloat(e.target.value) })}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  >
+                    {halfHourSteps(hours.start + 1, 24).map(v => <option key={v} value={v}>{formatTime(v)}</option>)}
+                  </select>
+                </label>
+              </div>
+            </section>
+          )}
+
           {canSeeMoney && onRatesChange && (
             <section>
               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">
@@ -127,15 +177,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             </h3>
             <ExportDataButton language={language as Language} />
           </section>
+        </div>
 
-          <div className="pt-4">
-            <button 
-              onClick={onClose}
-              className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl shadow-lg hover:bg-slate-800 active:scale-95 transition-all text-sm uppercase tracking-widest"
-            >
-              OK
-            </button>
-          </div>
+        <div className="flex-none px-6 md:px-8 pt-4 pb-6 md:pb-8 border-t border-slate-100">
+          <button
+            onClick={onClose}
+            className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl shadow-lg hover:bg-slate-800 active:scale-95 transition-all text-sm uppercase tracking-widest"
+          >
+            OK
+          </button>
         </div>
       </div>
     </div>

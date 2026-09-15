@@ -180,19 +180,6 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             <span className="bg-slate-200/60 text-slate-600 text-xs font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-slate-300/30">
               {duration.toFixed(duration % 1 === 0 ? 0 : 1)}H
             </span>
-            {typeof cost === 'number' && (
-              /* Neutre, jamais rouge ni ambre : un cout n'est ni une alerte ni
-                 une infraction, c'est un fait (R5.3). Il se lit a cote de la
-                 duree parce que c'est la meme information vue autrement, et il
-                 disparait avant l'horaire dans une sous-colonne etroite —
-                 l'heure du service prime toujours sur son prix. */
-              <span
-                title={`${staff.name} · cout charge de ce service`}
-                className="bg-slate-100 text-slate-500 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-slate-200 tabular-nums @max-[88px]:hidden"
-              >
-                {formatMoney(cost, language as Language)}
-              </span>
-            )}
             {hasOverlap && (
               /* Rouge assume ici, contrairement au badge de periode d'emploi :
                  personne ne peut etre a deux endroits a la fois, c'est une
@@ -253,6 +240,22 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
           <p className="text-xs text-slate-500 font-semibold leading-snug mt-2 italic break-words whitespace-normal flex-1 overflow-hidden">
             {shift.notes}
           </p>
+        )}
+
+        {typeof cost === 'number' && (
+          /* Neutre, jamais rouge ni ambre : un cout n'est ni une alerte ni une
+             infraction, c'est un fait (R5.3).
+             En bas de la carte, sans cadre : le 16/09/2026 Serge a signale qu'a
+             cote de la duree, en badge, les deux se confondaient. La duree reste un
+             badge en haut, le prix est une ligne de pied de carte. Pas de filet
+             au-dessus (retire le meme jour, juge laid).
+             Masque sous 64 px (trois personnes a la fois) : l'horaire prime. */
+          <span
+            title={`${staff.name} · coût chargé de ce service`}
+            className="mt-auto pt-1 pb-1 text-xs font-semibold text-slate-500 tabular-nums whitespace-nowrap @max-[64px]:hidden"
+          >
+            {formatMoney(cost, language as Language)}
+          </span>
         )}
 
         {shift.coverageBy && coverStaff && (

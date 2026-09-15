@@ -66,7 +66,7 @@ const HourlyRatesEditor: React.FC<HourlyRatesEditorProps> = ({ staff, rates, onC
           : 'Employer cost per hour, payroll taxes included — not the gross wage. Visible to administrators only.'}
       </p>
 
-      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+      <div className="space-y-1.5">
         {ordered.map(person => {
           const former = isFormerStaff(person);
           return (

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Staff, Shift, Language } from '../types';
-import { START_HOUR, END_HOUR } from '../constants';
-import { formatTime } from '../utils/helpers';
+import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
 
@@ -23,9 +22,11 @@ interface EditShiftModalProps {
   onEmployment?: (staffId: string, dayIndexes: number[]) => { errors: string[]; notes: string[] };
   isReadOnly?: boolean;
   language: string;
+  /** Heures d'ouverture reglees : les menus d'heures n'offrent que cette plage. */
+  hours?: OperatingHours;
 }
 
-const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, onDelete, onCheck, onEmployment, isReadOnly = false, language }) => {
+const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, onDelete, onCheck, onEmployment, isReadOnly = false, language, hours = DEFAULT_OPERATING_HOURS }) => {
   if (!isOpen || !shift) return null;
 
   const [staffId, setStaffId] = useState(shift.staffId);
@@ -50,18 +51,13 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
     }
   }, [shift]);
 
-  const timeOptions = useMemo(() => {
-    const options = [];
-    for (let h = START_HOUR; h <= END_HOUR; h++) {
-      // Changed: increment by 30 minutes instead of 15
-      for (let m = 0; m < 60; m += 30) {
-        if (h === END_HOUR && m > 0) break;
-        const val = h + m / 60;
-        options.push({ value: val, label: formatTime(val) });
-      }
-    }
-    return options;
-  }, []);
+  // La plage reglee, elargie aux heures actuelles du shift s'il en deborde :
+  // sinon le menu ne pourrait pas afficher sa propre valeur.
+  const lastHour = Math.max(hours.end, shift.endTime);
+  const timeOptions = useMemo(
+    () => halfHourSteps(Math.min(hours.start, shift.startTime), lastHour).map(v => ({ value: v, label: formatTime(v) })),
+    [hours.start, shift.startTime, lastHour],
+  );
 
   // Les jours verifies : celui du shift, plus ceux ou on s'appreste a le
   // recopier — une repetition sur cinq jours peut creer cinq problemes.
@@ -133,7 +129,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
+      <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
         <div className="p-6 md:p-8 pb-4 flex justify-between items-start border-b border-slate-50">
           <div>
             <h2 className="text-xl md:text-2xl font-bold text-slate-800">{isReadOnly ? 'View Shift' : 'Edit Shift'}</h2>
@@ -178,7 +174,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                       onChange={(e) => setStartTime(parseFloat(e.target.value))}
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all disabled:opacity-80"
                     >
-                      {timeOptions.filter(o => o.value < END_HOUR).map(opt => (
+                      {timeOptions.filter(o => o.value < lastHour).map(opt => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>

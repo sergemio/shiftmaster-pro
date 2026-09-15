@@ -10,32 +10,70 @@ const ABSENCE_LABELS: Record<string, string> = {
   repos: 'absenceRepos',
 };
 import { getTranslation } from '../utils/translations';
-import { isStaffActiveInWeek, contractHoursOn, monthlyContractHours, getShiftIsoDate } from '../utils/helpers';
+import { isStaffActiveInWeek, contractHoursOn, monthlyContractHours, getShiftIsoDate, formatMoney } from '../utils/helpers';
 
 /**
- * Bouton avec explication au survol. L'infobulle native (`title`) s'affichait
- * sur une seule ligne qui traversait l'ecran, dans le style du systeme. Celle-ci
- * se cale sur la largeur de la rangee de boutons, donc elle ne deborde jamais de
- * la colonne, et chaque phrase de l'explication part a la ligne.
- * Elle se positionne par rapport au parent `relative` (la rangee), pas au bouton.
+ * Bloc repliable de la colonne de droite (version A de la maquette du 13/09/2026,
+ * `maquettes/colonne-droite-3-versions.html`).
+ *
+ * Ouvert, il prend sa hauteur naturelle et NE SE COMPRIME qu'a court de place
+ * (`flex: 0 1 auto`), son contenu defilant alors en interne ; ferme, il se reduit a
+ * sa ligne de titre. L'ouverture s'anime en faisant passer la ligne du corps de 0fr
+ * a 1fr, ce qui anime une hauteur inconnue a l'avance sans la mesurer.
  */
-const HintButton: React.FC<{ hint: string; onClick: () => void; className: string; children: React.ReactNode }> = ({ hint, onClick, className, children }) => (
-  <div className="flex-1 group">
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full h-full min-h-12 px-3 py-2 border-2 border-dashed rounded-2xl font-semibold hover:border-indigo-300 transition-all active:scale-[0.98] text-sm leading-tight ${className}`}
-    >
-      {children}
-    </button>
+const SECTION_TONES = {
+  plain: { box: 'bg-white border-slate-200', head: 'text-slate-500 hover:bg-slate-50', summary: 'text-slate-400' },
+  amber: { box: 'bg-amber-50 border-amber-200', head: 'text-amber-700 hover:bg-amber-100/60', summary: 'text-amber-600/80' },
+  slate: { box: 'bg-slate-50 border-slate-200', head: 'text-slate-500 hover:bg-slate-100', summary: 'text-slate-400' },
+} as const;
+
+const Section: React.FC<{
+  open: boolean;
+  onToggle: () => void;
+  title: string;
+  summary?: string;
+  /** Resume abrege, affiche a la place de `summary` quand la colonne est etroite (tiroir du telephone). */
+  summaryShort?: string;
+  tone: keyof typeof SECTION_TONES;
+  children: React.ReactNode;
+}> = ({ open, onToggle, title, summary, summaryShort, tone, children }) => {
+  const style = SECTION_TONES[tone];
+  return (
     <div
-      role="tooltip"
-      className="pointer-events-none absolute left-0 right-0 bottom-full mb-2 z-50 rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium leading-snug text-slate-100 shadow-lg whitespace-pre-line invisible opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-hover:delay-300 group-focus-within:visible group-focus-within:opacity-100"
+      className={`grid grid-cols-[minmax(0,1fr)] min-h-0 rounded-2xl border overflow-hidden transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${open ? 'grid-rows-[auto_1fr]' : 'grid-rows-[auto_0fr]'} ${style.box}`}
+      style={{ flex: open ? '0 1 auto' : '0 0 auto' }}
     >
-      {hint}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={`@container w-full min-h-11 px-3.5 py-2 flex items-center gap-2 text-left transition-colors ${style.head}`}
+      >
+        {/* Titre et resume retrecissent tous deux, avec points de suspension : sans
+            `min-w-0`, un long titre francais elargissait le bloc au-dela de la colonne.
+            Sous 270 px de contenu (tiroir du telephone, colonne de tablette), le resume
+            abrege prend le relais ; la colonne de bureau (280 px de contenu) garde le complet. */}
+        <span className="min-w-0 text-xs font-black uppercase tracking-wider truncate">{title}</span>
+        {summary && (
+          <span className={`ml-auto min-w-0 truncate text-xs font-semibold ${summaryShort ? '@max-[270px]:hidden' : ''} ${style.summary}`}>{summary}</span>
+        )}
+        {summaryShort && (
+          <span className={`ml-auto hidden @max-[270px]:inline whitespace-nowrap text-xs font-semibold tabular-nums ${style.summary}`} title={summary}>{summaryShort}</span>
+        )}
+        <svg
+          className={`w-4 h-4 flex-shrink-0 transition-transform duration-300 motion-reduce:transition-none ${open ? 'rotate-180' : ''} ${summary ? '' : 'ml-auto'}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {/* `inert` une fois ferme : le contenu reste monte mais sort du clavier et des lecteurs d'ecran. */}
+      <div className={`min-h-0 ${open ? 'overflow-y-auto' : 'overflow-hidden'}`} inert={!open}>
+        <div className="px-3.5 pb-3.5">{children}</div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 interface SidebarProps {
   shifts: Shift[];
@@ -50,6 +88,9 @@ interface SidebarProps {
   onPeriodChange?: (period: 'week' | 'month') => void;
   period?: 'week' | 'month';
   monthLabel?: string;
+  /** Cout charge de la periode affichee (semaine ou mois). `null` = rien a
+   *  montrer : pas admin, aucun taux, ou mois encore en chargement. */
+  cost?: { total: number; missing: number } | null;
   onManageStaffClick: () => void;
   onCopyLastWeek: () => void;
   /** Ouvre ou reprend le brouillon. Absent = pas propose (hors vue jour, ou deja dedans). */
@@ -88,7 +129,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onPeriodChange,
   period = 'week',
   monthLabel = '',
-  onManageStaffClick, 
+  cost = null,
+  onManageStaffClick,
   onCopyLastWeek,
   onStartDraft,
   draftExists = false,
@@ -144,28 +186,86 @@ const Sidebar: React.FC<SidebarProps> = ({
   }));
 
   const isEmpty = shifts.length === 0;
-  const [complianceOpen, setComplianceOpen] = useState(false);
 
+  // Un seul bloc ouvert a la fois (version A). Les heures par defaut : c'est ce
+  // qu'on regarde en construisant le planning. Rouvrir le bloc ouvert le referme.
+  type SectionId = 'hours' | 'checks' | 'cover';
+  const [openSection, setOpenSection] = useState<SectionId | null>('hours');
+  const toggleSection = (id: SectionId) => setOpenSection(cur => (cur === id ? null : id));
 
+  const isMonth = period === 'month';
+  const rows = [...staff].filter(p => {
+    // Option A: active during the week OR has any shift this week (orphan still pulls them in)
+    const hasHours = period === 'month'
+      ? (monthHours?.[p.id] ?? 0) > 0
+      : (worked[p.id] || 0) + (extra[p.id] || 0) > 0;
+    return hasHours || isStaffActiveInWeek(p, currentWeek);
+  }).sort((a, b) => {
+    const tot = (x: Staff) => period === 'month'
+      ? (monthHours?.[x.id] ?? 0)
+      : (worked[x.id] || 0) + (extra[x.id] || 0);
+    const aTotal = tot(a);
+    const bTotal = tot(b);
+    return bTotal - aTotal; // desc
+}).map(person => {
+    // Heures du contrat A LA PERIODE AFFICHEE, jamais celles d'aujourd'hui :
+    // un avenant signe en octobre ne doit pas reecrire le mois de septembre.
+    const contractHours = isMonth
+      ? Math.round(monthlyContractHours(person, getShiftIsoDate(currentWeek, 3)))
+      : contractHoursOn(person, getShiftIsoDate(currentWeek, 0));
+    // En mois, les heures viennent des semaines chargees a la demande, et
+    // la reference est le contrat mensuel (52/12), pas l'hebdomadaire.
+    const workedHours = isMonth ? (monthHours?.[person.id] ?? 0) : (worked[person.id] || 0);
+    const extraHours = isMonth ? 0 : (extra[person.id] || 0);
+    const totalWorked = workedHours + extraHours;
+
+    // Un 0.0 ressemble a un oubli de planification. Quand la personne est
+    // notee absente, on affiche le motif A LA PLACE de la barre vide : la
+    // barre ne dirait rien, alors que le motif repond a la question.
+    const myAbsences = absences.filter(a => a.staffId === person.id);
+    const absenceLabel = (() => {
+      if (isMonth || totalWorked > 0 || myAbsences.length === 0) return null;
+      const kinds = [...new Set(myAbsences.map(a => a.kind))];
+      const kindLabel = kinds.length === 1
+        ? t(ABSENCE_LABELS[kinds[0]] ?? 'absenceRepos')
+        : t('absences');
+      return myAbsences.length >= 5
+        ? `${kindLabel} · ${t('allWeek')}`
+        : `${kindLabel} · ${myAbsences.length}${t('daysShort')}`;
+    })();
+    return { person, contractHours, workedHours, extraHours, totalWorked, absenceLabel };
+  });
+
+  // Resume du bloc ferme : combien de personnes au-dessus et en dessous de leur contrat.
+  const withContract = rows.filter(r => r.contractHours > 0);
+  const overCount = withContract.filter(r => r.totalWorked > r.contractHours).length;
+  const underCount = withContract.filter(r => r.totalWorked < r.contractHours).length;
 
   return (
     <>
       {/* Mobile Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] md:hidden transition-opacity duration-300"
           onClick={() => typeof onClose === 'function' && onClose()}
         />
       )}
-      
+
+      {/* La colonne tient TOUJOURS dans la hauteur de l'ecran (retour de Serge le
+          13/09/2026 : « Manage Staff » disparaissait sous le bord, et une equipe plus
+          grande aurait aggrave le probleme). Les elements fixes ne retrecissent pas
+          (`flex-none`) ; seul le bloc ouvert cede de la place et defile en interne. */}
       <aside className={`
         fixed md:relative top-0 right-0 h-full bg-white z-[110] md:z-auto
-        w-[280px] sm:w-[320px] md:w-[320px] lg:w-[340px] border-l flex flex-col p-5 overflow-y-auto hide-scrollbar
+        w-[min(320px,85vw)] sm:w-[320px] md:w-[320px] lg:w-[340px] border-l flex flex-col gap-3.5 px-4 py-4 overflow-y-auto hide-scrollbar
         transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
       `}>
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
+        {/* Dans le tiroir du telephone, titre + export + annuler/retablir + fermer ne
+            tiennent pas sur une ligne : le titre etait ecrase en « S.. ». Sous 768 px
+            les boutons passent a la ligne ; au-dela, rien ne change. */}
+        <div className="flex flex-wrap md:flex-nowrap items-center justify-between gap-2 flex-none">
+          <div className="flex items-center gap-2 min-w-0">
             <button onClick={onOpenHistory} title={t('systemLogs')} className="active:scale-95 transition-transform cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg">
               <svg className="w-5 h-5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="20" x2="18" y2="10" />
@@ -173,7 +273,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <line x1="6" y1="20" x2="6" y2="14" />
               </svg>
             </button>
-            <h2 className="text-lg font-bold text-slate-800 whitespace-nowrap">
+            <h2 className="text-lg font-bold text-slate-800 truncate">
               {period === 'month' ? t('monthlyStats') : t('weeklyStats')}
             </h2>
             
@@ -186,7 +286,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
           
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 ml-auto">
             {!isReadOnly && (
               <div className="flex gap-1.5">
                 <button 
@@ -230,15 +330,24 @@ const Sidebar: React.FC<SidebarProps> = ({
           demande et non a chaque ouverture de l'application.
           ------------------------------------------------------------------ */}
       {onPeriodChange && (
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-4">
+        <div className="relative flex p-0.5 bg-slate-100 rounded-xl flex-none">
+          {/* Le fond blanc est UN element qui glisse d'un bouton a l'autre, au lieu
+              de deux fonds qui s'allument et s'eteignent : l'oeil suit le passage. */}
+          <div
+            aria-hidden="true"
+            className={`absolute top-0.5 bottom-0.5 left-0.5 w-[calc(50%-0.125rem)] rounded-lg bg-white shadow-sm transition-transform duration-300 ease-out motion-reduce:transition-none ${
+              isMonth ? 'translate-x-full' : 'translate-x-0'
+            }`}
+          />
           {(['week', 'month'] as const).map(pKey => (
             <button
               key={pKey}
               type="button"
               onClick={() => onPeriodChange(pKey)}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+              aria-pressed={period === pKey}
+              className={`relative flex-1 py-2 rounded-lg text-xs font-bold transition-colors duration-300 ${
                 period === pKey
-                  ? 'bg-white text-slate-800 shadow-sm'
+                  ? 'text-slate-800'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
@@ -248,56 +357,37 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
 
-      {period === 'month' && monthLabel && (
-        <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">{monthLabel}</p>
+      {/* Cout de la periode, nomme en toutes lettres (16/09/2026) : dans la case
+          de gauche du planning, rien ne disait que le montant etait la semaine.
+          Sous la bascule, il suit Semaine / Mois. « ≥ » = des shifts sans taux,
+          le montant est un minimum ; l'infobulle dit combien. */}
+      {cost && (
+        <div
+          className="flex items-baseline justify-between gap-2 px-1 flex-none text-xs"
+          title={cost.missing > 0 ? t('costMissing').replace('{n}', String(cost.missing)) : undefined}
+        >
+          <span className="font-semibold text-slate-500">{isMonth ? t('costMonthLabel') : t('costWeekLabel')}</span>
+          <span className="font-bold text-slate-700 tabular-nums whitespace-nowrap">
+            {cost.missing > 0 ? '≥ ' : ''}{formatMoney(Math.round(cost.total), language as Language)}
+          </span>
+        </div>
       )}
 
-      <div className="space-y-3 mb-6">
-        {period === 'month' && monthLoading && (
-          <p className="text-sm text-slate-400 italic">{t('loadingMonth')}</p>
-        )}
-        {[...staff].filter(p => {
-          // Option A: active during the week OR has any shift this week (orphan still pulls them in)
-          const hasHours = period === 'month'
-            ? (monthHours?.[p.id] ?? 0) > 0
-            : (worked[p.id] || 0) + (extra[p.id] || 0) > 0;
-          return hasHours || isStaffActiveInWeek(p, currentWeek);
-        }).sort((a, b) => {
-          const tot = (x: Staff) => period === 'month'
-            ? (monthHours?.[x.id] ?? 0)
-            : (worked[x.id] || 0) + (extra[x.id] || 0);
-          const aTotal = tot(a);
-          const bTotal = tot(b);
-          return bTotal - aTotal; // desc
-        }).map(person => {
-          const isMonth = period === 'month';
-          // Heures du contrat A LA PERIODE AFFICHEE, jamais celles d'aujourd'hui :
-          // un avenant signe en octobre ne doit pas reecrire le mois de septembre.
-          const contractHours = isMonth
-            ? Math.round(monthlyContractHours(person, getShiftIsoDate(currentWeek, 3)))
-            : contractHoursOn(person, getShiftIsoDate(currentWeek, 0));
-          // En mois, les heures viennent des semaines chargees a la demande, et
-          // la reference est le contrat mensuel (52/12), pas l'hebdomadaire.
-          const workedHours = isMonth ? (monthHours?.[person.id] ?? 0) : (worked[person.id] || 0);
-          const extraHours = isMonth ? 0 : (extra[person.id] || 0);
-          const totalWorked = workedHours + extraHours;
-
-          // Un 0.0 ressemble a un oubli de planification. Quand la personne est
-          // notee absente, on affiche le motif A LA PLACE de la barre vide : la
-          // barre ne dirait rien, alors que le motif repond a la question.
-          const myAbsences = absences.filter(a => a.staffId === person.id);
-          const absenceLabel = (() => {
-            if (isMonth || totalWorked > 0 || myAbsences.length === 0) return null;
-            const kinds = [...new Set(myAbsences.map(a => a.kind))];
-            const kindLabel = kinds.length === 1
-              ? t(ABSENCE_LABELS[kinds[0]] ?? 'absenceRepos')
-              : t('absences');
-            return myAbsences.length >= 5
-              ? `${kindLabel} · ${t('allWeek')}`
-              : `${kindLabel} · ${myAbsences.length}${t('daysShort')}`;
-          })();
-
-          return (
+      <Section
+        open={openSection === 'hours'}
+        onToggle={() => toggleSection('hours')}
+        tone="plain"
+        title={isMonth && monthLabel ? monthLabel : t('hoursWeek')}
+        summary={withContract.length > 0
+          ? t('overUnder').replace('{over}', String(overCount)).replace('{under}', String(underCount))
+          : undefined}
+        summaryShort={withContract.length > 0 ? `${overCount}↑ · ${underCount}↓` : undefined}
+      >
+        <div className="space-y-2.5">
+          {isMonth && monthLoading && (
+            <p className="text-sm text-slate-400 italic">{t('loadingMonth')}</p>
+          )}
+          {rows.map(({ person, contractHours, workedHours, extraHours, totalWorked, absenceLabel }) => (
             <div key={person.id} className="space-y-1">
               <div className="flex justify-between text-xs font-medium">
                 <span className="flex items-center gap-2 text-slate-700">
@@ -325,7 +415,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {absenceLabel}
                 </span>
               ) : (
-              <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
+              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
                 {totalWorked > contractHours ? (
                   // Over target: target portion in person color + overtime in darker shade
                   <>
@@ -360,12 +450,14 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
               )}
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      </Section>
 
+      {/* Boutons d'action ENTRE les heures et les points a verifier : c'est leur
+          place habituelle, Serge l'a prefere a une position sous le titre. */}
       {!isReadOnly && (
-        <div className="mb-6 flex gap-2">
+        <div className="flex gap-2 flex-none">
           {/* « + Shift » : seul le verbe « Add » etait redondant avec l'icone.
               Ce qui cassait l'alignement n'etait pas le texte mais le `py-4`
               avec deux lignes ; la hauteur fixe a 56 px regle ca et garde le mot. */}
@@ -374,9 +466,9 @@ const Sidebar: React.FC<SidebarProps> = ({
             onClick={onAddClick}
             title={t('addShift')}
             aria-label={t('addShift')}
-            className="flex-1 h-14 px-4 bg-[linear-gradient(135deg,#4f46e5,#7c3aed)] text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2"
+            className="flex-1 h-11 px-4 bg-[linear-gradient(135deg,#4f46e5,#7c3aed)] text-white rounded-xl font-bold shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2"
           >
-            <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
             <span className="text-base whitespace-nowrap">{t('shiftNoun')}</span>
@@ -385,9 +477,9 @@ const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             onClick={onAbsenceClick}
             title={t('absences')}
-            className="w-14 h-14 flex items-center justify-center bg-sky-50 text-sky-600 border border-sky-100 rounded-2xl hover:bg-sky-100 transition-all active:scale-90 shadow-sm"
+            className="w-11 h-11 flex items-center justify-center bg-sky-50 text-sky-600 border border-sky-100 rounded-xl hover:bg-sky-100 transition-all active:scale-90 shadow-sm"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </button>
@@ -399,9 +491,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               }
             }}
             title={t('confirmDeleteWeek')}
-            className="w-14 h-14 flex items-center justify-center bg-red-50 text-red-500 border border-red-100 rounded-2xl hover:bg-red-100 transition-all active:scale-90 shadow-sm"
+            className="w-11 h-11 flex items-center justify-center bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-100 transition-all active:scale-90 shadow-sm"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
@@ -415,18 +507,27 @@ const Sidebar: React.FC<SidebarProps> = ({
           deviendrait introuvable des que l'officiel se remplit.
           `!isLoading` : `shifts` vaut aussi [] pendant le chargement. */}
       {!isReadOnly && !isLoading && (isEmpty || (onStartDraft && draftExists)) && (
-        <div className="relative -mt-3 mb-6 flex gap-2">
+        <div className="flex gap-2 flex-none">
+          {/* Explications au survol : infobulle commune de l'app (components/Tooltip). */}
           {onStartDraft && (
-            <HintButton hint={t('draftHint')} onClick={onStartDraft}
-              className="border-slate-300 text-slate-600 bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(100,116,139,0.08)_6px_12px)] hover:text-indigo-700">
+            <button
+              type="button"
+              onClick={onStartDraft}
+              title={t('draftHint')}
+              className="flex-1 min-h-11 px-3 py-2 border-2 border-dashed border-slate-300 text-slate-600 bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(100,116,139,0.08)_6px_12px)] rounded-xl font-semibold hover:border-indigo-300 hover:text-indigo-700 transition-all active:scale-[0.98] text-sm leading-tight"
+            >
               {t(draftExists ? 'draftResume' : 'draftStart')}
-            </HintButton>
+            </button>
           )}
           {isEmpty && (
-            <HintButton hint={t('copyLastWeekHint')} onClick={onCopyLastWeek}
-              className="border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50/50">
+            <button
+              type="button"
+              onClick={onCopyLastWeek}
+              title={t('copyLastWeekHint')}
+              className="flex-1 min-h-11 px-3 py-2 border-2 border-dashed border-slate-200 text-slate-500 rounded-xl font-semibold hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/50 transition-all active:scale-[0.98] text-sm leading-tight"
+            >
               {t('copyLastWeek')}
-            </HintButton>
+            </button>
           )}
         </div>
       )}
@@ -436,47 +537,34 @@ const Sidebar: React.FC<SidebarProps> = ({
           ignore, ce qui est exactement ce qu'on veut eviter pour un avertissement.
           Ambre et non rouge : ce sont des decisions possibles, pas des erreurs. */}
       {compliance.length > 0 && (
-        <div className="bg-amber-50 rounded-2xl mb-8 border border-amber-200 shadow-sm overflow-hidden flex-shrink-0">
-          {/* Replie par defaut : cinq points deplies poussaient les boutons du
-              planning hors de l'ecran, alors que le nombre suffit a savoir s'il
-              y a quelque chose a regarder. On ouvre quand on veut le detail. */}
-          <button
-            type="button"
-            onClick={() => setComplianceOpen(v => !v)}
-            aria-expanded={complianceOpen}
-            className="w-full min-h-14 px-4 py-3 flex items-center gap-3 text-left hover:bg-amber-100/60 transition-colors active:scale-[0.99]"
-          >
-            <div className="flex-1 min-w-0">
-              <span className="block text-xs font-black text-amber-700 uppercase tracking-widest">
-                {t(compliance.length > 1 ? 'compliancePointsPlural' : 'compliancePoints').replace('{n}', String(compliance.length))}
-              </span>
-              {conventionLabel && (
-                <span className="block text-xs text-amber-600/80 font-medium truncate">{conventionLabel}</span>
-              )}
-            </div>
-            <svg
-              className={`w-4 h-4 flex-shrink-0 text-amber-600 transition-transform duration-200 ${complianceOpen ? 'rotate-180' : ''}`}
-              fill="none" stroke="currentColor" viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {complianceOpen && (
-            <div className="px-4 pb-4 space-y-2">
-              {compliance.map((c, idx) => (
-                <div key={idx} className="text-xs bg-white p-2.5 rounded-xl border border-amber-100">
-                  <span className="font-bold text-slate-700 block">{c.who}</span>
-                  <span className="text-slate-500 font-medium leading-snug">{c.text}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <Section
+          open={openSection === 'checks'}
+          onToggle={() => toggleSection('checks')}
+          tone="amber"
+          title={t(compliance.length > 1 ? 'compliancePointsPlural' : 'compliancePoints').replace('{n}', String(compliance.length))}
+        >
+          <div className="space-y-2">
+            {conventionLabel && (
+              <p className="text-xs text-amber-600/80 font-medium">{conventionLabel}</p>
+            )}
+            {compliance.map((c, idx) => (
+              <div key={idx} className="text-xs bg-white p-2.5 rounded-xl border border-amber-100">
+                <span className="font-bold text-slate-700 block">{c.who}</span>
+                <span className="text-slate-500 font-medium leading-snug">{c.text}</span>
+              </div>
+            ))}
+          </div>
+        </Section>
       )}
 
-      <div className="bg-slate-50 rounded-2xl p-4 mb-8 border border-slate-100 shadow-sm">
-        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">{t('leaveCoverage')}</h3>
-        <div className="space-y-2.5">
+      <Section
+        open={openSection === 'cover'}
+        onToggle={() => toggleSection('cover')}
+        tone="slate"
+        title={t('leaveCoverage')}
+        summary={coverageEvents.length > 0 ? String(coverageEvents.length) : undefined}
+      >
+        <div className="space-y-2">
           {coverageEvents.length > 0 ? coverageEvents.map((ev, idx) => (
             <div key={idx} className="flex justify-between text-xs items-center bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
                <div className="flex flex-col">
@@ -487,33 +575,27 @@ const Sidebar: React.FC<SidebarProps> = ({
                <span className="font-black text-slate-800 bg-slate-100 px-2 py-1 rounded-lg flex-shrink-0">{ev.hours}h</span>
             </div>
           )) : (
-            <p className="text-xs text-slate-400 italic text-center py-2">{t('noCoverage')}</p>
+            <p className="text-xs text-slate-400 italic text-center py-1">{t('noCoverage')}</p>
           )}
         </div>
-      </div>
+      </Section>
 
-      <div className="mt-auto pt-6 border-t border-slate-100 space-y-4">
+      <div className="mt-auto flex-none">
         {!isReadOnly && (
-          <>
-            <div className="space-y-3">
-              <button 
-                type="button"
-                onClick={onManageStaffClick}
-                className="w-full py-3.5 px-6 bg-slate-900 text-slate-100 rounded-2xl font-bold border border-slate-800 hover:bg-slate-800 transition-all duration-200 active:scale-95 flex items-center justify-center gap-3 shadow-sm"
-              >
-                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                <span className="text-sm">{t('manageStaff')}</span>
-              </button>
-            </div>
-          </>
+          <button
+            type="button"
+            onClick={onManageStaffClick}
+            className="w-full h-11 px-6 bg-slate-900 text-slate-100 rounded-xl font-bold border border-slate-800 hover:bg-slate-800 transition-all duration-200 active:scale-95 flex items-center justify-center gap-3 shadow-sm"
+          >
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <span className="text-sm">{t('manageStaff')}</span>
+          </button>
         )}
 
-
-
         {isReadOnly && (
-          <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-center">
+          <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
             <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Status</p>
             <p className="text-sm font-bold text-slate-600 flex items-center justify-center gap-2">
               <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>

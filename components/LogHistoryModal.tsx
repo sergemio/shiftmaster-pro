@@ -160,8 +160,9 @@ const LogHistoryModal: React.FC<LogHistoryModalProps> = ({ isOpen, onClose, lang
   const cap = query.trim().replace(/^./, c => c.toUpperCase());
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-2xl flex flex-col h-[85vh] sm:h-[78vh] overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
+    // Lecture seule : un clic sur le fond ferme sans rien perdre.
+    <div onClick={onClose} className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div onClick={e => e.stopPropagation()} className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-2xl flex flex-col h-[85vh] sm:h-[78vh] overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
 
         <div className="px-5 md:px-6 pt-5 flex-none">
           <div className="flex items-center justify-between mb-4">

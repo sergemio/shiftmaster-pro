@@ -194,6 +194,48 @@ export const totalCost = (
   return { total: Math.round(total * 100) / 100, missing };
 };
 
+/**
+ * Heures d'ouverture affichees sur le planning, reglees par un admin dans
+ * Reglages et partagees par toute l'equipe (settings/global : openHour,
+ * closeHour), par demi-heure. Defaut : 8 h -> minuit, la plage codee en dur
+ * jusqu'au 16/09/2026.
+ */
+export interface OperatingHours { start: number; end: number }
+export const DEFAULT_OPERATING_HOURS: OperatingHours = { start: 8, end: 24 };
+
+/** Tout ce qui n'est pas une plage valide (demi-heures entre 0 et 24, au moins
+ *  une heure d'ecart) retombe sur le defaut : une valeur abimee en base ne doit
+ *  pas pouvoir casser la grille. */
+export const normalizeOperatingHours = (start: unknown, end: unknown): OperatingHours => {
+  const ok = (v: unknown): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 24 && Number.isInteger(v * 2);
+  return ok(start) && ok(end) && end - start >= 1 ? { start, end } : DEFAULT_OPERATING_HOURS;
+};
+
+/**
+ * Plage de la grille : les heures d'ouverture arrondies a l'heure pleine vers
+ * l'exterieur (la grille est tracee heure par heure), puis elargie a tout shift
+ * qui en deborde. Le reglage reduit le vide, il ne cache jamais un shift.
+ */
+export const gridHourRange = (
+  hours: OperatingHours,
+  shifts: { startTime: number; endTime: number }[],
+): OperatingHours => {
+  let start = Math.floor(hours.start), end = Math.ceil(hours.end);
+  for (const s of shifts) {
+    start = Math.min(start, Math.floor(s.startTime));
+    end = Math.max(end, Math.ceil(s.endTime));
+  }
+  return { start: Math.max(0, start), end: Math.min(24, end) };
+};
+
+/** Heures proposees dans un menu, par demi-heure, de `from` a `to` inclus. */
+export const halfHourSteps = (from: number, to: number): number[] => {
+  const out: number[] = [];
+  for (let v = Math.ceil(from * 2) / 2; v <= to; v += 0.5) out.push(v);
+  return out;
+};
+
 /** Montant court pour un badge : « 48 € » / « 48,50 € ». */
 export const formatMoney = (amount: number, lang: Language = 'en'): string =>
   new Intl.NumberFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', {
@@ -214,6 +256,29 @@ export const formatMoney = (amount: number, lang: Language = 'en'): string =>
  * Distinct de `isStaffActiveOnDate` (est-ce que le contrat court ce jour-la),
  * qui reste la reference pour l'affichage et les badges.
  */
+/**
+ * Etat de la pastille a cote du nom de l'application.
+ *
+ * Avant le 13/09/2026 elle etait verte par defaut : verte dans le bac a sable
+ * (qui n'est relie a aucune base), verte sans connexion. Elle affirmait donc
+ * « en direct » sans rien mesurer. L'ordre ci-dessous va du plus grave au plus
+ * banal : une erreur d'enregistrement prime sur tout, puis l'absence de reseau.
+ * « Pas encore confirme par le serveur » compte comme une synchronisation en
+ * cours, jamais comme du direct.
+ */
+export type SyncStatus = 'sandbox' | 'error' | 'offline' | 'syncing' | 'saved' | 'live';
+export const syncStatus = (s: {
+  sandbox: boolean; writeFailed: boolean; online: boolean;
+  loading: boolean; serverConfirmed: boolean; justSaved: boolean;
+}): SyncStatus => {
+  if (s.sandbox) return 'sandbox';
+  if (s.writeFailed) return 'error';
+  if (!s.online) return 'offline';
+  if (s.loading || !s.serverConfirmed) return 'syncing';
+  if (s.justSaved) return 'saved';
+  return 'live';
+};
+
 export const POST_CONTRACT_GRACE_DAYS = 21;
 
 export const addDaysIso = (isoDate: string, days: number): string => {

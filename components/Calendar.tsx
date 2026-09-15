@@ -1,12 +1,12 @@
 
-import React, { useRef, useState, useMemo, useEffect } from 'react';
+import React, { useRef, useState, useMemo, useEffect, useLayoutEffect } from 'react';
 import { Shift, Staff, DragState, DragType, Language, Absence, ViewType } from '../types';
-import { DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR, HOUR_HEIGHT, TOTAL_HOURS } from '../constants';
+import { DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR, HOUR_HEIGHT } from '../constants';
 import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import MyWeekView from './MyWeekView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, shiftCost, staffingPerSlot, formatTime, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, shiftCost, totalCost, formatMoney, staffingPerSlot, formatTime, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
 import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
 
 // Branded header stamped on top of the grid in the PNG export only.
@@ -40,6 +40,9 @@ interface CalendarProps {
   /** Couts horaires charges, par identifiant. Vide pour un non-admin : l'app ne
    *  les charge meme pas, et les regles Firestore les lui refuseraient. */
   rates?: Record<string, number>;
+  /** Heures affichees par la grille, heures pleines : les heures d'ouverture
+   *  reglees, deja elargies aux shifts qui en debordent (voir `gridHourRange`). */
+  hourRange?: { start: number; end: number };
   staff: Staff[];
   currentWeek: Date;
   navDirection?: 'forward' | 'backward' | 'none';
@@ -67,7 +70,17 @@ interface LayoutShift extends Shift {
   totalColumns: number;
 }
 
-const CurrentTimeIndicator: React.FC<{ timezone?: string }> = ({ timezone = 'Europe/Paris' }) => {
+// Hauteur d'une heure ajustee a l'ecran (voir `fitHourHeight`). Plancher : en
+// dessous, une carte de trois heures ne lit plus son horaire, et l'ecran defile
+// de nouveau plutot que d'ecraser les cartes. Plafond : sur un tres grand ecran,
+// des heures demesurees n'apportent rien.
+const MIN_HOUR_HEIGHT = 32;
+const MAX_HOUR_HEIGHT = 96;
+// La derniere rangee ne porte que l'etiquette de l'heure de fin (« 24:00 ») :
+// une heure pleine de vide sous la grille gaspillait l'ecran.
+const END_LABEL_ROW = 24;
+
+const CurrentTimeIndicator: React.FC<{ timezone?: string; startHour: number; endHour: number; hourHeight: number }> = ({ timezone = 'Europe/Paris', startHour, endHour, hourHeight }) => {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -88,11 +101,11 @@ const CurrentTimeIndicator: React.FC<{ timezone?: string }> = ({ timezone = 'Eur
   const currentHourDecimal = hour + minute / 60;
   
   // Only show if within the calendar's visible hours
-  if (currentHourDecimal < START_HOUR || currentHourDecimal > END_HOUR) {
+  if (currentHourDecimal < startHour || currentHourDecimal > endHour) {
     return null;
   }
 
-  const top = (currentHourDecimal - START_HOUR) * HOUR_HEIGHT;
+  const top = (currentHourDecimal - startHour) * hourHeight;
 
   return (
     <div 
@@ -135,7 +148,8 @@ const Calendar: React.FC<CalendarProps> = ({
   showCoverage = true,
   isDraft = false,
   rates = {},
-  staff, 
+  hourRange = { start: START_HOUR, end: END_HOUR },
+  staff,
   currentWeek, 
   navDirection = 'none',
   onUpdateShift, 
@@ -159,6 +173,37 @@ const Calendar: React.FC<CalendarProps> = ({
   const gridRef = useRef<HTMLDivElement>(null);
   const dayStripRef = useRef<HTMLDivElement>(null);
   const weekId = getIsoDateString(currentWeek);
+  const { start: startHour, end: endHour } = hourRange;
+  const totalHours = endHour - startHour;
+
+  // La grille remplit la hauteur disponible (16/09/2026, Serge : « on n'a pas
+  // l'ensemble des heures reparti sur l'ecran, il faut scroller »). On mesure
+  // l'espace entre le haut des heures et le bas de la zone qui defile, et on le
+  // partage entre les heures affichees. L'export PNG garde 50 px : l'image ne
+  // doit pas dependre de la taille de la fenetre.
+  const hoursRowRef = useRef<HTMLDivElement>(null);
+  const [fitHourHeight, setFitHourHeight] = useState(HOUR_HEIGHT);
+  useLayoutEffect(() => {
+    const row = hoursRowRef.current;
+    const root = gridRef.current;
+    const scroller = root?.parentElement;
+    if (!row || !root || !scroller) return;
+    const measure = () => {
+      const top = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      const available = scroller.clientHeight - top - END_LABEL_ROW;
+      setFitHourHeight(Math.max(MIN_HOUR_HEIGHT, Math.min(MAX_HOUR_HEIGHT, Math.floor(available / totalHours))));
+    };
+    measure();
+    // La fenetre qui change de taille, et les bandes au-dessus des heures qui
+    // apparaissent (absences, couts) : les deux deplacent l'espace disponible.
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    observer.observe(root);
+    return () => observer.disconnect();
+    // `viewType` : les vues « employe » et « ma semaine » n'ont pas cette grille ;
+    // en revenant au planning, il faut mesurer a nouveau.
+  }, [totalHours, viewType]);
+  const hourHeight = isExporting ? HOUR_HEIGHT : fitHourHeight;
   const t = getTranslation(language as Language);
   const localizedDays = language === 'fr' ? DAYS_FR : DAYS_EN;
   const shortDays = language === 'fr' ? DAYS_FR_SHORT : DAYS_EN_SHORT;
@@ -282,16 +327,16 @@ const Calendar: React.FC<CalendarProps> = ({
         return;
     }
     const rect = gridRef.current.getBoundingClientRect();
-    const timeDelta = (dragState.currentY - dragState.initialY) / HOUR_HEIGHT;
+    const timeDelta = (dragState.currentY - dragState.initialY) / hourHeight;
     const snappedDelta = Math.round(timeDelta * 2) / 2;
     const shift = shifts.find(s => s.id === dragState.shiftId);
 
     if (shift) {
       if (dragState.dragType === 'move') {
         const finalDay = getDayFromX(dragState.currentX, rect.width);
-        const finalStart = Math.max(START_HOUR, Math.min(END_HOUR - (shift.endTime - shift.startTime), dragState.originalStart + snappedDelta));
+        const finalStart = Math.max(startHour, Math.min(endHour - (shift.endTime - shift.startTime), dragState.originalStart + snappedDelta));
         const duration = shift.endTime - shift.startTime;
-        const finalEnd = Math.min(END_HOUR, finalStart + duration);
+        const finalEnd = Math.min(endHour, finalStart + duration);
 
         if (finalDay !== dragState.originalDay || finalStart !== dragState.originalStart) {
           onUpdateShift({
@@ -302,12 +347,12 @@ const Calendar: React.FC<CalendarProps> = ({
           });
         }
       } else if (dragState.dragType === 'resize-top') {
-        const finalStart = Math.max(START_HOUR, Math.min(shift.endTime - 0.5, dragState.originalStart + snappedDelta));
+        const finalStart = Math.max(startHour, Math.min(shift.endTime - 0.5, dragState.originalStart + snappedDelta));
         if (finalStart !== dragState.originalStart) {
           onUpdateShift({ ...shift, startTime: finalStart });
         }
       } else if (dragState.dragType === 'resize-bottom') {
-        const finalEnd = Math.max(shift.startTime + 0.5, Math.min(END_HOUR, dragState.originalEnd + snappedDelta));
+        const finalEnd = Math.max(shift.startTime + 0.5, Math.min(endHour, dragState.originalEnd + snappedDelta));
         if (finalEnd !== dragState.originalEnd) {
           onUpdateShift({ ...shift, endTime: finalEnd });
         }
@@ -374,7 +419,7 @@ const Calendar: React.FC<CalendarProps> = ({
          un total a jour a la main a chaque fois qu'on ajoute une rangee.
          `minHeight` conserve la hauteur d'origine pour qu'une semaine vide
          garde exactement l'allure qu'elle avait. */
-      style={{ minHeight: (TOTAL_HOURS + 1) * HOUR_HEIGHT + 64 + (isExporting ? EXPORT_HEADER_HEIGHT : 0) }}
+      style={{ minHeight: totalHours * hourHeight + END_LABEL_ROW + 64 + (isExporting ? EXPORT_HEADER_HEIGHT : 0) }}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
@@ -512,13 +557,19 @@ const Calendar: React.FC<CalendarProps> = ({
           ------------------------------------------------------------------- */}
       {showCoverage && shifts.length > 0 && (
         <div className="flex border-b bg-white">
-          <div className="w-[54px] md:w-[60px] flex-shrink-0 border-r bg-slate-50/50 flex items-center justify-end pr-1 md:pr-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              {t('coverageShort')}
-            </span>
+          {/* Icone plutot que le mot : « EFFECTIF » ne tenait pas dans les 54-60 px
+              de la colonne et s'affichait coupe (signale par Serge le 16/09/2026).
+              Le mot reste dans l'infobulle et pour les lecteurs d'ecran. */}
+          <div
+            className="w-[54px] md:w-[60px] flex-shrink-0 border-r bg-slate-50/50 flex items-center justify-end pr-1 md:pr-2 text-slate-400"
+            title={t('coverageTitle')}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" role="img" aria-label={t('coverageShort')}>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
           </div>
           {localizedDays.map((_, i) => {
-            const counts = staffingPerSlot(shifts, i, START_HOUR, END_HOUR, COVERAGE_SLOT * 60);
+            const counts = staffingPerSlot(shifts, i, startHour, endHour, COVERAGE_SLOT * 60);
             const peak = Math.max(1, ...counts);
             return (
               <div
@@ -532,7 +583,7 @@ const Calendar: React.FC<CalendarProps> = ({
                       key={h}
                       className="flex-1 rounded-sm bg-indigo-200"
                       style={{ height: `${Math.max(6, (n / peak) * 100)}%`, opacity: n === 0 ? 0.25 : 1 }}
-                      title={`${formatTime(START_HOUR + h * COVERAGE_SLOT)} — ${n}`}
+                      title={`${formatTime(startHour + h * COVERAGE_SLOT)} — ${n}`}
                     />
                   ))}
                 </div>
@@ -542,19 +593,60 @@ const Calendar: React.FC<CalendarProps> = ({
         </div>
       )}
 
-      <div className="flex relative bg-white">
+      {/* -------------------------------------------------------------------
+          Cout charge du jour et de la semaine (demande de Serge le 16/09/2026,
+          « meme en petit et discret »). Une ligne de texte gris, sans cadre :
+          c'est un repere, pas une alerte (R5.3). La case de gauche porte le libelle
+          « Coût » ; le total de la semaine est dans la colonne de droite, nomme en
+          toutes lettres (dans cette case, rien ne disait que c'etait la semaine).
+          N'existe que si des taux sont charges : un employe n'en recoit aucun (regle
+          Firestore), donc la ligne ne peut pas apparaitre chez lui.
+          « ≥ » quand un shift n'a pas de taux : le montant affiche est alors un
+          minimum, et le dire vaut mieux que presenter un total incomplet comme exact.
+          ------------------------------------------------------------------- */}
+      {Object.keys(rates).length > 0 && shifts.length > 0 && (() => {
+        const money = (c: { total: number; missing: number }) =>
+          `${c.missing > 0 ? '≥ ' : ''}${formatMoney(Math.round(c.total), language as Language)}`;
+        const hint = (title: string, c: { missing: number }) =>
+          c.missing > 0 ? `${title}\n${t('costMissing').replace('{n}', String(c.missing))}` : title;
+        return (
+          <div className="flex border-b bg-white">
+            <div className="w-[54px] md:w-[60px] flex-shrink-0 border-r bg-slate-50/50 flex items-center justify-end pr-1 md:pr-2 py-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{t('costShort')}</span>
+            </div>
+            {localizedDays.map((_, i) => {
+              const day = totalCost(shifts.filter(s => s.dayIndex === i), rates);
+              return (
+                <div
+                  key={i}
+                  className={`flex-1 border-r last:border-r-0 py-1 min-w-0 text-center ${i === activeDayIndex ? 'block' : 'hidden md:block'}`}
+                  title={hint(t('costDayTitle'), day)}
+                >
+                  <span className="text-xs font-semibold text-slate-400 tabular-nums whitespace-nowrap">
+                    {day.total > 0 || day.missing > 0 ? money(day) : ''}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      <div ref={hoursRowRef} className="flex relative bg-white">
         <div className="w-[54px] md:w-[60px] flex-shrink-0 bg-white z-10">
-          {Array.from({ length: TOTAL_HOURS + 1 }).map((_, i) => (
-            <div key={i} className="border-b text-xs text-gray-400 text-right pr-1 md:pr-2 pt-1 flex flex-col justify-start bg-white" style={{ height: HOUR_HEIGHT }}>
-              {String(START_HOUR + i).padStart(2, '0')}:00
+          {Array.from({ length: totalHours + 1 }).map((_, i) => (
+            <div key={i} className="border-b text-xs text-gray-400 text-right pr-1 md:pr-2 pt-1 flex flex-col justify-start bg-white" style={{ height: i === totalHours ? END_LABEL_ROW : hourHeight }}>
+              {String(startHour + i).padStart(2, '0')}:00
             </div>
           ))}
         </div>
 
-        <div className={`flex-1 flex calendar-grid relative transition-all duration-300 bg-white ${visualStateClass}`} key={weekId}>
+        {/* Les lignes d'heure sont un degrade repete : son pas suit la hauteur
+            d'heure, sinon elles se decaleraient des etiquettes. */}
+        <div className={`flex-1 flex calendar-grid relative transition-all duration-300 bg-white ${visualStateClass}`} key={weekId} style={{ backgroundSize: `100% ${hourHeight}px` }}>
           {localizedDays.map((_, i) => (
             <div key={i} className={`flex-1 border-r last:border-r-0 h-full relative ${holidays.includes(i) ? 'bg-violet-50/60' : 'bg-transparent'} ${i === activeDayIndex ? 'block' : 'hidden md:block'}`}>
-              {i === todayIndex && !isExporting && <CurrentTimeIndicator timezone={timezone} />}
+              {i === todayIndex && !isExporting && <CurrentTimeIndicator timezone={timezone} startHour={startHour} endHour={endHour} hourHeight={hourHeight} />}
             </div>
           ))}
           
@@ -580,39 +672,39 @@ const Calendar: React.FC<CalendarProps> = ({
             const mobileLeft = `calc(${(shift.columnIndex * (100 / shift.totalColumns))}% + 2px)`;
             const mobileWidth = `calc(${(100 / shift.totalColumns)}% - 4px)`;
 
-            let top = (shift.startTime - START_HOUR) * HOUR_HEIGHT;
+            let top = (shift.startTime - startHour) * hourHeight;
             let left = `calc(${(shift.dayIndex * dayWidthPercentage) + (shift.columnIndex * subColumnWidth)}% + 2px)`;
             let width = `calc(${subColumnWidth}% - 4px)`;
-            let height = (shift.endTime - shift.startTime) * HOUR_HEIGHT;
+            let height = (shift.endTime - shift.startTime) * hourHeight;
 
             let previewStartTime = shift.startTime;
             let previewEndTime = shift.endTime;
 
             if (isDraggingThis && dragState) {
-               const timeDelta = (dragState.currentY - dragState.initialY) / HOUR_HEIGHT;
+               const timeDelta = (dragState.currentY - dragState.initialY) / hourHeight;
                const snappedDelta = Math.round(timeDelta * 2) / 2;
                
                if (dragState.dragType === 'move') {
                  const rect = gridRef.current?.getBoundingClientRect();
-                 const tempStart = Math.max(START_HOUR, Math.min(END_HOUR - (shift.endTime - shift.startTime), shift.startTime + snappedDelta));
+                 const tempStart = Math.max(startHour, Math.min(endHour - (shift.endTime - shift.startTime), shift.startTime + snappedDelta));
                  previewStartTime = tempStart;
                  previewEndTime = tempStart + (shift.endTime - shift.startTime);
                  
                  if (rect) {
                    const tempDay = getDayFromX(dragState.currentX, rect.width);
-                   top = (tempStart - START_HOUR) * HOUR_HEIGHT;
+                   top = (tempStart - startHour) * hourHeight;
                    left = `calc(${(tempDay * dayWidthPercentage)}% + 2px)`;
                    width = `calc(${dayWidthPercentage}% - 4px)`;
                  }
                } else if (dragState.dragType === 'resize-top') {
-                 const tempStart = Math.max(START_HOUR, Math.min(shift.endTime - 0.5, shift.startTime + snappedDelta));
+                 const tempStart = Math.max(startHour, Math.min(shift.endTime - 0.5, shift.startTime + snappedDelta));
                  previewStartTime = tempStart;
-                 top = (tempStart - START_HOUR) * HOUR_HEIGHT;
-                 height = (shift.endTime - tempStart) * HOUR_HEIGHT;
+                 top = (tempStart - startHour) * hourHeight;
+                 height = (shift.endTime - tempStart) * hourHeight;
                } else if (dragState.dragType === 'resize-bottom') {
-                 const tempEnd = Math.max(shift.startTime + 0.5, Math.min(END_HOUR, shift.endTime + snappedDelta));
+                 const tempEnd = Math.max(shift.startTime + 0.5, Math.min(endHour, shift.endTime + snappedDelta));
                  previewEndTime = tempEnd;
-                 height = (tempEnd - shift.startTime) * HOUR_HEIGHT;
+                 height = (tempEnd - shift.startTime) * hourHeight;
                }
             }
 

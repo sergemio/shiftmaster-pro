@@ -1,8 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Staff, Language } from '../types';
-import { START_HOUR, END_HOUR } from '../constants';
-import { formatTime } from '../utils/helpers';
+import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
 
@@ -16,9 +15,11 @@ interface ShiftModalProps {
   onCheck?: (staffId: string, dayIndexes: number[], start: number, end: number) => string[];
   /** Periode d'emploi : `errors` interdit le shift, `notes` le marque hors contrat. */
   onEmployment?: (staffId: string, dayIndexes: number[]) => { errors: string[]; notes: string[] };
+  /** Heures d'ouverture reglees : les menus d'heures n'offrent que cette plage. */
+  hours?: OperatingHours;
 }
 
-const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, language = 'en', onCheck, onEmployment }) => {
+const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, language = 'en', onCheck, onEmployment, hours = DEFAULT_OPERATING_HOURS }) => {
   if (!isOpen) return null;
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
   const t = getTranslation(language as Language);
@@ -27,20 +28,16 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
   // Plusieurs jours d'un coup : le meme service du lundi au vendredi se posait
   // en cinq ouvertures de cette fenetre.
   const [selectedDays, setSelectedDays] = useState<number[]>([0]);
-  const [startTime, setStartTime] = useState(11.5);
-  const [endTime, setEndTime] = useState(17.5);
+  // 11 h 30 - 17 h 30 par defaut, ramene dans les heures d'ouverture si elles
+  // ne le contiennent pas : un menu ne peut pas afficher une valeur absente.
+  const defaultStart = Math.min(Math.max(11.5, hours.start), hours.end - 1);
+  const [startTime, setStartTime] = useState(defaultStart);
+  const [endTime, setEndTime] = useState(Math.min(Math.max(17.5, defaultStart + 0.5), hours.end));
 
-  const timeOptions = useMemo(() => {
-    const options = [];
-    for (let h = START_HOUR; h <= END_HOUR; h++) {
-      for (let m = 0; m < 60; m += 30) {
-        if (h === END_HOUR && m > 0) break;
-        const val = h + m / 60;
-        options.push({ value: val, label: formatTime(val) });
-      }
-    }
-    return options;
-  }, []);
+  const timeOptions = useMemo(
+    () => halfHourSteps(hours.start, hours.end).map(v => ({ value: v, label: formatTime(v) })),
+    [hours.start, hours.end],
+  );
 
   // Recalcule a chaque frappe : c'est ce qui fait disparaitre l'avertissement
   // quand on recule l'heure, et c'est la que la regle s'apprend.
@@ -74,7 +71,7 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
+      <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
         <div className="p-6 md:p-8 pb-4 flex justify-between items-start">
           <h2 className="text-xl md:text-2xl font-bold text-slate-800">{t('createShift')}</h2>
           <button onClick={onClose} className="text-slate-300 hover:text-slate-500 transition-colors p-1">
@@ -123,7 +120,7 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
                   onChange={(e) => setStartTime(parseFloat(e.target.value))}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all"
                 >
-                  {timeOptions.filter(o => o.value < END_HOUR).map(opt => (
+                  {timeOptions.filter(o => o.value < hours.end).map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>

@@ -115,6 +115,7 @@ l'inclure dans `saveWeekToFirebase` l'effacerait a la premiere modification de s
 | `scripts/test-labor-rules.mjs` | 20 cas des regles de duree du travail |
 | `scripts/test-rules.mjs` | 40 cas des regles Firestore, dont couts et brouillons (emulateur requis) |
 | `scripts/test-shift-cost.mjs` | 14 cas du cout charge par shift |
+| `scripts/test-sync-status.mjs` | 10 cas de la pastille d'etat (bac a sable, echec, hors ligne, direct) |
 | `scripts/test-contract-hours.mjs` | 11 cas des avenants dates |
 | `scripts/test-month-hours.mjs` | 7 cas du contrat mensuel |
 | `scripts/test-overlaps.mjs` | 9 cas des chevauchements |

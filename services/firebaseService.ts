@@ -371,11 +371,23 @@ export const saveLogToFirebase = async (log: Omit<LogEntry, 'id'>): Promise<void
  */
 export const subscribeToWeek = (
   weekId: string,
-  callback: (week: WeekData, updatedAt: string | null) => void
+  callback: (week: WeekData, updatedAt: string | null) => void,
+  /** true = le contenu vient d'etre confirme par le serveur ; false = il ne sort
+   *  que du cache du telephone (connexion perdue, ou pas encore etablie). C'est
+   *  ce qui fait de la pastille verte une vraie mesure et non une decoration. */
+  onServerConfirmed?: (confirmed: boolean) => void
 ) => {
   if (!auth.currentUser) return () => {};
   const path = `weeks/${weekId}`;
-  return lazySubscribe(({ fs, db }) => fs.onSnapshot(fs.doc(db, 'weeks', weekId), (snap) => {
+  // includeMetadataChanges : on est prevenu aussi quand SEUL l'etat de connexion
+  // change. Ces evenements-la ne sont pas des lectures facturees, et on ne
+  // re-livre le contenu que s'il a reellement change.
+  let lastDelivered: string | undefined;
+  return lazySubscribe(({ fs, db }) => fs.onSnapshot(fs.doc(db, 'weeks', weekId), { includeMetadataChanges: true }, (snap) => {
+    onServerConfirmed?.(!snap.metadata.fromCache);
+    const signature = snap.exists() ? JSON.stringify(snap.data()) : '';
+    if (signature === lastDelivered) return;
+    lastDelivered = signature;
     if (!snap.exists()) return callback(EMPTY_WEEK, null);
     const data = snap.data();
     // `as Shift[]` would be a lie if the field were missing or malformed.
@@ -485,6 +497,20 @@ export const subscribeToRates = (callback: (rates: Record<string, number>) => vo
   }));
 };
 
+/** Ecrit seulement les champs donnes (fusion) : changer les heures d'ouverture
+ *  ne doit pas effacer le fuseau ou la convention du meme document. Ecriture
+ *  reservee aux admins par la regle `settings/global`. */
+export const saveGlobalSettings = async (partial: GlobalSettings): Promise<void> => {
+  if (!auth.currentUser) return;
+  const { fs, db } = await firestore();
+  const path = 'settings/global';
+  try {
+    await fs.setDoc(fs.doc(db, 'settings', 'global'), partial, { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+};
+
 export const saveRates = async (rates: Record<string, number>): Promise<void> => {
   if (!auth.currentUser) return;
   const { fs, db } = await firestore();
@@ -506,12 +532,14 @@ export const saveRates = async (rates: Record<string, number>): Promise<void> =>
   }
 };
 
-export const subscribeToGlobalSettings = (callback: (settings: { timezone?: string, language?: string, convention?: string }) => void) => {
+type GlobalSettings = { timezone?: string, language?: string, convention?: string, openHour?: number, closeHour?: number };
+
+export const subscribeToGlobalSettings = (callback: (settings: GlobalSettings) => void) => {
   if (!auth.currentUser) return () => {};
   const path = 'settings/global';
   return lazySubscribe(({ fs, db }) => fs.onSnapshot(fs.doc(db, 'settings', 'global'), (snap) => {
     if (snap.exists()) {
-      callback(snap.data() as { timezone?: string, language?: string, convention?: string });
+      callback(snap.data() as GlobalSettings);
     }
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, path);

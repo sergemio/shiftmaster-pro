@@ -5,6 +5,190 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-16 — La grille des heures remplit l'ecran
+
+Signale par Serge : les shifts descendaient sous le bas de l'ecran, il fallait defiler. La hauteur
+d'une heure etait fixe (50 px). Elle est maintenant calculee : espace entre le haut des heures et le
+bas de la zone qui defile, partage entre les heures affichees, borne a 32-96 px (sous 32 px une carte
+de 3 h ne lit plus son horaire : l'ecran defile de nouveau). Remesure au redimensionnement et quand
+une bande (absences, couts) apparait. Derniere rangee reduite a l'etiquette de fin (24 px au lieu
+d'une heure vide). Lignes d'heure (degrade CSS) au meme pas. Export PNG : 50 px inchange.
+Mesures : 1640x940 -> 45 px/h sans defilement ; 1366x768 (9 h-23 h 30) -> 37 px/h ; telephone
+400x800 -> 39 px/h ; 1280x560 -> plancher 32 px, defilement. Fichier : `Calendar.tsx`.
+Note : sur le compte reel, `settings/global` n'avait pas encore d'heures d'ouverture (8 h par defaut).
+
+---
+
+## 2026-09-16 — Heures d'ouverture reglables ; libelles Effectif et Cout ; cout de la periode nomme
+
+Retours de Serge sur capture, valides avant de coder :
+1. « EFFECTIF » coupe dans la colonne de 54-60 px -> icone de personnes, mot dans l'infobulle.
+2. Le total dans la case de gauche ne disait pas qu'il etait la semaine -> la case porte « Coût »,
+   et la colonne de droite affiche « Coût de la semaine ≥ … € » sous la bascule (« Coût du mois »
+   en vue Mois, calcule depuis les shifts du mois deja charges, sans lecture de plus).
+3. Heures d'ouverture : Reglages -> « Heures d'ouverture » (admins), debut et fin par demi-heure,
+   enregistrees dans `settings/global` (`openHour`, `closeHour`, ecriture fusionnee ; la regle admin
+   existait deja, aucun deploiement). Defaut 8 h -> minuit = l'ancien comportement.
+   - Grille : plage arrondie a l'heure pleine vers l'exterieur, elargie a tout shift qui en deborde
+     (jamais de shift cache). Glisser-deposer et decalage de selection bornes a cette plage.
+   - Menus « ajouter / modifier un shift » : la plage reglee (modifier : elargie aux heures du shift).
+   - Bac a sable : reglage garde dans le navigateur (`sandbox_hours`).
+Aussi : filet retire au-dessus du montant en pied de carte (juge laid).
+Tests : `scripts/test-hour-range.mjs` (14 cas). Fichiers : `helpers.ts`, `firebaseService.ts`, `App.tsx`,
+`Calendar.tsx`, `Sidebar.tsx`, `SettingsModal.tsx`, `ShiftModal.tsx`, `EditShiftModal.tsx`, `ShiftCard.tsx`,
+`translations.ts`.
+
+---
+
+## 2026-09-16 — Cout total du jour et de la semaine
+
+Demande de Serge (« meme en petit et discret »). Une ligne de texte gris sous la ligne d'effectif :
+le total de chaque jour sous chaque jour, le total de la semaine dans la case de gauche. Arrondi a
+l'euro. « ≥ » devant un total quand un shift n'a pas de taux (le montant est alors un minimum ;
+l'infobulle dit combien de shifts manquent). La ligne n'existe que si des taux sont charges, donc
+jamais chez un employe. Suit le brouillon quand il est ouvert.
+Fichiers : `Calendar.tsx`, `translations.ts` (`costDayTitle`, `costWeekTitle`, `costMissing`).
+
+---
+
+## 2026-09-16 — Montant du shift visible quand deux personnes partagent le jour
+
+Signale par Serge : le cout de Tatiana n'apparaissait que sur la carte large du mercredi. La pastille
+se masquait sous 88 px de carte, soit des que deux personnes partagent un jour (~85 px). Seuil passe
+a 64 px. Trois personnes a la fois (~55 px) : toujours masque, l'horaire prime.
+Puis, sur retour de Serge (duree et prix, deux badges voisins, se confondaient) : le montant quitte
+la ligne de la duree et devient un pied de carte, en bas, sans cadre, sous un filet fin.
+Fichier : `ShiftCard.tsx`.
+
+---
+
+## 2026-09-16 — Fenetres toujours dans l'ecran ; clic sur le fond pour fermer
+
+Signale par Serge : la fenetre des reglages sortait de l'ecran (liste des taux horaires) et le clic
+dehors ne la fermait pas.
+- Reglages : hauteur limitee a l'ecran, titre et bouton OK fixes, seul le milieu defile. La liste des
+  taux n'a plus son propre defilement (plus de defilement dans un defilement).
+- Ajouter un shift / modifier un shift : hauteur limitee a l'ecran, le contenu defile.
+- Clic sur le fond : ferme les reglages et l'historique (rien a perdre). Pas les fenetres de saisie,
+  ou un clic dehors perdrait ce qui a ete tape. Echap etait deja gere dans `App.tsx`.
+Fichiers : `SettingsModal.tsx`, `HourlyRatesEditor.tsx`, `LogHistoryModal.tsx`, `ShiftModal.tsx`, `EditShiftModal.tsx`.
+
+---
+
+## 2026-09-14 — Bouton « Bac a sable » masque en ligne
+
+Demande de Serge : le bouton n'a pas de sens pour les employes sur l'ecran de connexion.
+Il reste visible en local (localhost, IP du reseau) et en ligne si l'adresse finit par `?sandbox`
+(tests automatiques sur la preview). La fonctionnalite elle-meme ne change pas. Fichier : `App.tsx`.
+
+---
+
+## 2026-09-13 — Colonne de droite en blocs repliables, toujours dans l'ecran (version A)
+
+Choix de Serge sur la maquette (`maquettes/colonne-droite-3-versions.html`), avec deux retouches :
+boutons d'action entre les heures et les points a verifier, et plus d'air entre les blocs.
+
+- Trois blocs repliables — heures, points a verifier, absences et remplacements — **un seul ouvert
+  a la fois** ; les heures ouvertes par defaut ; recliquer referme. Ferme, chaque bloc garde un
+  resume sur sa ligne (« 3 over · 6 under », nombre de points, « None »).
+- Le bloc ouvert prend sa hauteur naturelle et **ne se comprime qu'a court de place** : sur grand
+  ecran toute l'equipe s'affiche, sur petit ecran ou avec une grande equipe la liste defile dans son
+  bloc. Boutons d'action et « Manage Staff » ne sortent jamais de l'ecran.
+- En vue mois, le titre du bloc des heures est le mois (« September 2026 »), ce qui remplace la
+  ligne separee.
+- Resserrage : boutons 56 → 44 px (plancher tactile R7.5), ecart uniforme de 14 px entre blocs,
+  « Manage Staff » fixe en bas.
+- Verifie dans le bac a sable : 22 personnes a 640 px (colonne sans defilement, heures qui defilent
+  dans leur bloc, boutons visibles), meme equipe a 1 000 px (le bloc grandit), accordeon, ordre des
+  blocs, vue mois ; brouillon, infobulles et en-tete re-testes.
+
+**Largeur, trouve en verifiant sur telephone.** Dans le tiroir de 280 px, le contenu debordait a
+droite (heures, resumes et titres coupes) : la grille d'un bloc s'elargissait a la taille de son
+plus long titre. Corrige (`minmax(0,1fr)`, titres et resumes qui retrecissent), tiroir porte a
+`min(320px, 85vw)`, titre « Stats Hebdo » tronquable. Libelles francais raccourcis (« Heures
+semaine », « 0 au-dessus · 8 sous ») ; sous 270 px de contenu (telephone, tablette) le resume
+devient « 0↑ · 8↓ » ; plus de « Aucun » sur le bloc des remplacements vide. Mesure : 0 element hors
+de la colonne et aucun libelle tronque a 1280, 900, 400 et 360 px de large. Dans le tiroir du
+telephone, le titre « Stats Hebdo » etait ecrase en « S.. » par les boutons export, annuler,
+retablir et fermer : sous 768 px ces boutons passent a la ligne (en-tete de 96 px au lieu de 32),
+aucun bouton retire.
+
+Fichiers : `components/Sidebar.tsx` (composant `Section`), `utils/translations.ts`.
+
+---
+
+## 2026-09-13 — Maquette : colonne de droite sans defilement (a trancher)
+
+Demande de Serge : la colonne de droite deborde (« Manage Staff » invisible) et debordera davantage
+avec une equipe plus grande. Maquette interactive, rien dans l'app pour l'instant :
+`maquettes/colonne-droite-3-versions.html` — la colonne actuelle, puis A (un seul bloc ouvert),
+B (blocs en competition, heures compactes quand un autre bloc s'ouvre), C (onglets). Bascules
+hauteur 640/860 px, equipe de 9 ou 22 personnes, semaine vide. A 640 px, la colonne actuelle cache
+« Manage Staff » ; A, B et C le gardent visible, y compris avec 22 personnes et tout ouvert.
+
+---
+
+## 2026-09-13 — Pastille d'etat qui mesure vraiment, titre « ShiftMaster », deux animations
+
+Retours de Serge sur la version locale.
+
+**La pastille verte ne mesurait rien.** Serge a demande de verifier qu'elle « fait son travail ».
+Constat : elle etait verte par defaut — verte dans le bac a sable (relie a aucune base), verte sans
+connexion. Seuls un chargement ou un message rouge la changeaient, et ce message rouge servait aussi
+a « rien a copier », qui affichait alors « Not saved ». Desormais :
+- `subscribeToWeek` ecoute aussi l'etat de connexion (`includeMetadataChanges`) et signale si la
+  semaine affichee a ete **confirmee par le serveur** ou seulement lue dans le cache du telephone.
+  Ces evenements ne sont pas des lectures facturees, et le contenu n'est re-livre que s'il a change.
+- L'app suit le reseau du navigateur (`online` / `offline`).
+- Rouge seulement sur un vrai echec d'enregistrement (erreur Firestore ou conflit), plus sur un
+  simple message.
+- `syncStatus` (utils/helpers.ts) tranche : bac a sable (gris) > echec (rouge) > hors ligne (ambre) >
+  synchronisation (bleu clignotant, y compris « pas encore confirme par le serveur ») > enregistre
+  (vert, onde breve) > en direct (vert). Teste par `scripts/test-sync-status.mjs` (10 cas).
+- **Non verifie avec un vrai compte connecte** : le bac a sable n'a pas de base. A controler sur la
+  preview en coupant le wifi (la pastille doit passer a l'ambre, puis revenir au vert).
+
+**Titre.** « ShiftMaster Pro » devient « ShiftMaster », la pastille prend la place de « Pro », collee
+au nom ; le badge texte (« Live », « Syncing »…) a cote des fleches disparait, son contenu passe dans
+l'infobulle de la pastille. Onglet du navigateur : « ShiftMaster ».
+
+**Animations** (respectent « reduire les animations » du systeme) :
+- Bascule Semaine / Mois : un seul fond blanc qui glisse d'un bouton a l'autre en 300 ms.
+- Bloc « points a verifier » : ouverture et fermeture animees en 300 ms (grille 0fr → 1fr) ; une
+  fois ferme, le contenu est retire du clavier et des lecteurs d'ecran (`inert`).
+
+**En-tete sur telephone.** En verifiant le titre a 400 px, l'en-tete depassait l'ecran de 51 px
+(91 px a 360 px) : engrenage des reglages coupe, avatar hors champ. Probablement deja le cas avant
+(le titre etait alors tronque a 120 px). Sous 640 px : marges et ecarts resserres, titre en 16 px,
+avatar masque (decoratif a cette taille, nom et deconnexion y etaient deja caches). Les boutons
+gardent leur plancher tactile de 44 px (R7.5). Mesure : 0 px de depassement a 360, 375 et 400 px.
+
+Fichiers : `App.tsx`, `components/Sidebar.tsx`, `services/firebaseService.ts`, `utils/helpers.ts`,
+`utils/translations.ts`, `index.html`, `scripts/test-sync-status.mjs`.
+
+---
+
+## 2026-09-13 — Une seule infobulle pour toute l'application
+
+Demande de Serge : toutes les aides au survol doivent avoir le style de celle du brouillon — bulle
+sombre, pictogramme « information », texte qui passe a la ligne — pour qu'on comprenne tout de suite
+que c'est la pour aider. L'infobulle native du navigateur s'affichait sur une ligne qui traversait
+l'ecran, dans le style du systeme.
+
+**Un composant, pas trente retouches.** `components/Tooltip.tsx`, monte une fois dans `index.tsx`,
+prend la main sur tout element porteur de `title` : au survol il deplace le texte dans `data-tip`
+(la bulle native ne s'affiche donc jamais) et affiche la sienne. On continue d'ecrire `title="..."`
+partout, y compris dans le code a venir. Un bouton sans texte visible garde son nom accessible
+(`aria-label`). Placement : au-dessus et centree, en dessous faute de place, toujours ramenee dans
+l'ecran. Souris seulement : sur tactile, un appui ne fait pas surgir de bulle. Fermeture au depart
+de la souris, au clic, au defilement, a une touche.
+
+- Le bouton brouillon abandonne sa bulle maison (`HintButton`) pour ce composant commun.
+- Fleches de semaine : l'infobulle disait « ← » / « → », elle dit « Semaine precedente / suivante ».
+- Bandeau du brouillon : « … until you publish. » / « … avant la validation. » (demande de Serge).
+
+---
+
 ## 2026-09-13 — Brouillon et copie de la semaine precedente, cote a cote
 
 Retour de Serge sur la preview. Les deux boutons sont desormais sur une meme ligne, sous « + Shift »,

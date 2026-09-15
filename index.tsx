@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
+import Tooltip from './components/Tooltip.tsx';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -14,6 +15,7 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />
+      <Tooltip />
     </ErrorBoundary>
   </React.StrictMode>
 );

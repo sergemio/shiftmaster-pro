@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, DraftData, EMPTY_WEEK, ViewType } from './types';
-import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth } from './utils/helpers';
-import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR } from './constants';
+import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours } from './utils/helpers';
+import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT } from './constants';
 import { CONVENTIONS, DEFAULT_CONVENTION, findViolations, DatedShift, Violation } from './utils/laborRules';
 import { violationText, violationWho } from './utils/violationText';
 import Calendar from './components/Calendar';
@@ -31,6 +31,7 @@ import {
   subscribeToRates,
   saveRates,
   subscribeToGlobalSettings,
+  saveGlobalSettings,
   AuthResult,
   loadShiftsFromFirebase,
   loadWeeks,
@@ -103,6 +104,20 @@ const FloatingBackground: React.FC = () => {
   );
 };
 
+// Bac a sable : sans objet pour les employes, donc masque en ligne (GitHub Pages).
+// Reste visible en local (localhost, IP du reseau pour la tablette) et en ligne avec `?sandbox`.
+const SHOW_SANDBOX = !location.hostname.endsWith('github.io') || new URLSearchParams(location.search).has('sandbox');
+
+// Couleur de la pastille et texte de son infobulle, par etat (voir `syncStatus`).
+const STATUS_DOT: Record<SyncStatus, { color: string; hint: string }> = {
+  live:    { color: 'bg-emerald-500', hint: 'statusLive' },
+  saved:   { color: 'bg-emerald-500', hint: 'statusSaved' },
+  syncing: { color: 'bg-sky-400 animate-pulse motion-reduce:animate-none', hint: 'statusSyncing' },
+  offline: { color: 'bg-amber-500', hint: 'statusOffline' },
+  error:   { color: 'bg-red-500', hint: 'statusError' },
+  sandbox: { color: 'bg-slate-400', hint: 'statusSandbox' },
+};
+
 const App: React.FC = () => {
   const [language, setLanguage] = useState<Language>(() => {
     return (localStorage.getItem('shiftmaster_lang') as Language) || 'en';
@@ -118,6 +133,7 @@ const App: React.FC = () => {
   // Couts horaires charges. Vide tant qu'on n'est pas admin : on ne les
   // DEMANDE meme pas, et les regles Firestore les refuseraient de toute facon.
   const [rates, setRates] = useState<Record<string, number>>({});
+  const [operatingHours, setOperatingHours] = useState<OperatingHours>(DEFAULT_OPERATING_HOURS);
   const [guestEmails, setGuestEmails] = useState<string[]>([]);
   // La semaine officielle, telle qu'en base. Ce que l'ecran montre et modifie
   // (`shifts`, `absences`, `holidays`) est elle, OU le brouillon en mode
@@ -133,6 +149,9 @@ const App: React.FC = () => {
   const draftModeRef = useRef(false);
   draftModeRef.current = inDraft;
   const { shifts, absences, holidays } = inDraft ? draft! : officialWeek;
+  // Heures affichees par la grille : la plage reglee, elargie aux shifts de la
+  // semaine qui en debordent.
+  const hourRange = useMemo(() => gridHourRange(operatingHours, shifts), [operatingHours, shifts]);
 
   // L'historique porte la semaine ENTIERE. S'il ne portait que les shifts,
   // annuler apres avoir saisi une absence remettrait les anciens shifts en
@@ -154,6 +173,9 @@ const App: React.FC = () => {
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('week');
   const [monthHours, setMonthHours] = useState<Record<string, number> | null>(null);
   const [monthLoading, setMonthLoading] = useState(false);
+  // Les shifts du mois eux-memes, pour en tirer le cout sans relire la base
+  // quand un taux change.
+  const [monthShifts, setMonthShifts] = useState<Shift[] | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   // Shifts coches. Non vide = mode selection : un appui coche au lieu d'ouvrir
   // la fiche, et la barre d'actions apparait en bas.
@@ -163,6 +185,12 @@ const App: React.FC = () => {
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // `saveError` sert aussi a des messages qui ne sont pas des echecs (« rien a
+  // copier », periode d'emploi) : la pastille rouge ne suit que les vrais echecs.
+  const [writeFailed, setWriteFailed] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine);
+  /** La semaine affichee a ete confirmee par le serveur, pas seulement lue dans le cache. */
+  const [serverConfirmed, setServerConfirmed] = useState(false);
   const [timezone, setTimezone] = useState('Europe/Paris');
   /** Convention collective appliquee. Elle vit dans settings/global, a cote du
    *  fuseau : c'est un reglage de l'etablissement, pas une preference d'ecran. */
@@ -246,8 +274,16 @@ const App: React.FC = () => {
 
   // A failed write used to be invisible: the badge said "Saved" regardless.
   useEffect(() => {
-    setFirestoreErrorReporter((message) => setSaveError(message));
+    setFirestoreErrorReporter((message) => { setSaveError(message); setWriteFailed(true); });
     return () => setFirestoreErrorReporter(null);
+  }, []);
+
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
   }, []);
 
   useEffect(() => {
@@ -265,10 +301,17 @@ const App: React.FC = () => {
   // settings/global has held { timezone: "Europe/Paris" } all along, but
   // nothing read it — the zone was hardcoded in five places instead.
   useEffect(() => {
-    if (!user || isGuest) return;
+    if (isGuest) {
+      // Le bac a sable garde ses heures d'ouverture dans le navigateur, comme ses taux.
+      const saved = JSON.parse(localStorage.getItem('sandbox_hours') || 'null');
+      setOperatingHours(normalizeOperatingHours(saved?.start, saved?.end));
+      return;
+    }
+    if (!user) return;
     const unsubscribe = subscribeToGlobalSettings((settings) => {
       if (settings?.timezone) setTimezone(settings.timezone);
       if (settings?.convention) setConventionId(settings.convention);
+      setOperatingHours(normalizeOperatingHours(settings?.openHour, settings?.closeHour));
     });
     return () => unsubscribe();
   }, [user, isGuest]);
@@ -331,6 +374,13 @@ const App: React.FC = () => {
     saveRates(next);
   }, [isReadOnly, isGuest]);
 
+  const updateOperatingHours = useCallback((next: OperatingHours) => {
+    if (isReadOnly) return;
+    setOperatingHours(next);
+    if (isGuest) { localStorage.setItem('sandbox_hours', JSON.stringify(next)); return; }
+    saveGlobalSettings({ openHour: next.start, closeHour: next.end });
+  }, [isReadOnly, isGuest]);
+
   // Undo/redo history belongs to ONE week. Carrying it across a week change
   // meant Undo wrote the previous week's shifts onto the week now on screen,
   // wiping it. Clearing on every weekId change is what keeps undo scoped.
@@ -348,7 +398,7 @@ const App: React.FC = () => {
         weekVersion.current = updatedAt;
         setOfficialWeek(week);
         setIsLoading(false);
-      });
+      }, setServerConfirmed);
       return () => unsubscribe();
     } else if (isGuest) {
       setIsLoading(true);
@@ -394,6 +444,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (statsPeriod !== 'month' && effectiveViewType !== 'me') {
       setMonthHours(null);
+      setMonthShifts(null);
       return;
     }
     let cancelled = false;
@@ -417,16 +468,19 @@ const App: React.FC = () => {
     source.then(weeks => {
       if (cancelled) return;
       const totals: Record<string, number> = {};
+      const inMonth: Shift[] = [];
       for (const [wid, data] of Object.entries(weeks)) {
         const weekStart = new Date(wid + 'T00:00:00Z');
         for (const sh of data.shifts) {
           if (getShiftIsoDate(weekStart, sh.dayIndex).slice(0, 7) !== month) continue;
+          inMonth.push(sh);
           // Un shift couvert par quelqu'un d'autre compte pour celui qui le fait.
           const who = sh.coverageBy || sh.staffId;
           totals[who] = (totals[who] || 0) + (sh.endTime - sh.startTime);
         }
       }
       setMonthHours(totals);
+      setMonthShifts(inMonth);
       setMonthLoading(false);
     }).catch(() => { if (!cancelled) setMonthLoading(false); });
     return () => { cancelled = true; };
@@ -678,9 +732,11 @@ const App: React.FC = () => {
           // person are not mistaken for someone else's changes.
           if (stamp) weekVersion.current = stamp;
           setSaveError(null);
+          setWriteFailed(false);
           triggerSyncFeedback();
         } catch (e) {
           if (e instanceof WeekConflictError) {
+            setWriteFailed(true);
             setSaveError('Someone else changed this week while you were editing it. Your change was not saved — what you see below is their version.');
             // The live subscription already pushed their version into `shifts`.
             setPast([]);
@@ -809,7 +865,7 @@ const App: React.FC = () => {
   const nudgeSelected = useCallback((delta: number) => {
     if (isReadOnly || selectedShiftIds.length === 0) return;
     const chosen = shifts.filter(s => selectedShiftIds.includes(s.id));
-    const impossible = chosen.some(s => s.startTime + delta < START_HOUR || s.endTime + delta > END_HOUR);
+    const impossible = chosen.some(s => s.startTime + delta < hourRange.start || s.endTime + delta > hourRange.end);
     if (impossible) {
       setSaveError(t('cannotShiftOutOfRange'));
       return;
@@ -821,7 +877,7 @@ const App: React.FC = () => {
       ? { ...s, startTime: s.startTime + delta, endTime: s.endTime + delta }
       : s));
     createLog('MOVE SHIFTS', `Moved ${chosen.length} shift(s) by ${delta > 0 ? '+' : ''}${delta * 60} min`);
-  }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, t]);
+  }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, t, hourRange]);
 
   const moveSelectedToDay = useCallback((dayIndex: number) => {
     if (isReadOnly || selectedShiftIds.length === 0) return;
@@ -1114,6 +1170,7 @@ const App: React.FC = () => {
         stamp = await saveWeekToFirebase(weekId, week, weekVersion.current);
       } catch (e) {
         if (e instanceof WeekConflictError) {
+          setWriteFailed(true);
           setSaveError('Someone else saved this week at the same moment. The draft was not published and is still here.');
         }
         return;
@@ -1185,6 +1242,12 @@ const App: React.FC = () => {
     try { await logout(); } catch (e) {}
   };
 
+  const status = syncStatus({
+    sandbox: isGuest, writeFailed, online,
+    loading: isLoading, serverConfirmed, justSaved: showSyncSuccess,
+  });
+  const dot = STATUS_DOT[status];
+
   const editingShift = shifts.find(s => s.id === editingShiftId) || null;
 
   // People you can still assign work to on the week being viewed : pas avant la
@@ -1221,12 +1284,12 @@ const App: React.FC = () => {
             </svg>
             <span className="text-xl">{t('signInGoogle')}</span>
           </button>
-          <button onClick={handleBypass} className="bg-white/10 backdrop-blur-xl text-emerald-100 border border-white/20 px-8 py-5 rounded-[2.5rem] font-bold hover:text-white hover:bg-white/20 hover:border-white/30 transition-all flex items-center justify-center gap-3 active:scale-95">
+          {SHOW_SANDBOX && <button onClick={handleBypass} className="bg-white/10 backdrop-blur-xl text-emerald-100 border border-white/20 px-8 py-5 rounded-[2.5rem] font-bold hover:text-white hover:bg-white/20 hover:border-white/30 transition-all flex items-center justify-center gap-3 active:scale-95">
             <svg className="w-5 h-5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
             </svg>
             {t('devSandbox')}
-          </button>
+          </button>}
         </div>
       </div>
     );
@@ -1235,11 +1298,15 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen bg-white">
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 border-b flex items-center justify-between px-4 md:px-6 bg-white sticky top-0 z-30">
-          <div className="flex items-center gap-2 md:gap-4">
+        {/* Sur telephone, l'en-tete depassait l'ecran (51 px a 400 px de large) :
+            engrenage coupe, avatar hors champ. Marges et ecarts resserres sous
+            640 px, et l'avatar — decoratif a cette taille, le nom et la
+            deconnexion y etaient deja masques — n'apparait qu'au-dela. */}
+        <header className="h-16 border-b flex items-center justify-between gap-1 px-3 sm:px-4 md:px-6 bg-white sticky top-0 z-30">
+          <div className="flex items-center gap-1 sm:gap-2 md:gap-4 min-w-0">
             <button 
               onClick={() => setIsMobileSidebarOpen(true)}
-              className="md:hidden p-2 hover:bg-slate-100 rounded-lg text-slate-600 active:scale-95 transition-all"
+              className="md:hidden -ml-2 p-2 hover:bg-slate-100 rounded-lg text-slate-600 active:scale-95 transition-all"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -1247,24 +1314,37 @@ const App: React.FC = () => {
             </button>
             <button 
               onClick={handleJumpToToday}
-              className="text-lg md:text-lg font-bold text-slate-800 hover:text-indigo-600 transition-colors active:scale-95 truncate max-w-[120px] md:max-w-none"
+              className="text-base sm:text-lg font-bold text-slate-800 hover:text-indigo-600 transition-colors active:scale-95 flex-shrink-0 whitespace-nowrap"
               title={t('returnToday')}
             >
               {t('appName')}
             </button>
+            {/* Pastille d'etat, collee au nom : elle MESURE (serveur, reseau,
+                echec d'enregistrement), elle ne decore pas. Detail au survol. */}
+            <span
+              role="status"
+              title={t(dot.hint)}
+              aria-label={t(dot.hint)}
+              className="relative -ml-1 md:-ml-2 flex items-center justify-center w-5 h-5 flex-shrink-0"
+            >
+              {status === 'saved' && (
+                <span className="absolute w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping motion-reduce:animate-none" />
+              )}
+              <span className={`relative w-2.5 h-2.5 rounded-full transition-colors duration-300 ${dot.color}`} />
+            </span>
             <div className="h-6 w-px bg-slate-200 hidden md:block" />
             <div className="flex items-center gap-0 relative">
-              <button onClick={() => changeWeek(-1)} title="←" aria-label="Previous week" className="p-1 hover:bg-gray-100 rounded-lg transition-colors active:scale-95">
+              <button onClick={() => changeWeek(-1)} title={t('previousWeek')} aria-label="Previous week" className="p-1 hover:bg-gray-100 rounded-lg transition-colors active:scale-95">
                 <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
               </button>
               <div className="relative" ref={monthPickerRef}>
                 <button 
                   onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
-                  className={`font-semibold text-slate-700 text-center px-1 py-2 hover:bg-slate-50 rounded-xl transition-all flex items-center justify-center gap-1 border-2 sm:min-w-[220px] ${isMonthPickerOpen ? 'border-indigo-500 bg-indigo-50/30' : 'border-transparent'}`}
+                  className={`font-semibold text-slate-700 text-center px-0 sm:px-1 py-2 hover:bg-slate-50 rounded-xl transition-all flex items-center justify-center gap-1 border-2 sm:min-w-[220px] ${isMonthPickerOpen ? 'border-indigo-500 bg-indigo-50/30' : 'border-transparent'}`}
                 >
                   <span className="hidden sm:inline">{getWeekRangeString(currentWeek, language)}</span>
                   <span className="sm:hidden text-xs">{currentWeek.toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { month: 'short', day: 'numeric' })}</span>
-                  <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isMonthPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className={`hidden sm:block w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isMonthPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
@@ -1274,29 +1354,9 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
-              <button onClick={changeWeek.bind(null, 1)} title="→" aria-label="Next week" className="p-1 hover:bg-gray-100 rounded-lg transition-colors active:scale-95">
+              <button onClick={changeWeek.bind(null, 1)} title={t('nextWeek')} aria-label="Next week" className="p-1 hover:bg-gray-100 rounded-lg transition-colors active:scale-95">
                 <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
               </button>
-              <div className="flex items-center gap-2 ml-1 md:ml-3">
-                {saveError ? (
-                  <div className="bg-red-100 text-red-700 text-xs font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-red-200 flex items-center gap-1 md:gap-2">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
-                    <span className="hidden xs:inline">Not saved</span>
-                  </div>
-                ) : isLoading ? (
-                  <div className="bg-indigo-50 text-indigo-600 text-xs font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-indigo-100 flex items-center gap-1 md:gap-2">
-                    <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-ping" /> <span className="hidden xs:inline">{t('syncing')}</span>
-                  </div>
-                ) : showSyncSuccess ? (
-                  <div className="bg-green-100 text-green-700 text-xs font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-green-200 flex items-center gap-1 md:gap-2 animate-in fade-in slide-in-from-left-2">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg> <span className="hidden xs:inline">{t('saved')}</span>
-                  </div>
-                ) : (
-                  <div className="bg-green-50 text-green-600 text-xs font-black px-1.5 md:px-2 py-1 rounded-full uppercase tracking-widest border border-green-100 flex items-center gap-1 md:gap-2">
-                    <div className="w-1.5 h-1.5 bg-green-600 rounded-full" /> <span className="hidden xs:inline">{t('live')}</span>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
           
@@ -1309,7 +1369,7 @@ const App: React.FC = () => {
               <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             </button>
 
-            <div className="flex items-center gap-2 md:gap-3 pl-2 border-l">
+            <div className="hidden sm:flex items-center gap-2 md:gap-3 pl-2 border-l">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold text-slate-900 leading-none truncate max-w-[80px]">{user?.displayName || "User"}</p>
                 <button onClick={handleLogout} className="text-xs text-red-500 hover:underline cursor-pointer whitespace-nowrap">{t('signOut')}</button>
@@ -1327,7 +1387,7 @@ const App: React.FC = () => {
             </svg>
             <p className="flex-1 text-sm text-red-800 font-medium leading-snug">{saveError}</p>
             <button
-              onClick={() => setSaveError(null)}
+              onClick={() => { setSaveError(null); setWriteFailed(false); }}
               className="text-red-400 hover:text-red-700 transition-colors flex-shrink-0 p-1"
               title="Dismiss"
             >
@@ -1365,6 +1425,7 @@ const App: React.FC = () => {
             navDirection={navDirection}
             onUpdateShift={updateShift} 
             rates={rates}
+            hourRange={hourRange}
             onAddShift={() => !isReadOnly && setIsShiftModalOpen(true)} 
             onEditShift={(id) => !isReadOnly && setEditingShiftId(id)} 
             isReadOnly={isReadOnly} 
@@ -1395,6 +1456,9 @@ const App: React.FC = () => {
         onPeriodChange={setStatsPeriod}
         monthHours={monthHours}
         monthLoading={monthLoading}
+        cost={Object.keys(rates).length === 0 ? null
+          : statsPeriod === 'month' ? (monthShifts && !monthLoading ? totalCost(monthShifts, rates) : null)
+          : totalCost(shifts, rates)}
         monthLabel={new Date(getShiftIsoDate(currentWeek, 3) + 'T12:00:00Z').toLocaleDateString(
           language === 'fr' ? 'fr-FR' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
         onManageStaffClick={fromSidebar(() => setIsStaffModalOpen(true))}
@@ -1416,7 +1480,7 @@ const App: React.FC = () => {
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
       />
-      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} onAdd={handleAddShift} onCheck={previewViolations} onEmployment={employmentCheck} language={language} />
+      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} onAdd={handleAddShift} onCheck={previewViolations} onEmployment={employmentCheck} language={language} hours={operatingHours} />
       <StaffModal 
         isOpen={isStaffModalOpen} 
         onClose={() => setIsStaffModalOpen(false)} 
@@ -1428,7 +1492,7 @@ const App: React.FC = () => {
         onRemoveGuest={handleRemoveGuest}
         language={language} 
       />
-      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onCheck={previewViolations} onEmployment={employmentCheck} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} />
+      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onCheck={previewViolations} onEmployment={employmentCheck} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} hours={operatingHours} />
       {/* La barre n'existe que pendant une selection : elle occupe le bas de
           l'ecran, et rien ne justifie de manger cette place le reste du temps. */}
       {selectedShiftIds.length > 0 && !isReadOnly && (
@@ -1455,7 +1519,7 @@ const App: React.FC = () => {
         onToggleHoliday={toggleHoliday}
         language={language}
       />
-      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} />
+      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : updateOperatingHours} />
     </div>
   );
 };
