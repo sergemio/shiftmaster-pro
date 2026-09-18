@@ -220,6 +220,29 @@ await check('Feries fermes enregistres dans les reglages',            assertSucc
 await check('Feries fermes : une liste, pas autre chose',             assertFails(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, closedHolidays: 'dec25' }, updatedAt: 'z3' })));
 await check('Staff NE CHANGE PAS les feries fermes',                  assertFails(updateDoc(doc(OMAR, 'orgs/sezam'), { settings: { ...SETTINGS, closedHolidays: [] }, updatedAt: 'z4' })));
 
+console.log('\n--- demandes de conge (le salarie propose, l admin tranche) ---');
+const REQ = { staffId: 's2', staffUid: 'uid-omar', kind: 'cp', start: '2026-10-12', end: '2026-10-17', status: 'pending', createdAt: 't' };
+const R = (id, org = 'sezam') => `orgs/${org}/leaveRequests/${id}`;
+const FINI_STAFF = as('uid-fs', { orgs: { fini: 'staff' } });
+await check('Omar demande des conges',                               assertSucceeds(setDoc(doc(OMAR, R('r1')), REQ)));
+await check('Omar lit SA demande',                                   assertSucceeds(getDoc(doc(OMAR, R('r1')))));
+await check('Un collegue NE LIT PAS la demande d Omar',              assertFails(getDoc(doc(DOUBLE, R('r1')))));
+await check('Admin lit la demande',                                  assertSucceeds(getDoc(doc(SERGE, R('r1')))));
+await check('Omar NE DEMANDE PAS au nom d un autre compte',          assertFails(setDoc(doc(OMAR, R('r2')), { ...REQ, staffUid: 'uid-double' })));
+await check('Omar NE CREE PAS une demande deja acceptee',            assertFails(setDoc(doc(OMAR, R('r3')), { ...REQ, status: 'accepted' })));
+await check('Un arret ne se demande pas (motif maladie refuse)',     assertFails(setDoc(doc(OMAR, R('r4')), { ...REQ, kind: 'maladie' })));
+await check('Demi-journee sur plusieurs jours refusee',              assertFails(setDoc(doc(OMAR, R('r5')), { ...REQ, half: 'am' })));
+await check('Reprise avant le depart refusee',                       assertFails(setDoc(doc(OMAR, R('r6')), { ...REQ, end: '2026-10-01' })));
+await check('Omar NE S ACCORDE PAS sa demande',                      assertFails(updateDoc(doc(OMAR, R('r1')), { status: 'accepted' })));
+await check('Admin NE CHANGE PAS les dates demandees',               assertFails(updateDoc(doc(SERGE, R('r1')), { start: '2026-10-13' })));
+await check('Admin accepte la demande',                              assertSucceeds(updateDoc(doc(SERGE, R('r1')), { status: 'accepted', decidedAt: 't', decidedBy: 'uid-serge', absenceId: 'a1' })));
+await check('Omar NE RETIRE PAS une demande deja tranchee',          assertFails(deleteDoc(doc(OMAR, R('r1')))));
+await check('Omar retire une demande en attente',                    assertSucceeds(setDoc(doc(OMAR, R('r7')), REQ).then(() => deleteDoc(doc(OMAR, R('r7'))))));
+await check('Admin refuse avec un motif',                            assertSucceeds(setDoc(doc(OMAR, R('r8')), REQ).then(() =>
+  updateDoc(doc(SERGE, R('r8')), { status: 'refused', decidedAt: 't', decidedBy: 'uid-serge', reply: 'Semaine de rush' }))));
+await check('Admin d un autre restaurant NE LIT PAS la demande',     assertFails(getDoc(doc(MARC, R('r8')))));
+await check('Essai EXPIRE : plus de demande de conge',               assertFails(setDoc(doc(FINI_STAFF, R('f1', 'fini')), { ...REQ, staffUid: 'uid-fs' })));
+
 console.log('\n--- invitations ---');
 const INVITE = { email: 'nouveau@x.com', role: 'staff', createdAt: 't', createdBy: 'uid-serge' };
 await check('Admin cree une invitation',                     assertSucceeds(setDoc(doc(SERGE, 'orgs/sezam/invites/tok2'), INVITE)));

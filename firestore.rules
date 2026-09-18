@@ -186,6 +186,25 @@ service cloud.firestore {
              && (d.kind != 'famille' || ('note' in d && d.note.size() > 0));
     }
 
+    // Demande de conge d'un salarie : conges payes ou sans solde seulement (un
+    // arret ne se demande pas, il se declare).
+    function isValidLeaveRequest(d) {
+      return d.staffId is string
+             && d.staffUid is string
+             && d.kind in ['cp', 'sans_solde']
+             && d.start is string && d.start.size() == 10
+             && d.end is string && d.end.size() == 10
+             && d.end >= d.start
+             && d.status in ['pending', 'accepted', 'refused']
+             && d.createdAt is string
+             && (!('half' in d) || (d.half in ['am', 'pm'] && d.start == d.end))
+             && (!('note' in d) || (d.note is string && d.note.size() <= 500))
+             && (!('reply' in d) || (d.reply is string && d.reply.size() <= 500))
+             && (!('decidedAt' in d) || d.decidedAt is string)
+             && (!('decidedBy' in d) || d.decidedBy is string)
+             && (!('absenceId' in d) || d.absenceId is string);
+    }
+
     function isValidInvite(data) {
       return data.email is string
              && data.email.size() >= 3 && data.email.size() <= 254
@@ -303,6 +322,31 @@ service cloud.firestore {
                     || (isOrgMember(orgId) && resource.data.staffUid == request.auth.uid);
         allow create, update: if canWrite(orgId) && isValidAbsencePeriod(request.resource.data);
         allow delete: if canWrite(orgId);
+      }
+
+      // Demandes de conge. Le salarie cree la sienne (en attente, a son propre
+      // uid, abonnement vivant) et peut la retirer tant qu'elle attend ; seul
+      // un admin la tranche, sans toucher a ce que la personne a demande.
+      match /leaveRequests/{requestId} {
+        allow read: if isOrgAdmin(orgId)
+                    || (isOrgMember(orgId) && resource.data.staffUid == request.auth.uid);
+        allow create: if isOrgMember(orgId)
+                    && isAlive(orgDoc(orgId))
+                    && isValidLeaveRequest(request.resource.data)
+                    && request.resource.data.staffUid == request.auth.uid
+                    && request.resource.data.status == 'pending'
+                    && !('decidedAt' in request.resource.data)
+                    && !('decidedBy' in request.resource.data)
+                    && !('reply' in request.resource.data)
+                    && !('absenceId' in request.resource.data);
+        allow update: if canWrite(orgId)
+                    && isValidLeaveRequest(request.resource.data)
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['status', 'decidedAt', 'decidedBy', 'reply', 'absenceId']);
+        allow delete: if canWrite(orgId)
+                    || (isOrgMember(orgId)
+                        && resource.data.staffUid == request.auth.uid
+                        && resource.data.status == 'pending');
       }
 
       // Invitations. L'id du document est le jeton du lien envoye par email ;

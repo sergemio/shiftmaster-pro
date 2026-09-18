@@ -92,7 +92,7 @@ for (const [id, o] of Object.entries(ORGS)) {
   // On efface d'abord les collections que les tests remplissent (extras,
   // invitations) : sinon un jeu de donnees « neuf » garde les fiches de la
   // veille, et on croit avoir un doublon la ou on a un reste.
-  for (const sub of ['extras', 'invites', 'weeks', 'drafts', 'logs', 'absences', 'leaveBalances']) {
+  for (const sub of ['extras', 'invites', 'weeks', 'drafts', 'logs', 'absences', 'leaveBalances', 'leaveRequests']) {
     const old = await base.collection(sub).get();
     await Promise.all(old.docs.map(d => d.ref.delete()));
   }

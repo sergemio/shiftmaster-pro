@@ -23,6 +23,8 @@ interface MyWeekViewProps {
   todayIsoDate: string;
   nowHour: number;
   language?: Language;
+  /** Affiche sous la semaine (demande de conge). */
+  footer?: React.ReactNode;
 }
 
 const KIND_STYLES: Record<string, { cls: string; label: string }> = {
@@ -42,7 +44,7 @@ const KIND_STYLES: Record<string, { cls: string; label: string }> = {
  */
 const MyWeekView: React.FC<MyWeekViewProps> = ({
   shifts, absences, holidays, me, allStaff, currentWeek, days,
-  monthHours = null, weekAbsence, monthAbsence, todayIsoDate, nowHour, language = 'en',
+  monthHours = null, weekAbsence, monthAbsence, todayIsoDate, nowHour, language = 'en', footer = null,
 }) => {
   const t = getTranslation(language as Language);
 
@@ -195,6 +197,7 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
           </div>
         ))}
       </div>
+      {footer}
     </div>
   );
 };

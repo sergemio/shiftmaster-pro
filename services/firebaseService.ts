@@ -1,4 +1,4 @@
-import { Shift, Staff, LogEntry, Absence, AbsencePeriod, LeaveBalance, WeekData, DraftData, EMPTY_WEEK, Org, OrgRole, OrgSettings, Extra } from '../types';
+import { Shift, Staff, LogEntry, Absence, AbsencePeriod, LeaveBalance, LeaveRequest, WeekData, DraftData, EMPTY_WEEK, Org, OrgRole, OrgSettings, Extra } from '../types';
 import { applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange } from '../utils/helpers';
 
 // Use the Official Google Firebase ESM CDN to ensure total compatibility
@@ -833,6 +833,58 @@ export const saveLeaveBalance = async (balance: LeaveBalance): Promise<void> => 
       Object.fromEntries(Object.entries(balance).filter(([, v]) => v !== undefined && v !== null)));
   } catch (e) {
     handleFirestoreError(e, OperationType.WRITE, path);
+  }
+};
+
+/**
+ * Demandes de conge. Un admin les lit toutes ; un salarie, seulement les
+ * siennes (la regle exige le filtre sur son uid, sinon la liste est refusee).
+ */
+export const subscribeToLeaveRequests = (
+  isAdmin: boolean,
+  callback: (requests: Record<string, LeaveRequest>) => void,
+) => {
+  const uid = auth.currentUser?.uid;
+  if (!uid || !currentOrgId) return () => {};
+  const orgId = currentOrgId;
+  const path = orgPath('leaveRequests');
+  return lazySubscribe(({ fs, db }) => {
+    const col = fs.collection(db, 'orgs', orgId, 'leaveRequests');
+    const q = isAdmin ? col : fs.query(col, fs.where('staffUid', '==', uid));
+    return fs.onSnapshot(q, (snap) => {
+      const out: Record<string, LeaveRequest> = {};
+      snap.forEach((d: any) => { out[d.id] = { id: d.id, ...d.data() } as LeaveRequest; });
+      callback(out);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    });
+  });
+};
+
+/** Cree la demande (salarie) ou enregistre la decision (admin) : meme document. */
+export const saveLeaveRequest = async (request: LeaveRequest): Promise<void> => {
+  if (!auth.currentUser || !currentOrgId) return;
+  const { fs, db } = await firestore();
+  const orgId = requireOrg();
+  const path = orgPath('leaveRequests', request.id);
+  const { id, ...rest } = request;
+  try {
+    await fs.setDoc(fs.doc(db, 'orgs', orgId, 'leaveRequests', id),
+      Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined && v !== null)));
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+};
+
+export const deleteLeaveRequest = async (id: string): Promise<void> => {
+  if (!auth.currentUser || !currentOrgId) return;
+  const { fs, db } = await firestore();
+  const orgId = requireOrg();
+  const path = orgPath('leaveRequests', id);
+  try {
+    await fs.deleteDoc(fs.doc(db, 'orgs', orgId, 'leaveRequests', id));
+  } catch (e) {
+    handleFirestoreError(e, OperationType.DELETE, path);
   }
 };
 

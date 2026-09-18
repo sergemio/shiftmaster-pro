@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Staff, Shift, Language, Absence, AbsencePeriod, WeekData, DraftData, EMPTY_WEEK, ViewType, Org, OrgRole, Extra, WeekHoliday, LeaveBalance, LeaveUnit } from './types';
+import { Staff, Shift, Language, Absence, AbsencePeriod, WeekData, DraftData, EMPTY_WEEK, ViewType, Org, OrgRole, Extra, WeekHoliday, LeaveBalance, LeaveUnit, LeaveRequest, RequestableLeaveKind } from './types';
 import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind } from './utils/helpers';
 import { INITIAL_STAFF } from './constants';
 import { CONVENTIONS, DEFAULT_CONVENTION, findViolations, DatedShift, Violation } from './utils/laborRules';
@@ -16,6 +16,8 @@ import MonthYearPicker from './components/MonthYearPicker';
 import LogHistoryModal from './components/LogHistoryModal';
 import SettingsModal from './components/SettingsModal';
 import AbsenceModal, { PlannedInfo } from './components/AbsenceModal';
+import PayrollModal from './components/PayrollModal';
+import LeaveRequestPanel from './components/LeaveRequestPanel';
 import { getTranslation } from './utils/translations';
 import { 
   saveWeekToFirebase, 
@@ -37,6 +39,9 @@ import {
   subscribeToLeaveBalances,
   saveLeaveBalance,
   saveAbsenceChanges,
+  subscribeToLeaveRequests,
+  saveLeaveRequest,
+  deleteLeaveRequest,
 
   subscribeToOrg,
   saveGlobalSettings,
@@ -210,6 +215,8 @@ const App: React.FC = () => {
   const [absencePeriods, setAbsencePeriods] = useState<Record<string, AbsencePeriod>>({});
   // Soldes de conges lus sur les bulletins (admins seulement, comme les absences).
   const [leaveBalances, setLeaveBalances] = useState<Record<string, LeaveBalance>>({});
+  const [leaveRequests, setLeaveRequests] = useState<Record<string, LeaveRequest>>({});
+  const [isPayrollOpen, setIsPayrollOpen] = useState(false);
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('week');
   const [monthHours, setMonthHours] = useState<Record<string, number> | null>(null);
   const [monthLoading, setMonthLoading] = useState(false);
@@ -488,6 +495,84 @@ const App: React.FC = () => {
     const unsubscribe = subscribeToLeaveBalances(true, setLeaveBalances);
     return () => unsubscribe();
   }, [connected, orgId, isGuest, isAdmin]);
+
+  // Demandes de conge : un admin les voit toutes, un salarie les siennes.
+  // Le bac a sable les garde dans le navigateur.
+  const canRequestLeave = !!me && !isAdmin && connected;
+  useEffect(() => {
+    if (isGuest) {
+      try { setLeaveRequests(JSON.parse(localStorage.getItem('sandbox_leave_requests') || '{}')); } catch { setLeaveRequests({}); }
+      return;
+    }
+    if (!connected || (!isAdmin && !me)) { setLeaveRequests({}); return; }
+    const unsubscribe = subscribeToLeaveRequests(isAdmin, setLeaveRequests);
+    return () => unsubscribe();
+  }, [connected, orgId, isGuest, isAdmin, !!me]);
+
+  const storeRequest = useCallback((req: LeaveRequest | null, id: string) => {
+    if (isGuest) {
+      setLeaveRequests(prev => {
+        const next = { ...prev };
+        if (req) next[id] = req; else delete next[id];
+        localStorage.setItem('sandbox_leave_requests', JSON.stringify(next));
+        return next;
+      });
+      return;
+    }
+    if (req) saveLeaveRequest(req); else deleteLeaveRequest(id);
+  }, [isGuest]);
+
+  const submitLeaveRequest = useCallback((kind: RequestableLeaveKind, start: string, end: string, half: 'am' | 'pm' | undefined, note: string) => {
+    if (!me || !user) return;
+    const req: LeaveRequest = {
+      id: 'r' + Math.random().toString(36).slice(2, 11),
+      staffId: me.id, staffUid: user.uid, kind, start, end,
+      ...(half ? { half } : {}),
+      ...(note.trim() ? { note: note.trim().slice(0, 500) } : {}),
+      status: 'pending', createdAt: new Date().toISOString(),
+    };
+    storeRequest(req, req.id);
+    createLog('REQUEST LEAVE', `${me.name} requested ${publicAbsenceKind(kind)} from ${start} to ${end}`, me);
+  }, [me, user, storeRequest]);
+
+  const withdrawLeaveRequest = useCallback((req: LeaveRequest) => {
+    if (req.status !== 'pending') return;
+    storeRequest(null, req.id);
+    if (me) createLog('WITHDRAW LEAVE REQUEST', `${me.name} withdrew a leave request from ${req.start} to ${req.end}`, me);
+  }, [storeRequest, me]);
+
+  const decideLeaveRequest = useCallback((req: LeaveRequest, status: 'accepted' | 'refused', extra: { reply?: string; absenceId?: string } = {}) => {
+    if (isReadOnly) return;
+    const next: LeaveRequest = {
+      ...req, status, decidedAt: new Date().toISOString(), decidedBy: user?.uid || 'guest',
+      ...(extra.reply?.trim() ? { reply: extra.reply.trim().slice(0, 500) } : {}),
+      ...(extra.absenceId ? { absenceId: extra.absenceId } : {}),
+    };
+    storeRequest(next, req.id);
+    const who = staffList.find(s => s.id === req.staffId) || null;
+    createLog(status === 'accepted' ? 'ACCEPT LEAVE REQUEST' : 'REFUSE LEAVE REQUEST',
+      `${status === 'accepted' ? 'Accepted' : 'Declined'} leave request of ${who?.name || 'Unknown'} from ${req.start} to ${req.end}`, who);
+  }, [isReadOnly, user, storeRequest, staffList]);
+
+  // Demandes en attente, rattachees a la fiche par le COMPTE qui les a faites :
+  // la regle garantit l'uid, pas la fiche designee. Une demande dont le compte
+  // ne correspond a aucune fiche est ignoree.
+  const pendingRequests = useMemo(() => Object.values(leaveRequests)
+    .filter(r => r.status === 'pending')
+    .map(r => {
+      const owner = staffList.find(s => s.uid && s.uid === r.staffUid) || (isGuest ? staffList.find(s => s.id === r.staffId) : undefined);
+      return owner ? { ...r, staffId: owner.id } : null;
+    })
+    .filter((r): r is LeaveRequest => !!r)
+    .sort((a, b) => a.start.localeCompare(b.start)), [leaveRequests, staffList, isGuest]);
+
+  // La paie lit les semaines officielles ; le bac a sable relit les siennes.
+  const loadOfficialWeeks = useCallback((ids: string[]) => connected
+    ? loadWeeks(ids)
+    : Promise.resolve(Object.fromEntries(ids.map(wid => {
+        const raw = localStorage.getItem(`sandbox_week_${wid}`);
+        return [wid, raw ? { ...EMPTY_WEEK, ...JSON.parse(raw) } : EMPTY_WEEK];
+      }))), [connected, orgId]);
 
   const updateLeaveBalance = useCallback((staffId: string, anchorDate: string, anchorBalance: number) => {
     if (isReadOnly) return;
@@ -1360,7 +1445,7 @@ const App: React.FC = () => {
    */
   useEffect(() => {
     const anyModalOpen = isShiftModalOpen || isStaffModalOpen || isExtrasModalOpen || isHistoryModalOpen ||
-      isSettingsModalOpen || isAbsenceModalOpen || !!editingShiftId || isMonthPickerOpen;
+      isSettingsModalOpen || isAbsenceModalOpen || isPayrollOpen || !!editingShiftId || isMonthPickerOpen;
 
     const onKeyDown = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -1368,6 +1453,7 @@ const App: React.FC = () => {
 
       if (e.key === 'Escape') {
         if (isMonthPickerOpen) setIsMonthPickerOpen(false);
+        else if (isPayrollOpen) setIsPayrollOpen(false);
         else if (editingShiftId) setEditingShiftId(null);
         // Fermer oublie la periode ouverte : sinon rouvrir la fenetre retomberait
         // en modification de l'absence precedente au lieu d'une saisie vierge.
@@ -1404,7 +1490,7 @@ const App: React.FC = () => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [undo, redo, isShiftModalOpen, isStaffModalOpen, isExtrasModalOpen, isHistoryModalOpen, isSettingsModalOpen,
-      isAbsenceModalOpen, editingShiftId, isMonthPickerOpen, isMobileSidebarOpen, currentWeek,
+      isAbsenceModalOpen, isPayrollOpen, editingShiftId, isMonthPickerOpen, isMobileSidebarOpen, currentWeek,
       selectedShiftIds]);
 
   useEffect(() => {
@@ -1851,6 +1937,17 @@ const App: React.FC = () => {
             absences={absences}
             holidays={weekHolidays}
             onRemoveAbsence={removeAbsence}
+            myWeekFooter={canRequestLeave || (isGuest && me) ? (
+              <LeaveRequestPanel
+                requests={Object.values(leaveRequests).filter(r => r.staffId === me!.id)}
+                onSubmit={submitLeaveRequest}
+                onWithdraw={withdrawLeaveRequest}
+                leaveUnit={leaveUnit}
+                closedHolidays={closedHolidays}
+                defaultStart={getShiftIsoDate(currentWeek, 0)}
+                language={language}
+              />
+            ) : null}
           />
         </div>
       </div>
@@ -1860,6 +1957,7 @@ const App: React.FC = () => {
         currentWeek={currentWeek}
         onAddClick={fromSidebar(() => setIsShiftModalOpen(true))}
         onAbsenceClick={fromSidebar(() => setIsAbsenceModalOpen(true))}
+        pendingRequests={isReadOnly ? 0 : pendingRequests.length}
         absences={absences}
         period={statsPeriod}
         onPeriodChange={setStatsPeriod}
@@ -1949,9 +2047,24 @@ const App: React.FC = () => {
         loadPlanned={loadPlanned}
         onSaveChanges={writeAbsenceChanges}
         onDeletePeriod={deletePeriod}
+        requests={pendingRequests}
+        onAcceptRequest={(req, absenceId) => decideLeaveRequest(req, 'accepted', { absenceId })}
+        onRefuseRequest={(req, reply) => decideLeaveRequest(req, 'refused', { reply })}
         language={language}
       />
-      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : updateOperatingHours} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit} />
+      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : updateOperatingHours} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit}
+        onOpenPayroll={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setIsPayrollOpen(true); }} />
+      <PayrollModal
+        isOpen={isPayrollOpen}
+        onClose={() => setIsPayrollOpen(false)}
+        staff={staffList}
+        periods={Object.values(absencePeriods)}
+        extras={extras}
+        leaveUnit={leaveUnit}
+        closedHolidays={closedHolidays}
+        loadWeeks={loadOfficialWeeks}
+        language={language}
+      />
     </div>
   );
 };

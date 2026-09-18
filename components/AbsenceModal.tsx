@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Staff, AbsencePeriod, LeaveKind, LeaveUnit, Language, LeaveBalance } from '../types';
+import { Staff, AbsencePeriod, LeaveKind, LeaveUnit, Language, LeaveBalance, LeaveRequest } from '../types';
 import { getTranslation } from '../utils/translations';
 import {
   addDaysIso, periodDays, weekIdOfIso, isoDayIndex, countLeaveDays, absenceHoursByDate, spreadAbsenceHours,
@@ -40,6 +40,11 @@ interface AbsenceModalProps {
    *  la periode dont on retire les shifts (null = on les garde). */
   onSaveChanges: (changes: AbsenceChange[], removeShiftsFor: AbsencePeriod | null) => void;
   onDeletePeriod: (period: AbsencePeriod) => void;
+  /** Demandes de conge en attente, deja rattachees a leur fiche. */
+  requests?: LeaveRequest[];
+  /** La demande a ete saisie comme absence : on la marque acceptee. */
+  onAcceptRequest?: (request: LeaveRequest, absenceId: string) => void;
+  onRefuseRequest?: (request: LeaveRequest, reply: string) => void;
   language?: Language;
 }
 
@@ -156,7 +161,7 @@ const NEEDS_PROOF: LeaveKind[] = ['maladie', 'at_mp', 'maternite_paternite'];
 const AbsenceModal: React.FC<AbsenceModalProps> = ({
   isOpen, onClose, staff, closedHolidays,
   periods, editingPeriodId, weekMonday, defaultStart, leaveUnit, leaveBalances = {}, loadPlanned,
-  onSaveChanges, onDeletePeriod, language = 'en',
+  onSaveChanges, onDeletePeriod, requests = [], onAcceptRequest, onRefuseRequest, language = 'en',
 }) => {
   const t = getTranslation(language as Language);
   // Decimales a la francaise dans le champ : « 9,5 », pas « 9.5 ».
@@ -182,8 +187,14 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
   // vierge dont les dates par defaut tombent sur une absence existante ne doit
   // pas accueillir le manager avec une erreur qu'il n'a pas commise.
   const [touched, setTouched] = useState(false);
+  // Demande en cours d'examen : la saisie qui en part l'acceptera.
+  const [fromRequest, setFromRequest] = useState<LeaveRequest | null>(null);
+  // Demande en cours de refus, et la reponse de l'admin.
+  const [refusing, setRefusing] = useState<string | null>(null);
+  const [reply, setReply] = useState('');
 
   const person = staff.find(s => s.id === staffId);
+  const nameOfStaff = (id: string) => staff.find(s => s.id === id)?.name || '?';
 
   // Apres un enregistrement, une annulation ou une suppression, le formulaire
   // repart vierge MAIS reste sur la meme personne : revenir au premier de la
@@ -202,7 +213,23 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
     setHoursEdited(!!p);
     setRemoveShifts(true);
     setConfirmDelete(false);
+    setFromRequest(null);
     newId.current = 'a' + Math.random().toString(36).slice(2, 11);
+  };
+
+  // Examiner une demande = la poser dans le formulaire, comme une saisie
+  // ordinaire : l'admin voit les heures, le solde et un eventuel chevauchement
+  // avant d'accepter.
+  const reviewRequest = (r: LeaveRequest) => {
+    resetForm(null, r.staffId);
+    setKind(r.kind);
+    setStart(r.start);
+    setReturnOn(addDaysIso(r.end, 1));
+    setHalf(r.half || '');
+    setNote(r.note || '');
+    setTouched(true);
+    setFromRequest(r);
+    setRefusing(null);
   };
 
   // Repartir d'un formulaire vierge a chaque ouverture : garder la selection
@@ -335,6 +362,7 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
     if (!fresh.ok) return;
     const dropShifts = removeShifts && !effectiveHalf && (planned?.shiftsDuring || 0) > 0;
     onSaveChanges(fresh.changes, dropShifts ? period : null);
+    if (fromRequest) onAcceptRequest?.(fromRequest, period.id);
     resetForm(null, period.staffId);
   };
 
@@ -393,6 +421,50 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5 flex flex-col gap-6">
+
+          {/* ---------------- demandes des salaries ---------------- */}
+          {requests.length > 0 && !editing && (
+            <div className="flex flex-col gap-2 rounded-2xl bg-amber-50 border border-amber-200 p-4" data-testid="req-pending">
+              <span className="text-xs font-black uppercase tracking-widest text-amber-800">
+                {t('reqPendingTitle').replace('{n}', String(requests.length))}
+              </span>
+              <ul className="flex flex-col gap-2">
+                {requests.map(r => (
+                  <li key={r.id} className={`bg-white border rounded-xl px-3 py-2 flex flex-col gap-2 ${fromRequest?.id === r.id ? 'border-indigo-400' : 'border-amber-200'}`}>
+                    <span className="text-sm text-slate-700">
+                      <b className="font-bold text-slate-900">{nameOfStaff(r.staffId)}</b>{' · '}{t('leaveKind_' + r.kind)}
+                      <span className="block text-xs text-slate-500 font-medium">
+                        {t('absRange').replace('{from}', formatShortDate(r.start, language as Language)).replace('{back}', formatShortDate(addDaysIso(r.end, 1), language as Language))}
+                        {r.half ? ` · ${t(r.half === 'am' ? 'absHalfAm' : 'absHalfPm')}` : ''}
+                      </span>
+                      {r.note && <span className="block text-xs text-slate-600 italic">« {r.note} »</span>}
+                    </span>
+                    {refusing === r.id ? (
+                      <div className="flex flex-col gap-2">
+                        <label className="sr-only" htmlFor={`req-reply-${r.id}`}>{t('reqRefuseReason')}</label>
+                        <input id={`req-reply-${r.id}`} value={reply} onChange={e => setReply(e.target.value)} maxLength={500}
+                          placeholder={t('reqRefuseReason')}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => { onRefuseRequest?.(r, reply); setRefusing(null); setReply(''); if (fromRequest?.id === r.id) resetForm(null, r.staffId); }}
+                            className="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-bold">{t('reqConfirmRefuse')}</button>
+                          <button type="button" onClick={() => { setRefusing(null); setReply(''); }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-500">{t('cancel')}</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => reviewRequest(r)}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700">{t('reqReview')}</button>
+                        <button type="button" onClick={() => { setRefusing(r.id); setReply(''); }}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">{t('reqRefuse')}</button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* ---------------- saisie d'une periode ---------------- */}
           <div className="flex flex-col gap-4">
@@ -520,11 +592,20 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
                 placeholder={kind === 'famille' ? t('absNoteRequired') : ''} className={field} />
             </div>
 
+            {fromRequest && (
+              <p className="text-xs font-semibold text-indigo-700" data-testid="req-reviewing">
+                {t('reqReviewing').replace('{name}', nameOfStaff(fromRequest.staffId))}
+              </p>
+            )}
             <div className="flex gap-2">
               <button type="button" onClick={submit} disabled={!canSave}
                 className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99]">
-                {editing ? t('absUpdate') : t('absSave')}
+                {editing ? t('absUpdate') : fromRequest ? t('reqAccept') : t('absSave')}
               </button>
+              {fromRequest && (
+                <button type="button" onClick={() => resetForm(null, fromRequest.staffId)}
+                  className="px-4 py-3 rounded-xl font-bold text-slate-500 hover:text-slate-800">{t('cancel')}</button>
+              )}
               {editing && (
                 <button type="button" onClick={() => resetForm(null, editing?.staffId)}
                   className="px-4 py-3 rounded-xl font-bold text-slate-500 hover:text-slate-800">{t('cancel')}</button>

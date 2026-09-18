@@ -30,6 +30,8 @@ interface SettingsModalProps {
   /** Decompte des conges payes. `onLeaveUnitChange` absent = pas admin. */
   leaveUnit?: 'ouvrables' | 'ouvres';
   onLeaveUnitChange?: (unit: 'ouvrables' | 'ouvres') => void;
+  /** Ouvre l'export des elements variables de paie. Absent = pas admin. */
+  onOpenPayroll?: () => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -50,6 +52,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onClosedHolidaysChange,
   leaveUnit = 'ouvrables',
   onLeaveUnitChange,
+  onOpenPayroll,
 }) => {
   if (!isOpen) return null;
   const t = getTranslation(language);
@@ -248,7 +251,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">
               {language === 'fr' ? 'Données' : 'Data'}
             </h3>
-            <ExportDataButton language={language as Language} />
+            <div className="flex flex-col gap-2">
+              {onOpenPayroll && (
+                <button type="button" onClick={onOpenPayroll}
+                  className="w-full py-3 px-6 bg-indigo-600 text-white rounded-2xl font-semibold hover:bg-indigo-700 transition-all duration-200 active:scale-95 text-sm">
+                  {t('payrollOpen')}
+                </button>
+              )}
+              <ExportDataButton language={language as Language} />
+            </div>
           </section>
         </div>
 

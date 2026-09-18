@@ -81,6 +81,8 @@ interface SidebarProps {
   currentWeek: Date;
   onAddClick: () => void;
   onAbsenceClick: () => void;
+  /** Demandes de conge en attente d'une decision (admins). */
+  pendingRequests?: number;
   absences?: Absence[];
   /** Heures du mois par employe, chargees a la demande. null = pas encore demande. */
   monthHours?: Record<string, number> | null;
@@ -128,6 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   currentWeek, 
   onAddClick,
   onAbsenceClick,
+  pendingRequests = 0,
   absences = [],
   monthHours = null,
   monthLoading = false,
@@ -500,12 +503,19 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={onAbsenceClick}
-            title={t('absences')}
-            className="w-11 h-11 flex items-center justify-center bg-sky-50 text-sky-600 border border-sky-100 rounded-xl hover:bg-sky-100 transition-all active:scale-90 shadow-sm"
+            aria-label={t('absences')}
+            title={pendingRequests > 0 ? `${t('absences')} — ${t('reqBadge').replace('{n}', String(pendingRequests))}` : t('absences')}
+            className="relative w-11 h-11 flex items-center justify-center bg-sky-50 text-sky-600 border border-sky-100 rounded-xl hover:bg-sky-100 transition-all active:scale-90 shadow-sm"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
+            {pendingRequests > 0 && (
+              <span data-testid="req-badge" aria-hidden="true"
+                className="absolute -top-1.5 -right-1.5 min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-[11px] font-black flex items-center justify-center">
+                {pendingRequests}
+              </span>
+            )}
           </button>
           <button 
             type="button"

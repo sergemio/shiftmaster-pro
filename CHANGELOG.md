@@ -5,6 +5,45 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-18 17h05 — Absences, lots 5 et 7a : export de paie, demandes de conge (branche `saas`, non commite)
+
+- **Lot 6 abandonne, verifie sur la vraie base** : la sauvegarde du 18/09 (41 semaines, 4 112 lignes de
+  journal) ne contient aucune etiquette d'absence ni le mot « maladie ». Rien a convertir, rien a effacer.
+- **Elements variables de paie** (Parametres -> « Éléments variables de paie », admins) : pour un mois,
+  par salarie : contrat et base mensualisee, entree / sortie / avenants, heures travaillees (date reelle
+  du shift, couverture comptee a qui la fait), absences par motif (dates dans le mois, jours decomptes,
+  heures, justificatif pour les arrets, note), heures au-dela du contrat PAR SEMAINE CIVILE sur le travail
+  effectif (complementaires pour un temps partiel, dont la part au-dela du dixieme ; alerte si un temps
+  partiel atteint 35 h ; supplementaires au-dela pour un temps plein ; semaine a cheval rattachee au mois
+  de son dimanche). Extras et ligne partagee a part (heures, jours). Texte a copier + CSV (point-virgule,
+  virgule decimale, BOM pour Excel). Lit les semaines PUBLIEES, jamais les brouillons. Mois propose :
+  courant a partir du 20, sinon le precedent.
+- **Demandes de conge (lot 7a)** : « Ma semaine » -> « Demander un congé » (conges payes ou sans solde ;
+  dates, demi-journee, message) et « Mes demandes » (en attente / acceptee / refusee + motif ; retrait tant
+  qu'elle attend). Admin : pastille sur le bouton Absences, liste en tete de la fenetre ; « Examiner »
+  pre-remplit la saisie (memes controles : chevauchement, heures, solde) et « Accepter la demande »
+  cree l'absence ; « Refuser » avec motif facultatif. Rattachement par le COMPTE qui demande (uid), pas
+  par la fiche designee.
+- Base : `orgs/{orgId}/leaveRequests/{id}` — creee par la personne (son uid, en attente, abonnement
+  vivant), lue par elle et les admins, tranchee par un admin sans pouvoir changer les dates, retirable
+  par elle tant qu'elle attend.
+- **Justificatif en piece jointe (lot 7b)** : reporte, il faut le stockage de fichiers (forfait Blaze).
+- Tests : `test-payroll.mjs` 33 cas (compile le vrai `utils/payroll.ts` avec esbuild, sans copie) ;
+  regles +17 cas ; navigateur `payroll_requests_test.py` 31 cas ; non-regression : 13 suites navigateur,
+  tests unitaires, regles et build passent (`absences_ui_test.py` : 2 echecs de minutage au premier passage
+  sous charge, 3 passages seuls sans echec).
+- Fichiers : `utils/payroll.ts` (nouveau), `components/PayrollModal.tsx` (nouveau),
+  `components/LeaveRequestPanel.tsx` (nouveau), `AbsenceModal.tsx`, `Sidebar.tsx`, `SettingsModal.tsx`,
+  `Calendar.tsx`, `MyWeekView.tsx`, `App.tsx`, `types.ts`, `services/firebaseService.ts`, `firestore.rules`,
+  `utils/translations.ts`, `scripts/seed-emulator.mjs`, `scripts/test-rules.mjs`.
+
+## 2026-09-18 18h10 — Branche `saas` sauvegardee sur GitHub (go de Serge)
+
+Commit `e886e2d` pousse sur `origin/saas` (47 fichiers). `master` et `dev` inchanges : la publication
+automatique ne se declenche que sur ces deux branches, rien n'est deploye, la base n'est pas touchee.
+Restent LOCAUX (depot public, exclus via `.git/info/exclude`) : `SAAS-PLAN.md`, `CONCURRENT-schedex.md`,
+`PROPOSITION-absences.md`, `PROPOSITION-extras.md` — prix envisage, nom du comptable, strategie.
+
 ## 2026-09-18 18h00 — Absences, lot 4 : fiche salarie et compteur de conges payes (branche `saas`)
 
 - **Fiche salarie** (Gerer l'equipe -> clic sur la personne) : « Jours travailles / semaine » (1 a 6,

@@ -280,6 +280,35 @@ export interface LeaveBalance {
   updatedBy: string;
 }
 
+/** Motifs qu'un salarie peut demander lui-meme : un arret ne se demande pas. */
+export type RequestableLeaveKind = 'cp' | 'sans_solde';
+
+/**
+ * Demande de conge faite par le salarie depuis « ma semaine ».
+ * `orgs/{orgId}/leaveRequests/{id}` : creee par la personne (son `staffUid`),
+ * lue par elle et les admins, tranchee par un admin. Acceptee, elle devient une
+ * `AbsencePeriod` ordinaire (`absenceId`), saisie par l'admin avec les memes
+ * controles que toute absence (chevauchements, heures, solde).
+ */
+export interface LeaveRequest {
+  id: string;
+  staffId: string;
+  staffUid: string;
+  kind: RequestableLeaveKind;
+  /** Premier jour d'absence et dernier jour (veille de la reprise), ISO. */
+  start: string;
+  end: string;
+  half?: 'am' | 'pm';
+  note?: string;
+  status: 'pending' | 'accepted' | 'refused';
+  createdAt: string;
+  decidedAt?: string;
+  decidedBy?: string;
+  /** Reponse de l'admin, surtout utile en cas de refus. */
+  reply?: string;
+  absenceId?: string;
+}
+
 /**
  * Tout ce que porte un document de semaine, hors `updatedAt`. Regroupe pour que
  * la sauvegarde soit atomique : ecrire les shifts seuls effacerait les absences,

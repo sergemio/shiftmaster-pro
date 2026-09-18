@@ -37,6 +37,8 @@ interface CalendarProps {
   /** Feries de la semaine, calcules (voir `holidaysBetween`). */
   holidays?: WeekHoliday[];
   onRemoveAbsence?: (id: string) => void;
+  /** Sous « ma semaine » : la demande de conge du salarie. */
+  myWeekFooter?: React.ReactNode;
   showCoverage?: boolean;
   /** La semaine affichee est un brouillon : les cartes le montrent. */
   isDraft?: boolean;
@@ -151,6 +153,7 @@ const Calendar: React.FC<CalendarProps> = ({
   absences = [],
   holidays = [],
   onRemoveAbsence,
+  myWeekFooter = null,
   showCoverage = true,
   isDraft = false,
   rates = {},
@@ -403,6 +406,7 @@ const Calendar: React.FC<CalendarProps> = ({
           todayIsoDate={now.isoDate}
           nowHour={now.hour + now.minute / 60}
           language={language as Language}
+          footer={myWeekFooter}
         />
       </div>
     );
