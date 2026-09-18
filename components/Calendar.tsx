@@ -6,10 +6,10 @@ import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import MyWeekView from './MyWeekView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, shiftCost, totalCost, formatMoney, staffingPerSlot, formatTime, getWeekRangeLongEn, getIsoWeekNumber, AbsenceDeduction, visibleAbsenceKind } from '../utils/helpers';
-import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, shiftCost, totalCost, formatMoney, staffingPerSlot, formatTime, getWeekRangeLong, getIsoWeekNumber, AbsenceDeduction, visibleAbsenceKind } from '../utils/helpers';
 
-// Branded header stamped on top of the grid in the PNG export only.
+// Header stamped on top of the grid in the PNG export only: the restaurant's
+// name, never a hardcoded brand (every client exports its own schedule).
 // Fixed height so it can be added to the capture container's height.
 const EXPORT_HEADER_HEIGHT = 76;
 
@@ -37,6 +37,8 @@ interface CalendarProps {
   /** Feries de la semaine, calcules (voir `holidaysBetween`). */
   holidays?: WeekHoliday[];
   onRemoveAbsence?: (id: string) => void;
+  /** Nom du restaurant, en tete de l'image exportee. */
+  orgName?: string;
   /** Sous « ma semaine » : la demande de conge du salarie. */
   myWeekFooter?: React.ReactNode;
   showCoverage?: boolean;
@@ -153,6 +155,7 @@ const Calendar: React.FC<CalendarProps> = ({
   absences = [],
   holidays = [],
   onRemoveAbsence,
+  orgName = '',
   myWeekFooter = null,
   showCoverage = true,
   isDraft = false,
@@ -456,19 +459,25 @@ const Calendar: React.FC<CalendarProps> = ({
       {isExporting && (
         <div
           className="flex items-center gap-4 px-5 border-b-2"
-          style={{ height: EXPORT_HEADER_HEIGHT, backgroundColor: '#f3faec', borderBottomColor: '#d9edc4' }}
+          style={{ height: EXPORT_HEADER_HEIGHT, backgroundColor: '#eef2ff', borderBottomColor: '#c7d2fe' }}
+          data-testid="export-header"
         >
-          <img src={SEZAM_LOGO_DATA_URI} alt="Sezam&Co" className="block w-auto" style={{ height: 46 }} />
-          <div className="flex-1">
-            <div className="text-xs font-black uppercase tracking-[0.2em]" style={{ color: '#417f0a' }}>
-              Weekly Schedule
+          {orgName && (
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-black text-white flex-none"
+              style={{ backgroundColor: '#4f46e5' }} aria-hidden="true">
+              {orgName.trim().charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-black uppercase tracking-[0.2em]" style={{ color: '#4338ca' }}>
+              {t('exportTitle')}
             </div>
             <div className="mt-0.5 text-xl font-extrabold tracking-tight text-slate-800">
-              {getWeekRangeLongEn(currentWeek)}
+              {getWeekRangeLong(currentWeek, language as Language)}
             </div>
           </div>
-          <div className="text-right text-xs font-extrabold uppercase tracking-[0.12em] leading-tight text-slate-400 whitespace-nowrap">
-            Sezam&amp;Co<br />Week {getIsoWeekNumber(currentWeek)}
+          <div className="text-right text-xs font-extrabold uppercase tracking-[0.12em] leading-tight text-slate-500 whitespace-nowrap">
+            {orgName && <>{orgName}<br /></>}{t('exportWeek').replace('{n}', String(getIsoWeekNumber(currentWeek)))}
           </div>
         </div>
       )}

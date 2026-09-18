@@ -178,6 +178,34 @@ export const shiftCost = (
 };
 
 /**
+ * Cle du taux par defaut des extras dans `settings/rates` (meme document, meme
+ * confidentialite que les taux des salaries). Aucune fiche n'a cet identifiant.
+ */
+export const EXTRA_DEFAULT_RATE_KEY = '_extras';
+
+/**
+ * Les taux a appliquer aux shifts : ceux des salaries, plus, pour chaque extra,
+ * le cout horaire de SA fiche, a defaut le taux par defaut du restaurant. Sans
+ * les deux, le shift reste « non chiffre » (jamais zero).
+ */
+export const costRates = (
+  rates: Record<string, number>,
+  extras: Record<string, { rate?: number }>,
+  shifts: { staffId: string; coverageBy?: string | null; extraName?: string }[],
+): Record<string, number> => {
+  const fallback = rates[EXTRA_DEFAULT_RATE_KEY];
+  const out: Record<string, number> = { ...rates };
+  const ids = new Set<string>(Object.keys(extras));
+  for (const s of shifts) if (s.extraName) ids.add(s.staffId);
+  for (const id of ids) {
+    const own = extras[id]?.rate;
+    if (Number.isFinite(own) && (own as number) > 0) out[id] = own as number;
+    else if (Number.isFinite(fallback) && fallback > 0 && !(id in rates)) out[id] = fallback;
+  }
+  return out;
+};
+
+/**
  * Total d'une liste de shifts, avec le nombre de ceux qu'on n'a pas pu chiffrer.
  * Le second nombre est ce qui permet a l'interface d'annoncer un total partiel
  * au lieu de le presenter comme complet.
@@ -475,7 +503,7 @@ export const isFormerStaff = (staff: Staff, today: string = todayIso()): boolean
  * the week straddles two years.
  * weekStart is the Sunday weekId; the displayed week runs Monday..Sunday.
  */
-export const getWeekRangeLongEn = (weekStart: Date): string => {
+export const getWeekRangeLong = (weekStart: Date, lang: Language = 'en'): string => {
   const monday = new Date(weekStart);
   monday.setUTCDate(monday.getUTCDate() + 1);
   const sunday = new Date(monday);
@@ -485,15 +513,16 @@ export const getWeekRangeLongEn = (weekStart: Date): string => {
   // call: en-GB puts the day first but renders September as "Sept" (4 letters,
   // out of line with every other month), en-US keeps "Sep" but puts the month
   // first. Taking the parts from en-US gives day-first order and 3-letter months.
+  // French is day-first already: « lun. 14 sept. » loses its dots.
   const fmt = (d: Date, withYear: boolean) => {
-    const parts = new Intl.DateTimeFormat('en-US', {
+    const parts = new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : 'en-US', {
       timeZone: 'UTC',
       weekday: 'short',
       day: 'numeric',
       month: 'short',
       year: 'numeric',
     }).formatToParts(d);
-    const get = (type: string) => parts.find(p => p.type === type)?.value ?? '';
+    const get = (type: string) => (parts.find(p => p.type === type)?.value ?? '').replace('.', '');
     return `${get('weekday')} ${get('day')} ${get('month')}${withYear ? ` ${get('year')}` : ''}`;
   };
 

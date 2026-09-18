@@ -16,7 +16,7 @@ with sync_playwright() as pw:
     p.evaluate("() => { localStorage.clear(); localStorage.setItem('shiftmaster_lang','fr'); }")
     p.reload()
     p.get_by_label("Email").fill("serge@test.fr"); p.get_by_label("Mot de passe").fill("test1234")
-    p.get_by_role("button", name="Connexion emulateur").click(); p.wait_for_timeout(3800)
+    p.get_by_role("button", name="Se connecter", exact=True).click(); p.wait_for_timeout(3800)
     url = p.evaluate("() => performance.getEntriesByType('resource').map(e => e.name).find(n => n.includes('/services/firebaseService.ts'))")
     p.evaluate("""async (url) => {
       const S = await import(url);
@@ -59,7 +59,7 @@ with sync_playwright() as pw:
     p2.evaluate("() => { localStorage.clear(); localStorage.setItem('shiftmaster_lang','fr'); }")
     p2.reload()
     p2.get_by_label("Email").fill("double@test.fr"); p2.get_by_label("Mot de passe").fill("test1234")
-    p2.get_by_role("button", name="Connexion emulateur").click(); p2.wait_for_timeout(3800)
+    p2.get_by_role("button", name="Se connecter", exact=True).click(); p2.wait_for_timeout(3800)
     team = [x for x in p2.get_by_test_id("absence-band").all_inner_texts() if "Omar" in x]
     print("   vue equipe:", team)
     check("Equipe : 3 etiquettes pour Omar, toutes « Absent »", len(team) == 3 and all("Absent" in x for x in team), team)

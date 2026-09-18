@@ -144,7 +144,7 @@ service cloud.firestore {
              && (!('openHour' in s) || isHalfHour(s.openHour))
              && (!('closeHour' in s) || isHalfHour(s.closeHour))
              && (!('openHour' in s && 'closeHour' in s) || s.closeHour - s.openHour >= 1)
-             && (!('convention' in s) || s.convention in ['hcr', 'none'])
+             && (!('convention' in s) || s.convention in ['1501', '1979', 'none', 'hcr'])
              && (!('leaveUnit' in s) || s.leaveUnit in ['ouvrables', 'ouvres'])
              && (!('closedHolidays' in s) || (s.closedHolidays is list && s.closedHolidays.size() <= 11));
     }

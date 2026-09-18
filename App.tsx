@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Staff, Shift, Language, Absence, AbsencePeriod, WeekData, DraftData, EMPTY_WEEK, ViewType, Org, OrgRole, Extra, WeekHoliday, LeaveBalance, LeaveUnit, LeaveRequest, RequestableLeaveKind } from './types';
-import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind } from './utils/helpers';
+import { Staff, Shift, Language, Absence, AbsencePeriod, WeekData, DraftData, EMPTY_WEEK, ViewType, Org, OrgRole, Extra, WeekHoliday, LeaveBalance, LeaveUnit, LeaveRequest, RequestableLeaveKind, LaborConvention, Invite } from './types';
+import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind, costRates, leaveBalanceSummary, countLeaveDays, closedHolidayDates, todayIso } from './utils/helpers';
 import { INITIAL_STAFF } from './constants';
-import { CONVENTIONS, DEFAULT_CONVENTION, findViolations, DatedShift, Violation } from './utils/laborRules';
+import { DEFAULT_CONVENTION, conventionFor, conventionLabel, findViolations, DatedShift, Violation } from './utils/laborRules';
 import { violationText, violationWho } from './utils/violationText';
 import Calendar from './components/Calendar';
 import Sidebar from './components/Sidebar';
@@ -17,6 +17,9 @@ import LogHistoryModal from './components/LogHistoryModal';
 import SettingsModal from './components/SettingsModal';
 import AbsenceModal, { PlannedInfo } from './components/AbsenceModal';
 import PayrollModal from './components/PayrollModal';
+import AuthForm from './components/AuthForm';
+import OnboardingScreen from './components/OnboardingScreen';
+import InviteScreen, { InviteState } from './components/InviteScreen';
 import LeaveRequestPanel from './components/LeaveRequestPanel';
 import { getTranslation } from './utils/translations';
 import { 
@@ -46,6 +49,15 @@ import {
   subscribeToOrg,
   saveGlobalSettings,
   loginWithEmail,
+  signUpWithEmail,
+  resetPassword,
+  createOrgCall,
+  subscribeToInvites,
+  createInvite,
+  deleteInvite,
+  acceptInviteCall,
+  refreshUser,
+  resendVerification,
   loadMemberships,
   setCurrentOrg,
   USE_EMULATORS,
@@ -137,7 +149,10 @@ const STATUS_DOT: Record<SyncStatus, { color: string; hint: string }> = {
 
 const App: React.FC = () => {
   const [language, setLanguage] = useState<Language>(() => {
-    return (localStorage.getItem('shiftmaster_lang') as Language) || 'en';
+    // Premiere visite (un employe qui ouvre son invitation) : la langue du
+    // navigateur, pas l'anglais d'office.
+    return (localStorage.getItem('shiftmaster_lang') as Language)
+      || ((navigator.language || '').toLowerCase().startsWith('fr') ? 'fr' : 'en');
   });
   const [viewType, setViewType] = useState<ViewType>(() => {
     return (localStorage.getItem('shiftmaster_view') as ViewType) || 'day';
@@ -217,6 +232,25 @@ const App: React.FC = () => {
   const [leaveBalances, setLeaveBalances] = useState<Record<string, LeaveBalance>>({});
   const [leaveRequests, setLeaveRequests] = useState<Record<string, LeaveRequest>>({});
   const [isPayrollOpen, setIsPayrollOpen] = useState(false);
+  const [invites, setInvites] = useState<Record<string, Invite>>({});
+  // Invitation en cours : lue une fois dans l'adresse (?org=…&invite=…), puis
+  // gardee le temps de la session pour survivre a la connexion ou a
+  // l'inscription. Le jeton est retire de la barre d'adresse aussitot.
+  const [pendingInvite, setPendingInvite] = useState<{ orgId: string; token: string } | null>(() => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const orgParam = q.get('org'), token = q.get('invite');
+      if (orgParam && token) {
+        const inv = { orgId: orgParam, token };
+        sessionStorage.setItem('shiftmaster_invite', JSON.stringify(inv));
+        window.history.replaceState(null, '', window.location.pathname);
+        return inv;
+      }
+      return JSON.parse(sessionStorage.getItem('shiftmaster_invite') || 'null');
+    } catch { return null; }
+  });
+  const [inviteState, setInviteState] = useState<InviteState | null>(null);
+  const [inviteDetail, setInviteDetail] = useState('');
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('week');
   const [monthHours, setMonthHours] = useState<Record<string, number> | null>(null);
   const [monthLoading, setMonthLoading] = useState(false);
@@ -400,6 +434,7 @@ const App: React.FC = () => {
       // Le bac a sable garde ses heures d'ouverture dans le navigateur, comme ses taux.
       const saved = JSON.parse(localStorage.getItem('sandbox_hours') || 'null');
       setOperatingHours(normalizeOperatingHours(saved?.start, saved?.end));
+      setConventionId(localStorage.getItem('sandbox_convention') || DEFAULT_CONVENTION);
       return;
     }
     if (!connected) return;
@@ -481,20 +516,22 @@ const App: React.FC = () => {
       setAbsencePeriods(JSON.parse(localStorage.getItem('sandbox_absence_periods') || '{}'));
       return;
     }
-    if (!connected || !isAdmin) { setAbsencePeriods({}); return; }
-    const unsubscribe = subscribeToAbsencePeriods(true, setAbsencePeriods);
+    // Un salarie lit SES absences (la regle filtre sur son compte) : son solde
+    // de conges en depend.
+    if (!connected || (!isAdmin && !me)) { setAbsencePeriods({}); return; }
+    const unsubscribe = subscribeToAbsencePeriods(isAdmin, setAbsencePeriods);
     return () => unsubscribe();
-  }, [connected, orgId, isGuest, isAdmin]);
+  }, [connected, orgId, isGuest, isAdmin, !!me]);
 
   useEffect(() => {
     if (isGuest) {
       try { setLeaveBalances(JSON.parse(localStorage.getItem('sandbox_leave_balances') || '{}')); } catch { setLeaveBalances({}); }
       return;
     }
-    if (!connected || !isAdmin) { setLeaveBalances({}); return; }
-    const unsubscribe = subscribeToLeaveBalances(true, setLeaveBalances);
+    if (!connected || (!isAdmin && !me)) { setLeaveBalances({}); return; }
+    const unsubscribe = subscribeToLeaveBalances(isAdmin, setLeaveBalances);
     return () => unsubscribe();
-  }, [connected, orgId, isGuest, isAdmin]);
+  }, [connected, orgId, isGuest, isAdmin, !!me]);
 
   // Demandes de conge : un admin les voit toutes, un salarie les siennes.
   // Le bac a sable les garde dans le navigateur.
@@ -566,6 +603,34 @@ const App: React.FC = () => {
     .filter((r): r is LeaveRequest => !!r)
     .sort((a, b) => a.start.localeCompare(b.start)), [leaveRequests, staffList, isGuest]);
 
+  // Invitations en attente : admins seulement (la regle refuse aux autres).
+  useEffect(() => {
+    if (!connected || !isAdmin) { setInvites({}); return; }
+    const unsubscribe = subscribeToInvites(setInvites);
+    return () => unsubscribe();
+  }, [connected, orgId, isAdmin]);
+
+  // Des que la personne est connectee et ses droits connus, l'invitation part.
+  useEffect(() => {
+    if (user && !isGuest && pendingInvite && memberships !== null && inviteState === null) acceptPendingInvite();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isGuest, pendingInvite, memberships, inviteState]);
+
+  const inviteUrl = (token: string) =>
+    `${window.location.origin}${window.location.pathname}?org=${encodeURIComponent(orgId || '')}&invite=${token}`;
+
+  const inviteStaff = useCallback(async (person: Staff): Promise<string | null> => {
+    if (isReadOnly || !person.email) return null;
+    const token = await createInvite({ email: person.email, role: person.role, staffId: person.id });
+    if (token) createLog('INVITE STAFF', `Invited ${person.name} (${person.role})`, person);
+    return token;
+  }, [isReadOnly]);
+
+  const cancelInvite = useCallback((token: string) => {
+    if (isReadOnly) return;
+    deleteInvite(token);
+  }, [isReadOnly]);
+
   // La paie lit les semaines officielles ; le bac a sable relit les siennes.
   const loadOfficialWeeks = useCallback((ids: string[]) => connected
     ? loadWeeks(ids)
@@ -592,6 +657,10 @@ const App: React.FC = () => {
     }
     createLog('UPDATE LEAVE BALANCE', `Paid-leave balance for ${person?.name || 'Unknown'} set from payslip of ${anchorDate}`, person || null);
   }, [isReadOnly, staffList, user, isGuest, leaveBalances]);
+
+  // Taux appliques aux shifts : salaries + extras (fiche, sinon taux par defaut).
+  const shiftRates = useMemo(() => costRates(rates, extras, [...shifts, ...(monthShifts || [])]),
+    [rates, extras, shifts, monthShifts]);
 
   const updateRates = useCallback((next: Record<string, number>) => {
     if (isReadOnly) return;
@@ -620,6 +689,25 @@ const App: React.FC = () => {
   const [sandboxLeaveUnit, setSandboxLeaveUnit] = useState<LeaveUnit>(() =>
     (localStorage.getItem('sandbox_leave_unit') as LeaveUnit) || 'ouvrables');
   const leaveUnit: LeaveUnit = isGuest ? sandboxLeaveUnit : (org?.settings?.leaveUnit || 'ouvrables');
+
+  // Solde de conges de la personne connectee, pour « ma semaine ». Rien tant
+  // qu'aucun bulletin n'a ete saisi pour elle : un compteur sans point de
+  // depart afficherait un chiffre invente.
+  const myLeaveBalance = useMemo(() => {
+    const anchor = me ? leaveBalances[me.id] : undefined;
+    if (!me || !anchor) return null;
+    const countDays = (a: string, b: string) => countLeaveDays(a, b, leaveUnit, closedHolidayDates(a, b, closedHolidays));
+    return leaveBalanceSummary({ date: anchor.anchorDate, balance: anchor.anchorBalance },
+      Object.values(absencePeriods).filter(p => p.staffId === me.id), me, todayIso(), leaveUnit, countDays);
+  }, [me, leaveBalances, absencePeriods, leaveUnit, closedHolidays]);
+
+  const updateConvention = useCallback((next: string) => {
+    if (isReadOnly) return;
+    setConventionId(next);
+    if (isGuest) { localStorage.setItem('sandbox_convention', next); return; }
+    saveGlobalSettings({ convention: next as LaborConvention });
+  }, [isReadOnly, isGuest]);
+
   const updateLeaveUnit = useCallback((next: LeaveUnit) => {
     if (isReadOnly) return;
     if (isGuest) { setSandboxLeaveUnit(next); localStorage.setItem('sandbox_leave_unit', next); return; }
@@ -803,7 +891,7 @@ const App: React.FC = () => {
     ], displayStaff);
   }, [monthAbsenceDays, weekAbsenceItems, currentWeek, displayStaff]);
 
-  const convention = CONVENTIONS[conventionId] || CONVENTIONS[DEFAULT_CONVENTION];
+  const convention = conventionFor(conventionId);
 
   /**
    * Les depassements de la semaine affichee.
@@ -1679,6 +1767,50 @@ const App: React.FC = () => {
 
   const handleBypass = () => setIsGuest(true);
 
+  const clearInvite = () => {
+    try { sessionStorage.removeItem('shiftmaster_invite'); } catch { /* rien */ }
+    setPendingInvite(null); setInviteState(null); setInviteDetail('');
+  };
+
+  /** Accepte l'invitation en cours, puis ouvre le restaurant. */
+  const acceptPendingInvite = async () => {
+    if (!pendingInvite) return;
+    const { orgId: target, token } = pendingInvite;
+    setInviteState('working');
+    const r = await acceptInviteCall(target, token);
+    if (r.ok) {
+      const { orgs, support } = await loadMemberships(true);
+      clearInvite();
+      localStorage.setItem('shiftmaster_org', target);
+      setIsSupport(support);
+      setMemberships(orgs);
+      setCurrentOrg(target);
+      setOrgId(target);
+      return;
+    }
+    setInviteDetail(r.message || r.code || '');
+    setInviteState(r.code === 'failed-precondition' ? 'unverified'
+      : r.code === 'permission-denied' ? 'wrongEmail'
+      : r.code === 'not-found' ? 'notFound' : 'error');
+  };
+
+  // Nouveau restaurant : la function pose le role dans le jeton ; on le
+  // redemande tout de suite (sinon il n'arrive qu'a la prochaine connexion).
+  const handleCreateOrg = async (name: string, convention: string): Promise<string | null> => {
+    const res = await createOrgCall({
+      name, convention, language,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Paris',
+    });
+    if (!res.orgId) return res.error || t('authErrUnknown');
+    const { orgs, support } = await loadMemberships(true);
+    localStorage.setItem('shiftmaster_org', res.orgId);
+    setIsSupport(support);
+    setMemberships(orgs);
+    setCurrentOrg(res.orgId);
+    setOrgId(res.orgId);
+    return null;
+  };
+
   const handleLogout = async () => {
     setIsGuest(false); setUser(null); setAuthError(null);
     try { await logout(); } catch (e) {}
@@ -1713,7 +1845,7 @@ const App: React.FC = () => {
              </svg>
           </div>
           <h1 className="text-display font-black mb-4 tracking-tighter drop-shadow-2xl">{t('appName')}</h1>
-          <p className="text-emerald-100/60 font-bold text-xl uppercase tracking-[0.3em]">Enterprise Weekly Scheduling</p>
+          <p className="text-emerald-100/60 font-bold text-base sm:text-xl uppercase tracking-[0.3em]">{t('appTagline')}</p>
         </div>
         <div className="flex flex-col gap-5 w-full max-w-sm relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
           <button onClick={handleLogin} className="bg-white text-emerald-950 px-8 py-6 rounded-[2.5rem] font-black hover:bg-lime-50 transition-all flex items-center justify-center gap-4 shadow-2xl active:scale-[0.98] group relative overflow-hidden">
@@ -1726,24 +1858,23 @@ const App: React.FC = () => {
             </svg>
             <span className="text-xl">{t('signInGoogle')}</span>
           </button>
-          {USE_EMULATORS && (
-            // Emulateur seulement : comptes de test crees par scripts/seed-emulator.mjs.
-            // L'ecran d'inscription definitif arrive au lot 1d.
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                const r = await loginWithEmail(String(f.get('email')), String(f.get('password')));
-                if (r.error) setAuthError(r.error);
-              }}
-              className="flex flex-col gap-2 bg-white/10 border border-white/20 rounded-3xl p-4"
-            >
-              <input name="email" type="email" placeholder="email (emulateur)" aria-label="Email" className="rounded-xl px-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-white/60 focus:outline-none focus:ring-2 focus:ring-lime-400" />
-              <input name="password" type="password" placeholder="mot de passe" aria-label="Mot de passe" className="rounded-xl px-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-white/60 focus:outline-none focus:ring-2 focus:ring-lime-400" />
-              <button type="submit" className="bg-lime-400 text-emerald-950 font-bold rounded-xl py-2">Connexion emulateur</button>
-              {authError && <p className="text-red-200 text-sm">{authError.code}</p>}
-            </form>
+          {authError && authError.code !== 'auth/popup-closed-by-user' && authError.code !== 'auth/cancelled-popup-request' && (
+            <p role="alert" className="text-sm font-semibold text-red-100 bg-red-500/30 rounded-xl px-3 py-2">
+              {t('authErrUnknown')} ({authError.code})
+            </p>
           )}
+          {pendingInvite && (
+            <p className="text-sm font-semibold text-lime-100 bg-lime-500/20 border border-lime-300/30 rounded-2xl px-4 py-3" data-testid="invite-banner">
+              {t('invBanner')}
+            </p>
+          )}
+          <AuthForm
+            initialMode={pendingInvite ? 'signup' : 'signin'}
+            language={language}
+            onSignIn={async (email, password) => (await loginWithEmail(email, password)).error?.code ?? null}
+            onSignUp={async (name, email, password) => (await signUpWithEmail(name, email, password)).error?.code ?? null}
+            onReset={async (email) => (await resetPassword(email)).error ?? null}
+          />
           {SHOW_SANDBOX && <button onClick={handleBypass} className="bg-white/10 backdrop-blur-xl text-emerald-100 border border-white/20 px-8 py-5 rounded-[2.5rem] font-bold hover:text-white hover:bg-white/20 hover:border-white/30 transition-all flex items-center justify-center gap-3 active:scale-95">
             <svg className="w-5 h-5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
@@ -1755,23 +1886,31 @@ const App: React.FC = () => {
     );
   }
 
+  // Une invitation a traiter passe avant tout le reste (assistant, planning).
+  if (user && !isGuest && pendingInvite && inviteState) {
+    return (
+      <InviteScreen
+        state={inviteState}
+        email={user.email || ''}
+        detail={inviteDetail}
+        onCheckVerified={async () => { const ok = await refreshUser(); if (ok) await acceptPendingInvite(); return ok; }}
+        onResend={resendVerification}
+        onLogout={handleLogout}
+        onDismiss={clearInvite}
+        language={language}
+      />
+    );
+  }
+
   // Connecte, mais le jeton n'a pas encore dit a quels restaurants on a droit.
   if (user && !isGuest && memberships === null) {
     return <div className="min-h-screen flex items-center justify-center text-slate-500">{t('loading')}</div>;
   }
 
-  // Compte valide, mais rattache a aucun restaurant : ni membre, ni invite.
-  // Le lot 1d remplacera cet ecran par la creation d'un restaurant.
+  // Compte valide, mais rattache a aucun restaurant : il cree le sien, ou
+  // attend l'invitation de son responsable.
   if (user && !isGuest && !orgId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
-        <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 p-8 text-center space-y-4">
-          <h1 className="text-xl font-bold text-slate-900">{t('noOrgTitle')}</h1>
-          <p className="text-slate-600">{t('noOrgBody').replace('{email}', user.email || '')}</p>
-          <button onClick={handleLogout} className="text-red-600 font-semibold hover:underline">{t('signOut')}</button>
-        </div>
-      </div>
-    );
+    return <OnboardingScreen email={user.email || ''} onCreate={handleCreateOrg} onLogout={handleLogout} language={language} />;
   }
 
   const orgIds = memberships ? Object.keys(memberships) : [];
@@ -1917,7 +2056,7 @@ const App: React.FC = () => {
             currentWeek={currentWeek} 
             navDirection={navDirection}
             onUpdateShift={updateShift} 
-            rates={rates}
+            rates={shiftRates}
             hourRange={hourRange}
             onAddShift={() => !isReadOnly && setIsShiftModalOpen(true)} 
             onEditShift={(id) => !isReadOnly && setEditingShiftId(id)} 
@@ -1937,9 +2076,11 @@ const App: React.FC = () => {
             absences={absences}
             holidays={weekHolidays}
             onRemoveAbsence={removeAbsence}
+            orgName={org?.name || ''}
             myWeekFooter={canRequestLeave || (isGuest && me) ? (
               <LeaveRequestPanel
                 requests={Object.values(leaveRequests).filter(r => r.staffId === me!.id)}
+                balance={myLeaveBalance}
                 onSubmit={submitLeaveRequest}
                 onWithdraw={withdrawLeaveRequest}
                 leaveUnit={leaveUnit}
@@ -1965,9 +2106,9 @@ const App: React.FC = () => {
         monthLoading={monthLoading}
         weekAbsence={weekAbsence}
         monthAbsence={monthAbsence}
-        cost={Object.keys(rates).length === 0 ? null
-          : statsPeriod === 'month' ? (monthShifts && !monthLoading ? totalCost(monthShifts, rates) : null)
-          : totalCost(shifts, rates)}
+        cost={Object.keys(shiftRates).length === 0 ? null
+          : statsPeriod === 'month' ? (monthShifts && !monthLoading ? totalCost(monthShifts, shiftRates) : null)
+          : totalCost(shifts, shiftRates)}
         monthLabel={new Date(getShiftIsoDate(currentWeek, 3) + 'T12:00:00Z').toLocaleDateString(
           language === 'fr' ? 'fr-FR' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
         onManageStaffClick={fromSidebar(() => setIsStaffModalOpen(true))}
@@ -1976,7 +2117,7 @@ const App: React.FC = () => {
         onStartDraft={!inDraft && effectiveViewType === 'day' ? fromSidebar(startDraft) : undefined}
         draftExists={draft !== null}
         compliance={complianceList}
-        conventionLabel={`${convention.label} — IDCC ${convention.idcc}`}
+        conventionLabel={conventionLabel(convention)}
         onDeleteWeek={handleDeleteWeek}
         onOpenHistory={fromSidebar(() => setIsHistoryModalOpen(true))}
         onExportSnapshot={inDraft ? undefined : handleExportSnapshot}
@@ -2006,6 +2147,11 @@ const App: React.FC = () => {
         onSaveLeaveBalance={isReadOnly ? undefined : updateLeaveBalance}
         leaveUnit={leaveUnit}
         closedHolidays={closedHolidays}
+        invites={invites}
+        onInvite={connected && !isReadOnly ? inviteStaff : undefined}
+        onCancelInvite={cancelInvite}
+        inviteUrl={inviteUrl}
+        orgName={org?.name || ''}
       />
       <ExtrasModal
         isOpen={isExtrasModalOpen}
@@ -2053,6 +2199,7 @@ const App: React.FC = () => {
         language={language}
       />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : updateOperatingHours} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit}
+        convention={conventionFor(conventionId).id} onConventionChange={isReadOnly ? undefined : updateConvention}
         onOpenPayroll={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setIsPayrollOpen(true); }} />
       <PayrollModal
         isOpen={isPayrollOpen}

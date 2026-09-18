@@ -150,6 +150,8 @@ await check('Staff NE RENOMME PAS l org',                    assertFails(updateD
 await check('Nom vide refuse',                               assertFails(updateDoc(doc(SERGE, 'orgs/sezam'), { name: '' })));
 await check('Fermeture avant ouverture refusee',             assertFails(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, openHour: 20, closeHour: 19 } })));
 await check('Heure hors demi-heure refusee',                 assertFails(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, openHour: 9.25 } })));
+await check('Convention IDCC 1979 (HCR) acceptee',              assertSucceeds(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, convention: '1979' } })));
+await check('Convention IDCC 1501 acceptee',                    assertSucceeds(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, convention: '1501' } })));
 await check('Convention inconnue refusee',                   assertFails(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, convention: 'idcc9999' } })));
 await check('Langue inconnue refusee',                       assertFails(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, language: 'de' } })));
 await check('Personne ne cree une org depuis l app',         assertFails(setDoc(doc(SERGE, 'orgs/nouvelle'), ORGS.sezam)));

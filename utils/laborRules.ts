@@ -62,7 +62,42 @@ export const CONVENTIONS: Record<string, Convention> = {
     maxDailyHours: 10,
     maxConsecutiveDays: 6,
   },
+  // Hotels, cafes, restaurants : la convention de la restauration « a table ».
+  // La duree maximale d'une journee y depend du poste (11 h cuisinier, 11 h 30
+  // autre personnel, 12 h veilleur de nuit, avenant n° 2 du 05/02/2007) ; le
+  // moteur n'a qu'un seuil par convention, on retient le plus protecteur.
+  '1979': {
+    id: '1979',
+    label: 'Hôtels, cafés, restaurants (HCR)',
+    idcc: '1979',
+    source: 'IDCC 1979, avenant n° 2 du 05/02/2007 (non reverifie en ligne) ; Code du travail pour les repos',
+    checkedOn: '2026-09-18',
+    dailyRestHours: 11,
+    weeklyRestHours: 35,
+    maxDailyHours: 11,
+    maxConsecutiveDays: 6,
+  },
+  // Sans convention : le Code du travail seul (L3131-1 repos quotidien,
+  // L3132-2 repos hebdomadaire, L3121-18 duree quotidienne maximale).
+  none: {
+    id: 'none',
+    label: 'Code du travail (sans convention)',
+    idcc: '',
+    source: 'Code du travail L3131-1, L3132-2, L3121-18',
+    checkedOn: '2026-09-18',
+    dailyRestHours: 11,
+    weeklyRestHours: 35,
+    maxDailyHours: 10,
+    maxConsecutiveDays: 6,
+  },
 };
+
+/** « hcr » : ancienne valeur du reglage, avant que la table ne soit indexee par IDCC. */
+export const conventionFor = (id?: string | null): Convention =>
+  CONVENTIONS[id === 'hcr' ? '1979' : id || DEFAULT_CONVENTION] || CONVENTIONS[DEFAULT_CONVENTION];
+
+/** Libelle complet, IDCC compris quand il existe. */
+export const conventionLabel = (c: Convention): string => (c.idcc ? `${c.label} — IDCC ${c.idcc}` : c.label);
 
 export const DEFAULT_CONVENTION = '1501';
 

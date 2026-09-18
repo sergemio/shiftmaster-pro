@@ -33,7 +33,9 @@ const auth = getAuth();
 
 const TRIAL_DAYS = 14;
 const MAX_OWNED_ORGS = 3;          // garde-fou contre la creation en boucle
-const DEFAULT_SETTINGS = { timezone: 'Europe/Paris', language: 'fr', openHour: 9, closeHour: 23, convention: 'hcr' };
+// Convention : Code du travail seul tant que le restaurant n'a pas choisi la sienne
+// (l'assistant de demarrage la demande) — ne jamais presumer une convention.
+const DEFAULT_SETTINGS = { timezone: 'Europe/Paris', language: 'fr', openHour: 9, closeHour: 23, convention: 'none' };
 
 // --- outils -----------------------------------------------------------------
 
@@ -96,7 +98,7 @@ export const createOrg = onCall(async (request) => {
   const settings = { ...DEFAULT_SETTINGS };
   if (typeof request.data?.timezone === 'string' && request.data.timezone.length <= 60) settings.timezone = request.data.timezone;
   if (request.data?.language === 'en' || request.data?.language === 'fr') settings.language = request.data.language;
-  if (request.data?.convention === 'none' || request.data?.convention === 'hcr') settings.convention = request.data.convention;
+  if (['1501', '1979', 'none'].includes(request.data?.convention)) settings.convention = request.data.convention;
 
   const owned = await db.collection('orgs').where('ownerUid', '==', caller.uid).count().get();
   if (owned.data().count >= MAX_OWNED_ORGS) {

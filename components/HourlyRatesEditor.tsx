@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Language, Staff } from '../types';
-import { isFormerStaff, formatMoney } from '../utils/helpers';
+import { isFormerStaff, formatMoney, EXTRA_DEFAULT_RATE_KEY } from '../utils/helpers';
 
 interface HourlyRatesEditorProps {
   staff: Staff[];
@@ -105,6 +105,32 @@ const HourlyRatesEditor: React.FC<HourlyRatesEditorProps> = ({ staff, rates, onC
             </div>
           );
         })}
+      </div>
+
+      {/* Un extra sans cout horaire sur sa fiche prend celui-ci : sans lui,
+          chaque shift d'extra s'affiche sans montant. */}
+      <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+        <span className="w-2 h-2 rounded-full flex-shrink-0 bg-slate-400" aria-hidden="true" />
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-semibold text-slate-700">{fr ? 'Extras (par défaut)' : 'Extras (default)'}</span>
+          <span className="block text-xs text-slate-400 leading-snug">
+            {fr ? 'Pour un extra dont la fiche n’a pas de coût horaire.' : 'For an extra whose record has no hourly cost.'}
+          </span>
+        </span>
+        <div className="relative w-24 flex-shrink-0">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={draft[EXTRA_DEFAULT_RATE_KEY] ?? ''}
+            placeholder="—"
+            onChange={e => setDraft(d => ({ ...d, [EXTRA_DEFAULT_RATE_KEY]: e.target.value }))}
+            onBlur={e => commit(EXTRA_DEFAULT_RATE_KEY, e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            aria-label={fr ? 'Extras — coût horaire chargé par défaut' : 'Extras — default loaded hourly cost'}
+            className="w-full text-base text-right tabular-nums pr-7 pl-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          />
+          <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-sm text-slate-400">€</span>
+        </div>
       </div>
 
       {missing > 0 && (

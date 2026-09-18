@@ -5,6 +5,7 @@ import ExportDataButton from './ExportDataButton';
 import HourlyRatesEditor from './HourlyRatesEditor';
 import { getTranslation } from '../utils/translations';
 import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours, frenchPublicHolidays } from '../utils/helpers';
+import { CONVENTIONS, conventionLabel } from '../utils/laborRules';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -30,6 +31,9 @@ interface SettingsModalProps {
   /** Decompte des conges payes. `onLeaveUnitChange` absent = pas admin. */
   leaveUnit?: 'ouvrables' | 'ouvres';
   onLeaveUnitChange?: (unit: 'ouvrables' | 'ouvres') => void;
+  /** Convention collective appliquee aux regles de duree du travail. */
+  convention?: string;
+  onConventionChange?: (id: string) => void;
   /** Ouvre l'export des elements variables de paie. Absent = pas admin. */
   onOpenPayroll?: () => void;
 }
@@ -53,6 +57,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   leaveUnit = 'ouvrables',
   onLeaveUnitChange,
   onOpenPayroll,
+  convention = '1501',
+  onConventionChange,
 }) => {
   if (!isOpen) return null;
   const t = getTranslation(language);
@@ -176,6 +182,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Jours feries (18/09/2026) : ils etaient coches a la main, semaine par
               semaine, dans la fenetre des absences. L'app les calcule desormais ;
               le restaurant dit seulement lesquels il FERME, une fois pour toutes. */}
+          {/* Convention collective : les seuils des alertes de duree du travail
+              (repos, journee maximale) en dependent. */}
+          {onConventionChange && (
+            <section>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">{t('conventionTitle')}</h3>
+              <div className="flex flex-col gap-2" role="radiogroup" aria-label={t('conventionTitle')}>
+                {['1501', '1979', 'none'].map(id => (
+                  <button key={id} type="button" role="radio" aria-checked={convention === id}
+                    onClick={() => onConventionChange(id)}
+                    className={`text-left px-4 py-3 rounded-xl border text-sm font-bold transition-all ${convention === id ? 'bg-indigo-50 border-indigo-600 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                    {conventionLabel(CONVENTIONS[id])}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">{t('conventionHint')}</p>
+            </section>
+          )}
+
           {/* Decompte des conges : reglage du restaurant, une fois pour toutes. */}
           {onLeaveUnitChange && (
             <section>

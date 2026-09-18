@@ -1,9 +1,9 @@
-import { Shift, Staff, LogEntry, Absence, AbsencePeriod, LeaveBalance, LeaveRequest, WeekData, DraftData, EMPTY_WEEK, Org, OrgRole, OrgSettings, Extra } from '../types';
+import { Shift, Staff, LogEntry, Absence, AbsencePeriod, LeaveBalance, LeaveRequest, WeekData, DraftData, EMPTY_WEEK, Org, OrgRole, OrgSettings, Extra, Invite } from '../types';
 import { applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange } from '../utils/helpers';
 
 // Use the Official Google Firebase ESM CDN to ensure total compatibility
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged, connectAuthEmulator, createUserWithEmailAndPassword, updateProfile, sendEmailVerification, sendPasswordResetEmail, reload } from 'firebase/auth';
 
 // Import the Firebase configuration
 import firebaseConfig from '../firebase-applet-config.json';
@@ -294,6 +294,134 @@ export const loginWithEmail = async (email: string, password: string): Promise<A
   } catch (error: any) {
     return { user: null, error: { code: error.code, message: error.message, domain: window.location.hostname, isSandbox: false } };
   }
+};
+
+const authError = (error: any): AuthResult =>
+  ({ user: null, error: { code: error?.code || 'unknown', message: error?.message || '', domain: window.location.hostname, isSandbox: false } });
+
+/**
+ * Inscription par email. Le nom est pose sur le compte (il servira de ligne
+ * dans l'equipe du restaurant cree ensuite) et un email de verification part :
+ * accepter une invitation exigera une adresse verifiee.
+ */
+export const signUpWithEmail = async (name: string, email: string, password: string): Promise<AuthResult> => {
+  try {
+    const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    if (name.trim()) await updateProfile(result.user, { displayName: name.trim() });
+    try { await sendEmailVerification(result.user); } catch { /* l'envoi reessaiera depuis l'app */ }
+    return { user: result.user };
+  } catch (error: any) {
+    return authError(error);
+  }
+};
+
+export const resetPassword = async (email: string): Promise<{ error?: string }> => {
+  try {
+    await sendPasswordResetEmail(auth, email.trim());
+    return {};
+  } catch (error: any) {
+    return { error: error?.code || 'unknown' };
+  }
+};
+
+/**
+ * Actions serveur (Cloud Functions, region europe-west1). Le SDK n'est charge
+ * qu'au premier appel : la plupart des sessions n'en font aucun.
+ */
+let functionsPromise: Promise<any> | null = null;
+const callFunction = async <T,>(name: string, data: unknown): Promise<T> => {
+  if (!functionsPromise) {
+    functionsPromise = import('firebase/functions').then(m => {
+      const fns = m.getFunctions(app, 'europe-west1');
+      if (USE_EMULATORS) m.connectFunctionsEmulator(fns, '127.0.0.1', 5001);
+      return { fns, httpsCallable: m.httpsCallable };
+    });
+  }
+  const { fns, httpsCallable } = await functionsPromise;
+  const res = await httpsCallable(fns, name)(data);
+  return res.data as T;
+};
+
+/** Cree un restaurant dont la personne connectee devient proprietaire et admin. */
+export const createOrgCall = async (input: { name: string; convention: string; language: string; timezone: string }): Promise<{ orgId?: string; error?: string }> => {
+  try {
+    const { orgId } = await callFunction<{ orgId: string }>('createOrg', input);
+    return { orgId };
+  } catch (e: any) {
+    return { error: e?.message || e?.code || 'unknown' };
+  }
+};
+
+// --- invitations (lot 1e) --------------------------------------------------------
+
+/**
+ * Invitations en attente du restaurant courant, admins seulement. L'id du
+ * document EST le jeton du lien : quiconque le connait peut tenter de
+ * l'accepter, mais la function exige l'adresse invitee, verifiee.
+ */
+export const subscribeToInvites = (callback: (invites: Record<string, Invite>) => void) => {
+  if (!auth.currentUser || !currentOrgId) return () => {};
+  const orgId = currentOrgId;
+  const path = orgPath('invites');
+  return lazySubscribe(({ fs, db }) => fs.onSnapshot(fs.collection(db, 'orgs', orgId, 'invites'), (snap) => {
+    const out: Record<string, Invite> = {};
+    snap.forEach((d: any) => { out[d.id] = d.data() as Invite; });
+    callback(out);
+  }, (error) => handleFirestoreError(error, OperationType.LIST, path)));
+};
+
+/** Cree l'invitation et renvoie son jeton (128 bits aleatoires). */
+export const createInvite = async (invite: { email: string; role: OrgRole; staffId?: string }): Promise<string | null> => {
+  if (!auth.currentUser || !currentOrgId) return null;
+  const { fs, db } = await firestore();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const token = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  const path = orgPath('invites', token);
+  try {
+    await fs.setDoc(fs.doc(db, 'orgs', requireOrg(), 'invites', token), {
+      email: invite.email.trim().toLowerCase(), role: invite.role,
+      ...(invite.staffId ? { staffId: invite.staffId } : {}),
+      createdAt: new Date().toISOString(), createdBy: auth.currentUser.uid,
+    });
+    return token;
+  } catch (e) {
+    handleFirestoreError(e, OperationType.CREATE, path);
+    return null;
+  }
+};
+
+export const deleteInvite = async (token: string): Promise<void> => {
+  if (!auth.currentUser || !currentOrgId) return;
+  const { fs, db } = await firestore();
+  const path = orgPath('invites', token);
+  try {
+    await fs.deleteDoc(fs.doc(db, 'orgs', requireOrg(), 'invites', token));
+  } catch (e) {
+    handleFirestoreError(e, OperationType.DELETE, path);
+  }
+};
+
+/** Accepte une invitation. `code` = code d'erreur de la function, pour un message clair. */
+export const acceptInviteCall = async (orgId: string, token: string): Promise<{ ok?: boolean; code?: string; message?: string }> => {
+  try {
+    await callFunction('acceptInvite', { orgId, token });
+    return { ok: true };
+  } catch (e: any) {
+    return { code: String(e?.code || 'unknown').replace('functions/', ''), message: e?.message };
+  }
+};
+
+/** Relit le compte (adresse verifiee entre-temps ?) et redemande un jeton frais. */
+export const refreshUser = async (): Promise<boolean> => {
+  const u = auth.currentUser;
+  if (!u) return false;
+  await reload(u);
+  await u.getIdToken(true);
+  return !!auth.currentUser?.emailVerified;
+};
+
+export const resendVerification = async (): Promise<void> => {
+  if (auth.currentUser) await sendEmailVerification(auth.currentUser);
 };
 
 export const logout = async () => {

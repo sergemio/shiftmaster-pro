@@ -16,19 +16,12 @@ def login(p, email):
     p.evaluate("() => { localStorage.clear(); localStorage.setItem('shiftmaster_lang','fr'); }")
     p.reload()
     p.get_by_label("Email").fill(email); p.get_by_label("Mot de passe").fill("test1234")
-    p.get_by_role("button", name="Connexion emulateur").click()
+    p.get_by_role("button", name="Se connecter", exact=True).click()
     p.wait_for_timeout(3800)
 
 def open_staff(p, name):
     p.get_by_role("button", name="Gérer l'équipe").first.click(); p.wait_for_timeout(700)
     p.locator("div.cursor-pointer").filter(has_text=name).first.click(); p.wait_for_timeout(500)
-
-def close_staff(p):
-    p.keyboard.press("Escape"); p.wait_for_timeout(300)
-    if p.get_by_text("Manage Staff Roster").count():
-        p.locator("button").filter(has=p.locator("svg")).first  # noop
-        p.get_by_text("Manage Staff Roster").locator("xpath=../..").locator("button").last.click()
-    p.wait_for_timeout(400)
 
 def pick_kind(p, name):
     p.get_by_role("button", name="Motif").click()
@@ -46,7 +39,7 @@ with sync_playwright() as pw:
     sel = p.get_by_label("Jours travaillés / semaine")
     check("Fiche : jours travailles par semaine, 5 par defaut", sel.input_value() == "5", sel.input_value())
     sel.select_option("4")
-    p.get_by_role("button", name="Apply Changes").click(); p.wait_for_timeout(1500)
+    p.get_by_role("button", name="Enregistrer", exact=True).click(); p.wait_for_timeout(1500)
     p.locator("div.cursor-pointer").filter(has_text="Omar").first.click(); p.wait_for_timeout(500)
     check("... enregistre : 4", p.get_by_label("Jours travaillés / semaine").input_value() == "4")
 
@@ -120,6 +113,18 @@ with sync_playwright() as pw:
     login(p2, "omar@test.fr")
     p2.get_by_role("button", name="Paramètres", exact=True).first.click(); p2.wait_for_timeout(500)
     check("Employe : pas de reglage du decompte des conges", p2.get_by_role("radio", name="Jours ouvrés (lun–ven, 25 j/an)").count() == 0)
+    p2.get_by_role("button", name="Ma semaine").first.click(); p2.wait_for_timeout(300)
+    p2.keyboard.press("Escape"); p2.wait_for_timeout(1200)
+    mb = p2.get_by_test_id("my-leave-balance")
+    txt = mb.inner_text() if mb.count() else ""
+    check("Employe (Ma semaine) : voit SON solde, 11,5 j aujourd'hui", "11,5 j" in txt, txt)
+    check("... et les 5 j deja poses, 6,5 j ensuite", "5 j" in txt and "6,5 j" in txt, txt)
+    panel = p2.get_by_test_id("leave-request-panel")
+    panel.get_by_role("button", name="Demander un congé").click()
+    panel.get_by_label("Premier jour d'absence").fill("2026-11-02")
+    panel.get_by_label("Reprise le").fill("2026-11-04"); p2.wait_for_timeout(300)
+    ra = panel.get_by_test_id("req-balance-after")
+    check("Demande de 2 j : solde apres 4,5 j", ra.count() == 1 and "4,5 j" in ra.inner_text(), ra.all_inner_texts())
     check("Employe : aucune erreur JavaScript", not err2, err2[:2])
     b.close()
 print("\nTOUT PASSE" if all(res) else f"\n{res.count(False)} ECHEC(S)")

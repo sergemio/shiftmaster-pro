@@ -30,7 +30,7 @@ def login(browser, email):
     page.reload()
     page.get_by_label("Email").fill(email)
     page.get_by_label("Mot de passe").fill("test1234")
-    page.get_by_role("button", name="Connexion emulateur").click()
+    page.get_by_role("button", name="Se connecter", exact=True).click()
     page.wait_for_timeout(3500)
     return ctx, page, errors
 

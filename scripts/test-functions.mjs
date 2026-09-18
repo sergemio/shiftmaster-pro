@@ -61,7 +61,7 @@ const stranger = await person(mail('stranger'));
 
 await expectCode('Nom vide refuse', owner.call('createOrg', { name: '   ' }), 'invalid-argument');
 await expectCode('Nom de plus de 80 caracteres refuse', owner.call('createOrg', { name: 'x'.repeat(81) }), 'invalid-argument');
-const { orgId } = await owner.call('createOrg', { name: 'Le Petit Zinc', convention: 'hcr' });
+const { orgId } = await owner.call('createOrg', { name: 'Le Petit Zinc', convention: '1979' });
 check('Restaurant cree, identifiant lisible', /^le-petit-zinc-[0-9a-f]{6}$/.test(orgId), orgId);
 const claims = await owner.refresh();
 check('Le createur devient admin dans son jeton', claims.orgs?.[orgId] === 'admin', JSON.stringify(claims));

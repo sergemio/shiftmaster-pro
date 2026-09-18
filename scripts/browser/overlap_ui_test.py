@@ -16,7 +16,7 @@ def login(p, email):
     p.evaluate("() => { localStorage.clear(); localStorage.setItem('shiftmaster_lang','fr'); }")
     p.reload()
     p.get_by_label("Email").fill(email); p.get_by_label("Mot de passe").fill("test1234")
-    p.get_by_role("button", name="Connexion emulateur").click()
+    p.get_by_role("button", name="Se connecter", exact=True).click()
     p.wait_for_timeout(3800)
 
 def pick_kind(p, name):

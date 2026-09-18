@@ -5,7 +5,43 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
-## 2026-09-18 17h05 — Absences, lots 5 et 7a : export de paie, demandes de conge (branche `saas`, non commite)
+## 2026-09-18 19h30 — Chantiers restants : image exportee, fiche en francais, solde employe, taux extras, lots 1d-1f (branche `saas`, non commite)
+
+- **Image PNG exportee** : plus de logo ni de nom Sezam&Co en dur. En-tete = initiale et nom du
+  restaurant connecte, « Planning de la semaine », dates et numero de semaine dans la langue de l'app.
+- **Fiche salarie (Gerer l'equipe)** entierement traduite (57 libelles) ; dates au format de la langue ;
+  libelles du formulaire d'ajout relies a leurs champs (lecteurs d'ecran).
+- **Solde de conges visible par l'employe** dans « Ma semaine » (solde du jour, conges deja poses,
+  provisoire) et rappel du solde apres la demande en cours ; l'employe lit ses propres absences et son
+  solde (regles deja en place).
+- **Taux horaire par defaut des extras** (Parametres -> Couts horaires, ligne « Extras (par defaut) »).
+  Corrige au passage : le cout horaire saisi dans la FICHE d'un extra n'entrait dans aucun calcul
+  (shifts d'extras toujours « non chiffres »). Ordre : fiche de l'extra, sinon taux par defaut, sinon
+  non chiffre. Stocke dans `settings/rates` (cle `_extras`), memes droits que les autres taux.
+- **Lot 1f — convention collective par restaurant** : Parametres -> Convention collective : IDCC 1501
+  (restauration rapide), IDCC 1979 (HCR, journee max 11 h, poste le plus protecteur — avenant n° 2 du
+  05/02/2007, non reverifie en ligne), ou Code du travail seul. Corrige : la valeur « hcr » creee par
+  la function n'existait pas dans la table et retombait silencieusement sur 1501. Nouveau restaurant
+  sans choix = Code du travail (plus aucune convention presumee).
+- **Lot 1d — inscription** : ecran de connexion reel (email + mot de passe, Google, mot de passe oublie,
+  messages d'erreur en clair ; meme message que l'adresse existe ou non), inscription avec email de
+  verification, assistant « Creez votre restaurant » (nom + convention, essai 14 jours) qui appelle la
+  function `createOrg` et ouvre le planning. Remplace le formulaire reserve a l'emulateur.
+- **Lot 1e — invitations** : dans Gerer l'equipe, chaque fiche affiche son acces : « ✓ Compte relie »,
+  « Invitation du … » (copier le lien, envoyer par email via la messagerie de l'admin, annuler) ou
+  « Inviter dans l'app ». Le lien `?org=…&invite=…` ouvre l'inscription avec un bandeau ; le jeton quitte
+  la barre d'adresse ; l'invitation survit a la connexion. Ecran d'acceptation : adresse a confirmer
+  (renvoyer l'email, « J'ai confirme »), mauvaise adresse, invitation deja utilisee — jamais de cul-de-sac.
+- **Langue par defaut** = celle du navigateur (etait l'anglais d'office, y compris pour un employe
+  francais qui ouvre son invitation).
+- Tests : `test-extra-rates.mjs` 9 cas ; navigateur `extra_rate_test.py` 6, `convention_test.py` 8,
+  `signup_test.py` 15, `invite_test.py` 18 ; controles ajoutes a `export_png_test.py` et
+  `leave_balance_test.py` ; regles +2 ; functions 48 (valeur de convention mise a jour).
+  Non-regression : 17 suites navigateur (311 controles), tests unitaires, regles, 48 cas de functions et build : tout passe.
+- Envoi d'email automatique des invitations : non fait (il faut un service d'envoi et le forfait
+  Blaze) ; l'email part de la messagerie de l'admin.
+
+## 2026-09-18 17h05 — Absences, lots 5 et 7a : export de paie, demandes de conge (branche `saas`, commit `8e04853` pousse)
 
 - **Lot 6 abandonne, verifie sur la vraie base** : la sauvegarde du 18/09 (41 semaines, 4 112 lignes de
   journal) ne contient aucune etiquette d'absence ni le mot « maladie ». Rien a convertir, rien a effacer.

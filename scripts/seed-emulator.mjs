@@ -85,7 +85,7 @@ const USERS = [
   { uid: 'uid-perdu',  email: 'perdu@test.fr',  name: 'Perdu Demo', orgs: {} },
 ];
 
-const SETTINGS = { timezone: 'Europe/Paris', language: 'fr', openHour: 9, closeHour: 23.5, convention: 'hcr' };
+const SETTINGS = { timezone: 'Europe/Paris', language: 'fr', openHour: 9, closeHour: 23.5, convention: '1501' };
 
 for (const [id, o] of Object.entries(ORGS)) {
   const base = db.collection('orgs').doc(id);

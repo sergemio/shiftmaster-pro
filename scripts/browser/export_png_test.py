@@ -20,7 +20,7 @@ with sync_playwright() as pw:
     p.evaluate("() => { localStorage.clear(); localStorage.setItem('shiftmaster_lang','fr'); }")
     p.reload()
     p.get_by_label("Email").fill("serge@test.fr"); p.get_by_label("Mot de passe").fill("test1234")
-    p.get_by_role("button", name="Connexion emulateur").click(); p.wait_for_timeout(3800)
+    p.get_by_role("button", name="Se connecter", exact=True).click(); p.wait_for_timeout(3800)
 
     # une ancienne etiquette « maladie » (donnees d'avant les periodes) pour Omar, vendredi
     url = p.evaluate("() => performance.getEntriesByType('resource').map(e => e.name).find(n => n.includes('/services/firebaseService.ts'))")
@@ -42,6 +42,9 @@ with sync_playwright() as pw:
     path = dl.value.path()
     check("Pendant l export : aucun montant", "€" not in during, [l for l in during.split("\n") if "€" in l][:3])
     check("Pendant l export : aucune ligne « Coût »", "Coût" not in during)
+    check("En-tete : nom du restaurant et semaine en francais, rien de Sezam&Co en dur",
+          "SEZAM (DEMO)" in during.upper() and "PLANNING DE LA SEMAINE" in during.upper() and "SEMAINE 38" in during.upper()
+          and "lun 14 sept - dim 20 sept 2026" in during and "SEZAM&CO" not in during.upper() and "WEEKLY" not in during.upper(), during[:200])
     check("Pendant l export : le motif devient « Absent »", "Arrêt maladie" not in during and "Omar · Absent" in during)
     check("Un fichier PNG est produit", open(path, "rb").read(8) == b"\x89PNG\r\n\x1a\n")
     p.wait_for_timeout(800)

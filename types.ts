@@ -14,8 +14,8 @@ export type OrgRole = 'admin' | 'staff';
 /** Etats Stripe conserves tels quels ; `trialing` expire de lui-meme via trialEndsAt. */
 export type OrgStatus = 'trialing' | 'active' | 'past_due' | 'canceled';
 
-/** Convention collective appliquee par le moteur de regles du travail. */
-export type LaborConvention = 'hcr' | 'none';
+/** IDCC de la convention, ou 'none' (Code du travail seul). 'hcr' = ancienne valeur, lue comme 1979. */
+export type LaborConvention = '1501' | '1979' | 'none' | 'hcr';
 
 export interface OrgSettings {
   timezone?: string;

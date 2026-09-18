@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { LeaveRequest, RequestableLeaveKind, LeaveUnit, Language } from '../types';
 import { getTranslation } from '../utils/translations';
-import { addDaysIso, countLeaveDays, closedHolidayDates, formatShortDate } from '../utils/helpers';
+import { addDaysIso, countLeaveDays, closedHolidayDates, formatShortDate, LeaveBalanceSummary } from '../utils/helpers';
 import DateField from './DateField';
 
 interface LeaveRequestPanelProps {
@@ -9,6 +9,8 @@ interface LeaveRequestPanelProps {
   requests: LeaveRequest[];
   onSubmit: (kind: RequestableLeaveKind, start: string, end: string, half: 'am' | 'pm' | undefined, note: string) => void;
   onWithdraw: (request: LeaveRequest) => void;
+  /** Solde de conges payes (null = aucun bulletin saisi pour la personne). */
+  balance?: LeaveBalanceSummary | null;
   leaveUnit: LeaveUnit;
   closedHolidays: string[];
   /** Premier jour propose : le lundi de la semaine affichee. */
@@ -29,7 +31,7 @@ const STATUS_STYLE: Record<LeaveRequest['status'], string> = {
  * pas — il se declare au responsable, qui le saisit.
  */
 const LeaveRequestPanel: React.FC<LeaveRequestPanelProps> = ({
-  requests, onSubmit, onWithdraw, leaveUnit, closedHolidays, defaultStart, language = 'en',
+  requests, onSubmit, onWithdraw, balance = null, leaveUnit, closedHolidays, defaultStart, language = 'en',
 }) => {
   const t = getTranslation(language as Language);
   const [open, setOpen] = useState(false);
@@ -55,12 +57,33 @@ const LeaveRequestPanel: React.FC<LeaveRequestPanelProps> = ({
   };
 
   const fmt = (iso: string) => formatShortDate(iso, language as Language);
+  const num = (n: number) => {
+    const v = Number.isInteger(n) ? String(n) : n.toFixed(1);
+    return language === 'fr' ? v.replace('.', ',') : v;
+  };
+  // Les conges deja demandes et en attente comptent aussi : sinon deux
+  // demandes successives affichent chacune le meme solde, trop optimiste.
+  const pendingCp = requests.filter(r => r.status === 'pending' && r.kind === 'cp')
+    .reduce((n, r) => n + countLeaveDays(r.start, r.end, leaveUnit, closedHolidayDates(r.start, r.end, closedHolidays), r.half), 0);
   const mine = [...requests].sort((a, b) => b.start.localeCompare(a.start)).slice(0, 10);
   const label = 'text-xs font-black uppercase tracking-widest text-slate-400';
   const field = 'w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500';
 
   return (
     <section className="flex flex-col gap-3 bg-white border border-slate-200 rounded-2xl p-4" data-testid="leave-request-panel">
+      {balance && (
+        <div className="flex flex-col gap-0.5" data-testid="my-leave-balance">
+          <span className={label}>{t('myLeaveTitle')}</span>
+          <p className="text-2xl font-black text-slate-900 tabular-nums">
+            {num(balance.balance)} {t('daysUnit')}
+            <span className="ml-2 text-xs font-semibold text-slate-500">{t('myLeaveToday')}</span>
+          </p>
+          {balance.upcoming > 0 && (
+            <p className="text-xs text-slate-600">{t('leaveUpcoming').replace('{n}', num(balance.upcoming))} · {t('leaveAfter').replace('{n}', num(balance.afterUpcoming))}</p>
+          )}
+          <p className="text-xs text-slate-400">{t('leaveProvisional')}</p>
+        </div>
+      )}
       {!open ? (
         <button type="button" onClick={() => setOpen(true)}
           className="self-start px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">
@@ -100,6 +123,14 @@ const LeaveRequestPanel: React.FC<LeaveRequestPanelProps> = ({
               {t(leaveUnit === 'ouvres' ? 'absDaysOuvres' : 'absDays').replace('{n}', String(days).replace('.', ','))}
             </p>
           )}
+          {valid && balance && kind === 'cp' && (() => {
+            const after = balance.afterUpcoming - pendingCp - days;
+            return (
+              <p data-testid="req-balance-after" className={`-mt-2 text-xs font-semibold ${after < 0 ? 'text-amber-700' : 'text-slate-500'}`}>
+                {t('absBalanceAfter').replace('{n}', num(after))}
+              </p>
+            );
+          })()}
           <div>
             <label className={`${label} block mb-1.5`} htmlFor="req-note">{t('reqNote')}</label>
             <input id="req-note" value={note} onChange={e => setNote(e.target.value)} maxLength={500} className={field} />
