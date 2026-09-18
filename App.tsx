@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, DraftData, EMPTY_WEEK, ViewType } from './types';
-import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours } from './utils/helpers';
-import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT } from './constants';
+import { Staff, Shift, Language, Absence, AbsencePeriod, WeekData, DraftData, EMPTY_WEEK, ViewType, Org, OrgRole, Extra, WeekHoliday, LeaveBalance, LeaveUnit } from './types';
+import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind } from './utils/helpers';
+import { INITIAL_STAFF } from './constants';
 import { CONVENTIONS, DEFAULT_CONVENTION, findViolations, DatedShift, Violation } from './utils/laborRules';
 import { violationText, violationWho } from './utils/violationText';
 import Calendar from './components/Calendar';
@@ -10,11 +10,12 @@ import Sidebar from './components/Sidebar';
 import ShiftModal from './components/ShiftModal';
 import SelectionBar from './components/SelectionBar';
 import StaffModal from './components/StaffModal';
+import ExtrasModal from './components/ExtrasModal';
 import EditShiftModal from './components/EditShiftModal';
 import MonthYearPicker from './components/MonthYearPicker';
 import LogHistoryModal from './components/LogHistoryModal';
 import SettingsModal from './components/SettingsModal';
-import AbsenceModal from './components/AbsenceModal';
+import AbsenceModal, { PlannedInfo } from './components/AbsenceModal';
 import { getTranslation } from './utils/translations';
 import { 
   saveWeekToFirebase, 
@@ -30,8 +31,19 @@ import {
   subscribeToStaff,
   subscribeToRates,
   saveRates,
-  subscribeToGlobalSettings,
+  subscribeToExtras,
+  saveExtra,
+  subscribeToAbsencePeriods,
+  subscribeToLeaveBalances,
+  saveLeaveBalance,
+  saveAbsenceChanges,
+
+  subscribeToOrg,
   saveGlobalSettings,
+  loginWithEmail,
+  loadMemberships,
+  setCurrentOrg,
+  USE_EMULATORS,
   AuthResult,
   loadShiftsFromFirebase,
   loadWeeks,
@@ -134,6 +146,12 @@ const App: React.FC = () => {
   // DEMANDE meme pas, et les regles Firestore les refuseraient de toute facon.
   const [rates, setRates] = useState<Record<string, number>>({});
   const [operatingHours, setOperatingHours] = useState<OperatingHours>(DEFAULT_OPERATING_HOURS);
+  /**
+   * Vivier d'extras, admins seulement (la regle Firestore refuse la lecture aux
+   * autres : telephone, email, informations de paie). L'equipe voit les prenoms
+   * parce qu'ils sont recopies sur les shifts.
+   */
+  const [extras, setExtras] = useState<Record<string, Extra>>({});
   const [guestEmails, setGuestEmails] = useState<string[]>([]);
   // La semaine officielle, telle qu'en base. Ce que l'ecran montre et modifie
   // (`shifts`, `absences`, `holidays`) est elle, OU le brouillon en mode
@@ -161,21 +179,57 @@ const App: React.FC = () => {
 
   const [user, setUser] = useState<any>(null);
   const [isGuest, setIsGuest] = useState(false);
+  /**
+   * Restaurants de la personne connectee et son role dans chacun, lus dans son
+   * jeton. null = pas encore lu : on n'affiche rien plutot que de supposer.
+   */
+  const [memberships, setMemberships] = useState<Record<string, OrgRole> | null>(null);
+  const [isSupport, setIsSupport] = useState(false);
+  /** Restaurant affiche. Toutes les lectures et ecritures se font sous orgs/{orgId}. */
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [org, setOrg] = useState<Org | null>(null);
+  /** Connecte a un vrai restaurant (pas le bac a sable, pas en attente du jeton). */
+  const connected = !!user && !isGuest && !!orgId;
   const [authError, setAuthError] = useState<AuthResult['error'] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
+  const [isExtrasModalOpen, setIsExtrasModalOpen] = useState(false);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isAbsenceModalOpen, setIsAbsenceModalOpen] = useState(false);
+  /** Periode ouverte en modification depuis la bande du calendrier. */
+  const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
+  /**
+   * Absences par periode (motif de paie). Admins seulement pour l'instant :
+   * l'equipe voit la projection anonymisee dans chaque semaine, et « ma
+   * semaine » n'a pas encore besoin du motif.
+   */
+  const [absencePeriods, setAbsencePeriods] = useState<Record<string, AbsencePeriod>>({});
+  // Soldes de conges lus sur les bulletins (admins seulement, comme les absences).
+  const [leaveBalances, setLeaveBalances] = useState<Record<string, LeaveBalance>>({});
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('week');
   const [monthHours, setMonthHours] = useState<Record<string, number> | null>(null);
   const [monthLoading, setMonthLoading] = useState(false);
   // Les shifts du mois eux-memes, pour en tirer le cout sans relire la base
   // quand un taux change.
   const [monthShifts, setMonthShifts] = useState<Shift[] | null>(null);
+  // Les jours d'absence du mois, lus dans les memes semaines : l'attendu du
+  // contrat mensuel en est reduit.
+  const [monthAbsenceDays, setMonthAbsenceDays] = useState<
+    { staffId: string; iso: string; kind: string; hours?: number; half?: 'am' | 'pm' }[] | null>(null);
+
+  /**
+   * L'equipe telle qu'AFFICHEE : les fiches de `settings/staff`, plus une ligne
+   * par extra qui travaille dans la periode regardee. Ces lignes sont
+   * reconstituees a partir des shifts, elles ne vivent pas en base.
+   */
+  const displayStaff = useMemo(
+    () => [...staffList, ...extraStaffRows([...shifts, ...(monthShifts || [])], extras)],
+    [staffList, shifts, monthShifts, extras],
+  );
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   // Shifts coches. Non vide = mode selection : un appui coche au lieu d'ouvrir
   // la fiche, et la barre d'actions apparait en bas.
@@ -230,25 +284,29 @@ const App: React.FC = () => {
   // right after a roster corruption, which is exactly the wrong moment.
   const [staffLoaded, setStaffLoaded] = useState(false);
 
-  const isBootstrapMode = useMemo(() => {
-    if (!staffLoaded) return false;
-    if (!staffList || staffList.length === 0) return true;
-    return !staffList.some(s => s.role === 'admin' && s.email && s.email.trim() !== '');
-  }, [staffList, staffLoaded]);
+  /**
+   * Admin du restaurant affiche. Le role vient du JETON (claims poses par les
+   * Cloud Functions), plus de la liste d'equipe : l'ancien calcul par email
+   * dependait d'un document que n'importe quel admin pouvait modifier, et le
+   * « mode amorcage » donnait tous les droits tant que la liste etait vide.
+   * Ce calcul ne fait que regler l'interface : ce sont les regles Firestore
+   * qui refusent reellement.
+   */
+  const isAdmin = isGuest || (connected && (isSupport || memberships?.[orgId!] === 'admin'));
 
-  const isReadOnly = useMemo(() => {
-    if (isGuest) return false;
-    if (!staffLoaded) return true;      // no rights until we know who is who
-    if (isBootstrapMode) return false;
-    if (!user || !user.email) return true;
-    const currentUserEmail = user.email.trim().toLowerCase();
-    // One email can legitimately appear on several rows — the shared "Extra"
-    // entry used for one-off helpers carries Serge's address. Taking the FIRST
-    // match would demote a real admin to read-only the moment the generic row
-    // happened to come first in the list. Admin on any matching row wins.
-    const mine = staffList.filter(s => (s.email || '').trim().toLowerCase() === currentUserEmail);
-    return !mine.some(s => s.role === 'admin');
-  }, [user, staffList, isGuest, isBootstrapMode]);
+  /**
+   * Abonnement vivant : essai non expire, actif, ou paiement en relance. Meme
+   * definition que la regle Firestore `isAlive`, pour que l'interface ne propose
+   * pas une modification que la base refusera.
+   */
+  const orgAlive = useMemo(() => {
+    if (!org) return false;
+    if (org.status === 'active' || org.status === 'past_due') return true;
+    return org.status === 'trialing' && !!org.trialEndsAt && Date.parse(org.trialEndsAt) > Date.now();
+  }, [org]);
+
+  // Lecture seule tant que l'on ne sait pas : pas de droits avant le jeton ET la fiche du restaurant.
+  const isReadOnly = isGuest ? false : !(isAdmin && (isSupport || orgAlive));
 
   /**
    * La fiche de l'employe connecte, pour « ma semaine ».
@@ -287,13 +345,43 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = subscribeToAuth((firebaseUser) => {
+    let cancelled = false;
+    const unsubscribe = subscribeToAuth(async (firebaseUser) => {
       setUser(firebaseUser);
-      if (!firebaseUser) setIsGuest(false);
+      if (!firebaseUser) {
+        setIsGuest(false);
+        setMemberships(null); setIsSupport(false); setOrg(null);
+        setCurrentOrg(null); setOrgId(null);
+        setIsLoading(false);
+        return;
+      }
+      const { orgs, support } = await loadMemberships();
+      if (cancelled) return;
+      // Le dernier restaurant ouvert sur cet appareil, s'il fait toujours partie
+      // des droits de la personne ; sinon le premier.
+      const ids = Object.keys(orgs);
+      const remembered = localStorage.getItem('shiftmaster_org');
+      const chosen = remembered && ids.includes(remembered) ? remembered : (ids[0] ?? null);
+      setIsSupport(support);
+      setMemberships(orgs);
+      setCurrentOrg(chosen);
+      setOrgId(chosen);
       setIsLoading(false);
     });
-    return () => unsubscribe();
+    return () => { cancelled = true; unsubscribe(); };
   }, []);
+
+  /** Changer de restaurant : on remet a zero ce qui appartient a l'ancien. */
+  const switchOrg = useCallback((next: string) => {
+    if (!memberships?.[next] || next === orgId) return;
+    localStorage.setItem('shiftmaster_org', next);
+    setCurrentOrg(next);
+    setOrg(null);
+    setStaffList([]);
+    setRates({});
+    setOfficialWeek(EMPTY_WEEK);
+    setOrgId(next);
+  }, [memberships, orgId]);
 
   // The journal no longer streams for the whole session: it loads its two
   // months only when opened. See loadLogs() for why that matters to quota.
@@ -307,28 +395,29 @@ const App: React.FC = () => {
       setOperatingHours(normalizeOperatingHours(saved?.start, saved?.end));
       return;
     }
-    if (!user) return;
-    const unsubscribe = subscribeToGlobalSettings((settings) => {
+    if (!connected) return;
+    // Les reglages vivent desormais sur la fiche du restaurant (orgs/{orgId}).
+    const unsubscribe = subscribeToOrg((next) => {
+      setOrg(next);
+      const settings = next?.settings;
       if (settings?.timezone) setTimezone(settings.timezone);
       if (settings?.convention) setConventionId(settings.convention);
       setOperatingHours(normalizeOperatingHours(settings?.openHour, settings?.closeHour));
     });
     return () => unsubscribe();
-  }, [user, isGuest]);
+  }, [connected, orgId, isGuest]);
 
   useEffect(() => {
-    if (user && !isGuest) {
+    if (connected) {
       const unsubscribe = subscribeToStaff((updatedStaff, updatedGuests) => {
         // Only update local state from Firebase data. NEVER write INITIAL_STAFF
         // back to the DB — that caused a production incident on 2026-05-04
         // where the real roster was overwritten with defaults at login when
         // the first snapshot fired empty (cache cold).
         // If Firebase has no staff doc yet, use INITIAL_STAFF locally only.
-        if (updatedStaff && updatedStaff.length > 0) {
-          setStaffList(updatedStaff);
-        } else {
-          setStaffList(prev => prev.length === 0 ? INITIAL_STAFF : prev);
-        }
+        // Un restaurant qui vient d'etre cree n'a personne : liste vide, jamais
+        // l'equipe de demonstration (elle apparaitrait chez un vrai client).
+        setStaffList(Array.isArray(updatedStaff) ? updatedStaff : []);
         if (updatedGuests) setGuestEmails(updatedGuests);
         setStaffLoaded(true);
       });
@@ -342,7 +431,7 @@ const App: React.FC = () => {
       }
       setStaffLoaded(true);
     }
-  }, [user, isGuest]);
+  }, [user, isGuest, orgId]);
 
   /**
    * Les montants ne sont charges QUE pour un admin.
@@ -362,16 +451,104 @@ const App: React.FC = () => {
       setRates(cached ? JSON.parse(cached) : {});
       return;
     }
-    if (!user || isReadOnly) { setRates({}); return; }
+    // Lecture des couts : il suffit d'etre admin. Un essai termine passe en
+    // lecture seule mais ne cache pas les chiffres a son proprietaire.
+    if (!connected || !isAdmin) { setRates({}); return; }
     const unsubscribe = subscribeToRates(setRates);
     return () => unsubscribe();
-  }, [user, isGuest, isReadOnly]);
+  }, [connected, orgId, isGuest, isAdmin]);
+
+  // Meme regle que les couts : reserve aux admins, remis a zero sinon.
+  useEffect(() => {
+    if (isGuest) {
+      setExtras(JSON.parse(localStorage.getItem('sandbox_extras') || '{}'));
+      return;
+    }
+    if (!connected || !isAdmin) { setExtras({}); return; }
+    const unsubscribe = subscribeToExtras(setExtras);
+    return () => unsubscribe();
+  }, [connected, orgId, isGuest, isAdmin]);
+
+  useEffect(() => {
+    if (isGuest) {
+      setAbsencePeriods(JSON.parse(localStorage.getItem('sandbox_absence_periods') || '{}'));
+      return;
+    }
+    if (!connected || !isAdmin) { setAbsencePeriods({}); return; }
+    const unsubscribe = subscribeToAbsencePeriods(true, setAbsencePeriods);
+    return () => unsubscribe();
+  }, [connected, orgId, isGuest, isAdmin]);
+
+  useEffect(() => {
+    if (isGuest) {
+      try { setLeaveBalances(JSON.parse(localStorage.getItem('sandbox_leave_balances') || '{}')); } catch { setLeaveBalances({}); }
+      return;
+    }
+    if (!connected || !isAdmin) { setLeaveBalances({}); return; }
+    const unsubscribe = subscribeToLeaveBalances(true, setLeaveBalances);
+    return () => unsubscribe();
+  }, [connected, orgId, isGuest, isAdmin]);
+
+  const updateLeaveBalance = useCallback((staffId: string, anchorDate: string, anchorBalance: number) => {
+    if (isReadOnly) return;
+    const person = staffList.find(s => s.id === staffId);
+    const balance: LeaveBalance = {
+      staffId, anchorDate, anchorBalance,
+      ...(person?.uid ? { staffUid: person.uid } : {}),
+      updatedAt: new Date().toISOString(),
+      updatedBy: user?.uid || 'guest',
+    };
+    if (isGuest) {
+      const next = { ...leaveBalances, [staffId]: balance };
+      setLeaveBalances(next);
+      localStorage.setItem('sandbox_leave_balances', JSON.stringify(next));
+    } else {
+      saveLeaveBalance(balance);
+    }
+    createLog('UPDATE LEAVE BALANCE', `Paid-leave balance for ${person?.name || 'Unknown'} set from payslip of ${anchorDate}`, person || null);
+  }, [isReadOnly, staffList, user, isGuest, leaveBalances]);
 
   const updateRates = useCallback((next: Record<string, number>) => {
     if (isReadOnly) return;
     setRates(next);
     if (isGuest) { localStorage.setItem('sandbox_rates', JSON.stringify(next)); return; }
     saveRates(next);
+  }, [isReadOnly, isGuest]);
+
+  /**
+   * Feries ou le restaurant FERME. Reglage du restaurant (parametres), pas de
+   * la semaine : on ferme Noel tous les ans, on ne le recoche pas chaque annee.
+   * Bac a sable : garde dans le navigateur.
+   */
+  const [sandboxClosedHolidays, setSandboxClosedHolidays] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('sandbox_closed_holidays') || '[]'); } catch { return []; }
+  });
+  const closedHolidays: string[] = isGuest ? sandboxClosedHolidays : (org?.settings?.closedHolidays || []);
+  const weekHolidays: WeekHoliday[] = useMemo(() => {
+    const monday = getShiftIsoDate(currentWeek, 0);
+    return holidaysBetween(monday, getShiftIsoDate(currentWeek, 6)).map(h => ({
+      dayIndex: isoDayIndex(h.date), key: h.key, date: h.date, closed: closedHolidays.includes(h.key),
+    }));
+  }, [currentWeek, closedHolidays]);
+
+  // Decompte des conges : jours ouvrables (regle du Code du travail) ou ouvres.
+  const [sandboxLeaveUnit, setSandboxLeaveUnit] = useState<LeaveUnit>(() =>
+    (localStorage.getItem('sandbox_leave_unit') as LeaveUnit) || 'ouvrables');
+  const leaveUnit: LeaveUnit = isGuest ? sandboxLeaveUnit : (org?.settings?.leaveUnit || 'ouvrables');
+  const updateLeaveUnit = useCallback((next: LeaveUnit) => {
+    if (isReadOnly) return;
+    if (isGuest) { setSandboxLeaveUnit(next); localStorage.setItem('sandbox_leave_unit', next); return; }
+    saveGlobalSettings({ leaveUnit: next });
+  }, [isReadOnly, isGuest]);
+
+  const updateClosedHolidays = useCallback((next: string[]) => {
+    if (isReadOnly) return;
+    if (isGuest) {
+      setSandboxClosedHolidays(next);
+      localStorage.setItem('sandbox_closed_holidays', JSON.stringify(next));
+      return;
+    }
+    saveGlobalSettings({ closedHolidays: next });
   }, [isReadOnly, isGuest]);
 
   const updateOperatingHours = useCallback((next: OperatingHours) => {
@@ -392,7 +569,7 @@ const App: React.FC = () => {
   }, [weekId, inDraft]);
 
   useEffect(() => {
-    if (user && !isGuest) {
+    if (connected) {
       setIsLoading(true);
       const unsubscribe = subscribeToWeek(weekId, (week, updatedAt) => {
         weekVersion.current = updatedAt;
@@ -410,7 +587,7 @@ const App: React.FC = () => {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [weekId, user, isGuest]);
+  }, [weekId, user, isGuest, orgId]);
 
   /**
    * Brouillon de la semaine. Changer de semaine sort du mode brouillon.
@@ -426,9 +603,9 @@ const App: React.FC = () => {
       setDraft(cached ? { ...EMPTY_WEEK, baseUpdatedAt: null, ...JSON.parse(cached) } : null);
       return;
     }
-    if (!user || isReadOnly) return;
+    if (!connected || !isAdmin) return;
     return subscribeToDraft(weekId, setDraft);
-  }, [weekId, user, isGuest, isReadOnly]);
+  }, [weekId, connected, orgId, isGuest, isAdmin]);
 
   /**
    * Total d'heures du mois par employe.
@@ -445,6 +622,7 @@ const App: React.FC = () => {
     if (statsPeriod !== 'month' && effectiveViewType !== 'me') {
       setMonthHours(null);
       setMonthShifts(null);
+      setMonthAbsenceDays(null);
       return;
     }
     let cancelled = false;
@@ -459,7 +637,7 @@ const App: React.FC = () => {
     // Le bac a sable n'est pas authentifie : Firestore refuserait la lecture.
     // Il relit ses propres semaines dans le navigateur, ce qui permet aussi de
     // faire une demonstration sans toucher aux donnees reelles.
-    const source = (user && !isGuest)
+    const source = (connected)
       ? loadWeeks(ids)
       : Promise.resolve(Object.fromEntries(ids.map(wid => {
           const raw = localStorage.getItem(`sandbox_week_${wid}`);
@@ -469,8 +647,13 @@ const App: React.FC = () => {
       if (cancelled) return;
       const totals: Record<string, number> = {};
       const inMonth: Shift[] = [];
+      const absenceDays: { staffId: string; iso: string; kind: string; hours?: number; half?: 'am' | 'pm' }[] = [];
       for (const [wid, data] of Object.entries(weeks)) {
         const weekStart = new Date(wid + 'T00:00:00Z');
+        for (const a of data.absences || []) {
+          const iso = getShiftIsoDate(weekStart, a.dayIndex);
+          if (iso.slice(0, 7) === month) absenceDays.push({ staffId: a.staffId, iso, kind: a.kind, hours: a.hours, half: a.half });
+        }
         for (const sh of data.shifts) {
           if (getShiftIsoDate(weekStart, sh.dayIndex).slice(0, 7) !== month) continue;
           inMonth.push(sh);
@@ -481,10 +664,11 @@ const App: React.FC = () => {
       }
       setMonthHours(totals);
       setMonthShifts(inMonth);
+      setMonthAbsenceDays(absenceDays);
       setMonthLoading(false);
     }).catch(() => { if (!cancelled) setMonthLoading(false); });
     return () => { cancelled = true; };
-  }, [statsPeriod, effectiveViewType, currentWeek, user, isGuest]);
+  }, [statsPeriod, effectiveViewType, currentWeek, user, isGuest, orgId]);
 
   /**
    * Charge la semaine precedente et la suivante, uniquement pour les regles de
@@ -503,7 +687,7 @@ const App: React.FC = () => {
     const prev = new Date(currentWeek); prev.setDate(prev.getDate() - 7);
     const next = new Date(currentWeek); next.setDate(next.getDate() + 7);
     const ids = [toWeekId(prev), toWeekId(next)];
-    const source = (user && !isGuest)
+    const source = (connected)
       ? loadWeeks(ids)
       : Promise.resolve(Object.fromEntries(ids.map(wid => {
           const raw = localStorage.getItem(`sandbox_week_${wid}`);
@@ -512,7 +696,27 @@ const App: React.FC = () => {
     source.then(weeks => { if (!cancelled) setNeighbourWeeks(weeks); })
           .catch(() => { if (!cancelled) setNeighbourWeeks({}); });
     return () => { cancelled = true; };
-  }, [currentWeek, user, isGuest]);
+  }, [currentWeek, user, isGuest, orgId]);
+
+  /**
+   * Ce que chaque personne perd d'attendu : semaine affichee, et mois si charge.
+   * La semaine affichee est toujours prise en direct (une absence qu'on vient de
+   * poser compte tout de suite), le reste du mois vient du chargement.
+   */
+  const weekAbsenceItems = useMemo(() => absences.map(a => ({
+    staffId: a.staffId, iso: getShiftIsoDate(currentWeek, a.dayIndex), kind: a.kind, hours: a.hours, half: a.half,
+  })), [absences, currentWeek]);
+  const weekAbsence = useMemo(
+    () => absenceDeductions(weekAbsenceItems, displayStaff), [weekAbsenceItems, displayStaff]);
+  const monthAbsence = useMemo(() => {
+    if (!monthAbsenceDays) return null;
+    const month = getShiftIsoDate(currentWeek, 3).slice(0, 7);
+    const shown = new Set(Array.from({ length: 7 }, (_, i) => getShiftIsoDate(currentWeek, i)));
+    return absenceDeductions([
+      ...monthAbsenceDays.filter(a => !shown.has(a.iso)),
+      ...weekAbsenceItems.filter(a => a.iso.slice(0, 7) === month),
+    ], displayStaff);
+  }, [monthAbsenceDays, weekAbsenceItems, currentWeek, displayStaff]);
 
   const convention = CONVENTIONS[conventionId] || CONVENTIONS[DEFAULT_CONVENTION];
 
@@ -541,12 +745,12 @@ const App: React.FC = () => {
     for (const [wid, data] of Object.entries(neighbourWeeks)) {
       push(new Date(wid + 'T00:00:00Z'), data.shifts || []);
     }
-    const pooled = staffList.filter(s => s.isPool).map(s => s.id);
+    const pooled = displayStaff.filter(s => s.isPool).map(s => s.id);
     return findViolations(flat, convention, {
       from: getShiftIsoDate(currentWeek, 0),
       to: getShiftIsoDate(currentWeek, 6),
     }, pooled);
-  }, [shifts, neighbourWeeks, currentWeek, staffList, convention]);
+  }, [shifts, neighbourWeeks, currentWeek, displayStaff, convention]);
 
   /** Les shifts de la fenetre, indexes pour retrouver celui qu'un message cite. */
   const shiftIndex = useMemo(() => {
@@ -575,7 +779,7 @@ const App: React.FC = () => {
   /** Le recapitulatif de la semaine : qui, quoi. */
   const complianceList = useMemo(
     () => violations.map(v => ({
-      who: violationWho(v, staffList),
+      who: violationWho(v, displayStaff),
       text: violationText(v, language, shiftIndex),
     })),
     [violations, staffList, language, shiftIndex],
@@ -624,7 +828,7 @@ const App: React.FC = () => {
       index.set(candidate.id, { shift: candidate, date });
     }
 
-    const pooled = staffList.filter(s => s.isPool).map(s => s.id);
+    const pooled = displayStaff.filter(s => s.isPool).map(s => s.id);
     return findViolations(flat, convention, {
       from: getShiftIsoDate(currentWeek, 0),
       to: getShiftIsoDate(currentWeek, 6),
@@ -658,8 +862,16 @@ const App: React.FC = () => {
     for (const dayIndex of dayIndexes) {
       const date = getShiftIsoDate(currentWeek, dayIndex);
       const block = getAssignmentBlock(staff, date);
+      // Absente toute la journee (conge, arret...) : on ne planifie pas
+      // quelqu'un qui ne viendra pas. Une demi-journee laisse l'autre moitie.
+      const off = absences.some(a => a.staffId === staffId && a.dayIndex === dayIndex && !a.half);
+      const closedDay = weekHolidays.find(h => h.dayIndex === dayIndex && h.closed);
       if (block) {
         blocked ??= say(block.kind === 'before-start' ? 'blockedBeforeStart' : 'blockedAfterGrace', block.date);
+      } else if (closedDay) {
+        blocked ??= t('blockedClosed').replace('{holiday}', t('holiday_' + closedDay.key));
+      } else if (off) {
+        blocked ??= say('blockedAbsent', date);
       } else if (getOrphanReason(staff, date)?.kind === 'after-end') {
         offContract ??= say('offContractHint', staff.endDate!);
       }
@@ -669,7 +881,7 @@ const App: React.FC = () => {
     if (blocked) errors.push(blocked);
     if (offContract) notes.push(offContract);
     return { errors, notes };
-  }, [staffList, currentWeek, language, t]);
+  }, [staffList, currentWeek, language, t, absences, weekHolidays]);
 
   const triggerSyncFeedback = () => {
     setShowSyncSuccess(true);
@@ -713,7 +925,7 @@ const App: React.FC = () => {
     if (draftModeRef.current) {
       const nextDraft: DraftData = { ...after, baseUpdatedAt: draft?.baseUpdatedAt ?? null };
       setDraft(nextDraft);
-      if (user && !isGuest) {
+      if (connected) {
         saveDraft(weekId, nextDraft).then(triggerSyncFeedback);
       } else if (isGuest) {
         localStorage.setItem(`sandbox_draft_${weekId}`, JSON.stringify(nextDraft));
@@ -724,7 +936,7 @@ const App: React.FC = () => {
 
     setOfficialWeek(after);
 
-    if (user && !isGuest) {
+    if (connected) {
       writeQueue.current = writeQueue.current.then(async () => {
         try {
           const stamp = await saveWeekToFirebase(weekId, after, weekVersion.current);
@@ -749,7 +961,7 @@ const App: React.FC = () => {
       localStorage.setItem(`sandbox_week_${weekId}`, JSON.stringify(after));
       triggerSyncFeedback();
     }
-  }, [weekId, user, isGuest, isReadOnly, shifts, absences, holidays, draft]);
+  }, [weekId, user, isGuest, orgId, isReadOnly, shifts, absences, holidays, draft]);
 
   // Ancien point d'entree, conserve pour tout ce qui ne touche que les shifts.
   const handleUpdateShifts = useCallback(
@@ -794,6 +1006,82 @@ const App: React.FC = () => {
     const days = dayIndexes.map(d => getShiftDate(toWeekId(currentWeek), d, language)).join(', ');
     createLog('CREATE SHIFT', `Added ${created.length} shift(s) for ${target?.name || 'Unknown'} on ${days} (${formatTime(startTime)}-${formatTime(endTime)})`, target);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language, employmentCheck]);
+
+  /**
+   * Un shift tenu par un extra.
+   *
+   * Trois cas : quelqu'un du vivier (`extraId`), une nouvelle personne dont on
+   * connait le prenom, ou personne encore — le shift s'appelle alors « Extra 1 »
+   * et sera complete plus tard (par l'admin, ou par la personne via un lien).
+   *
+   * Le prenom est ecrit SUR le shift : la fiche est reservee aux admins, et sans
+   * cette copie l'equipe verrait un shift sans nom.
+   */
+  const addExtraShift = useCallback((
+    who: { extraId?: string; firstName: string; retained: boolean },
+    dayIndexes: number[], startTime: number, endTime: number,
+  ) => {
+    if (isReadOnly || dayIndexes.length === 0) return;
+    const id = who.extraId || 'x' + Math.random().toString(36).slice(2, 10);
+    const name = (who.extraId ? extras[who.extraId]?.firstName : who.firstName.trim())
+      || who.firstName.trim() || nextExtraName(shifts);
+    const lastDay = [...dayIndexes].sort((a, b) => b - a)[0];
+    const fiche: Extra = {
+      id,
+      firstName: name,
+      retained: who.extraId ? (extras[who.extraId]?.retained ?? true) : who.retained,
+      createdAt: extras[id]?.createdAt || new Date().toISOString(),
+      filledAt: extras[id]?.filledAt ?? null,
+      lastMission: getShiftIsoDate(currentWeek, lastDay),
+    };
+    if (isGuest) {
+      const next = { ...extras, [id]: fiche };
+      setExtras(next);
+      localStorage.setItem('sandbox_extras', JSON.stringify(next));
+    } else {
+      saveExtra(fiche);
+    }
+    const created: Shift[] = dayIndexes.map(dayIndex => ({
+      id: Math.random().toString(36).substr(2, 9), staffId: id, dayIndex, startTime, endTime, extraName: name,
+      ...(fiche.filledAt ? {} : { extraPending: true }),
+    }));
+    handleUpdateShifts([...shifts, ...created]);
+    const days = dayIndexes.map(d => getShiftDate(toWeekId(currentWeek), d, language)).join(', ');
+    createLog('CREATE SHIFT', `Added ${created.length} extra shift(s) for ${name} on ${days} (${formatTime(startTime)}-${formatTime(endTime)})`, null);
+  }, [isReadOnly, shifts, handleUpdateShifts, extras, isGuest, currentWeek, language]);
+
+  /**
+   * Fiche d'extra remplie par l'admin (telephone, taux, informations de paie).
+   *
+   * Deux ecritures, pas une : la fiche, et le prenom recopie sur les shifts de
+   * la SEMAINE AFFICHEE. Sans cette seconde ecriture, renommer « Extra 1 » en
+   * « Monique » ne changerait rien pour l'equipe : elle ne lit pas les fiches
+   * (donnees personnelles, regle Firestore admin seulement), elle lit le prenom
+   * pose sur le shift. Les semaines passees gardent leur libelle : c'est de
+   * l'historique, et les reecrire couterait une lecture par semaine.
+   */
+  const saveExtraFiche = useCallback((fiche: Extra) => {
+    if (isReadOnly) return;
+    if (isGuest) {
+      const next = { ...extras, [fiche.id]: fiche };
+      setExtras(next);
+      localStorage.setItem('sandbox_extras', JSON.stringify(next));
+    } else {
+      saveExtra(fiche);
+    }
+    // Le prenom ET l'attente vivent sur le shift : c'est la seule chose qu'un
+    // employe lit. Enregistrer la fiche doit donc retirer les hachures du
+    // planning, sinon le creneau resterait « en attente » a l'ecran alors que
+    // la personne est identifiee.
+    const touched = shifts.some(sh => sh.staffId === fiche.id && sh.extraName
+      && (sh.extraName !== fiche.firstName || (!!sh.extraPending && !!fiche.filledAt)));
+    if (touched) {
+      handleUpdateShifts(shifts.map(sh => (sh.staffId === fiche.id && sh.extraName
+        ? { ...sh, extraName: fiche.firstName, ...(fiche.filledAt ? { extraPending: false } : {}) }
+        : sh)));
+    }
+    createLog('UPDATE STAFF', `Updated extra record for ${fiche.firstName}`, null);
+  }, [isReadOnly, isGuest, extras, shifts, handleUpdateShifts]);
 
   const updateShift = useCallback((updatedShift: Shift) => {
     if (isReadOnly) return;
@@ -929,53 +1217,118 @@ const App: React.FC = () => {
   };
 
   // ---------------------------------------------------------------- absences
-  // Une absence se saisit souvent sur PLUSIEURS jours d'un coup (des conges ne
-  // durent pas un jour), d'ou la liste de jours plutot qu'un jour unique.
-  const addAbsences = useCallback((staffId: string, dayIndexes: number[], kind: AbsenceKind) => {
-    if (isReadOnly || dayIndexes.length === 0) return;
-    const target = staffList.find(s => s.id === staffId) || null;
-    // Une personne ne peut pas etre deux fois absente le meme jour : on remplace
-    // le motif au lieu d'empiler deux lignes contradictoires dans la bande.
-    const kept = absences.filter(a => !(a.staffId === staffId && dayIndexes.includes(a.dayIndex)));
-    const added: Absence[] = dayIndexes.map(dayIndex => ({
-      id: Math.random().toString(36).substr(2, 9),
-      staffId,
-      dayIndex,
-      kind,
-    }));
-    commitWeek({ absences: [...kept, ...added] });
-    const days = dayIndexes
-      .slice()
-      .sort((a, b) => a - b)
-      .map(d => getShiftDate(toWeekId(currentWeek), d, language))
-      .join(', ');
-    createLog('CREATE ABSENCE', `Marked ${target?.name || 'Unknown'} as ${kind} on ${days}`, target);
-  }, [absences, commitWeek, isReadOnly, staffList, currentWeek, language]);
+  // Les absences se saisissent par PERIODE (writeAbsenceChanges, plus bas). Le « repos »
+  // n'existe plus comme etiquette (18/09/2026) : le repos, c'est l'absence de
+  // shift, et l'app controle deja le repos legal a partir des shifts. Les
+  // anciennes etiquettes posees jour par jour restent lisibles et se suppriment
+  // d'un clic (removeAbsence).
+  /**
+   * Ce que la personne avait de prevu sur la periode : heures par jour et
+   * nombre de shifts a retirer. La semaine affichee se lit dans l'etat (elle
+   * peut contenir des modifications pas encore relues du serveur) ; les autres
+   * se chargent a la demande — une lecture par semaine, seulement a la saisie.
+   */
+  const loadPlanned = useCallback(async (staffId: string, start: string, end: string): Promise<PlannedInfo> => {
+    const days = periodDays(start, end);
+    const dayset = new Set(days);
+    const wids = [...new Set(days.map(weekIdOfIso))];
+    const others = wids.filter(w => w !== weekId);
+    let loaded: Record<string, { shifts: Shift[] }> = {};
+    if (isGuest) {
+      for (const w of others) {
+        const raw = localStorage.getItem(`sandbox_week_${w}`);
+        if (raw) loaded[w] = { shifts: JSON.parse(raw).shifts || [] };
+      }
+    } else if (connected && others.length > 0) {
+      loaded = await loadWeeks(others);
+    }
+    if (wids.includes(weekId)) loaded[weekId] = { shifts };
+    const byDate: Record<string, number> = {};
+    const plannedWeekIds: string[] = [];
+    let shiftsDuring = 0;
+    for (const [w, week] of Object.entries(loaded)) {
+      // Ses heures : ses shifts non repris, plus ceux qu'elle reprend pour un collegue.
+      const mine = week.shifts.filter(sh => (sh.coverageBy ? sh.coverageBy === staffId : sh.staffId === staffId));
+      if (mine.length > 0) plannedWeekIds.push(w);
+      for (const sh of mine) {
+        const date = addDaysIso(w, sh.dayIndex + 1);
+        byDate[date] = (byDate[date] || 0) + (sh.endTime - sh.startTime);
+        if (dayset.has(date) && sh.staffId === staffId && !sh.coverageBy) shiftsDuring++;
+      }
+    }
+    return { byDate, plannedWeekIds, shiftsDuring };
+  }, [weekId, shifts, isGuest, connected]);
+
+  /**
+   * Ecrit un ensemble de periodes d'un coup (la saisie, plus les conges qu'un
+   * arret raccourcit). En base : une transaction. En invite : le navigateur,
+   * la semaine affichee passant par commitWeek.
+   */
+  const writeAbsenceChanges = useCallback((changes: AbsenceChange[], removeShiftsFor: AbsencePeriod | null) => {
+    if (isReadOnly || changes.length === 0) return;
+    const stamped = changes.map(c => c.period && !c.period.createdBy
+      ? { ...c, period: { ...c.period, createdBy: user?.uid || 'guest' } } : c);
+    if (isGuest) {
+      const next = { ...absencePeriods };
+      for (const c of stamped) {
+        if (c.period) next[c.period.id] = c.period;
+        else delete next[c.previous!.id];
+      }
+      setAbsencePeriods(next);
+      localStorage.setItem('sandbox_absence_periods', JSON.stringify(next));
+      const wids = new Set(stamped.flatMap(c => [...(c.period?.weekIds || []), ...(c.previous?.weekIds || [])]));
+      for (const w of wids) {
+        const base: WeekData = w === weekId ? { shifts, absences, holidays }
+          : { ...EMPTY_WEEK, ...JSON.parse(localStorage.getItem(`sandbox_week_${w}`) || '{}') };
+        const nextWeek: WeekData = {
+          ...base,
+          shifts: shiftsWithoutAbsence(base.shifts, w, removeShiftsFor),
+          absences: applyAbsenceChanges(base.absences, w, stamped),
+        };
+        if (w === weekId) commitWeek(nextWeek);
+        else localStorage.setItem(`sandbox_week_${w}`, JSON.stringify(nextWeek));
+      }
+    } else {
+      saveAbsenceChanges(stamped, removeShiftsFor);
+    }
+    for (const c of stamped) {
+      const p = c.period || c.previous!;
+      const target = staffList.find(s => s.id === p.staffId) || null;
+      const who = target?.name || 'Unknown';
+      // Le journal est lisible par toute l'equipe : il porte le motif PUBLIC
+      // (conge / absent), jamais « maladie ». Le detail reste dans la periode.
+      const motive = publicAbsenceKind(p.kind);
+      if (!c.period) createLog('DELETE ABSENCE', `Removed ${motive} for ${who} from ${p.start} to ${p.end}`, target);
+      else createLog(c.previous ? 'UPDATE ABSENCE' : 'CREATE ABSENCE',
+        `${c.previous ? 'Updated' : 'Recorded'} ${motive} for ${who} from ${p.start} to ${p.end} (${p.daysCounted} days, ${p.hoursLost} h)`, target);
+    }
+  }, [isReadOnly, user, staffList, isGuest, absencePeriods, weekId, shifts, absences, holidays, commitWeek]);
+
+  const deletePeriod = useCallback((period: AbsencePeriod) =>
+    writeAbsenceChanges([{ period: null, previous: period }], null), [writeAbsenceChanges]);
 
   const removeAbsence = useCallback((id: string) => {
     if (isReadOnly) return;
     const gone = absences.find(a => a.id === id);
+    // Un jour issu d'une periode ne se retire pas seul : la periode (celle que
+    // la paie lit) et le planning divergeraient. On ouvre la periode entiere.
+    if (gone?.periodId) {
+      setEditingPeriodId(gone.periodId);
+      setIsAbsenceModalOpen(true);
+      return;
+    }
     if (!gone) return;
     const target = staffList.find(s => s.id === gone.staffId) || null;
     commitWeek({ absences: absences.filter(a => a.id !== id) });
     const dayLabel = getShiftDate(toWeekId(currentWeek), gone.dayIndex, language);
-    createLog('DELETE ABSENCE', `Removed ${gone.kind} for ${target?.name || 'Unknown'} on ${dayLabel}`, target);
+    createLog('DELETE ABSENCE', `Removed ${visibleAbsenceKind(gone.kind, false)} for ${target?.name || 'Unknown'} on ${dayLabel}`, target);
   }, [absences, commitWeek, isReadOnly, staffList, currentWeek, language]);
 
-  // Un jour ferie est un etat du JOUR, pas l'absence d'une personne : il ne
-  // rentre donc pas dans la liste des absences mais dans celle des jours.
-  const toggleHoliday = useCallback((dayIndex: number) => {
-    if (isReadOnly) return;
-    const on = holidays.includes(dayIndex);
-    commitWeek({ holidays: on ? holidays.filter(d => d !== dayIndex) : [...holidays, dayIndex] });
-    const dayLabel = getShiftDate(toWeekId(currentWeek), dayIndex, language);
-    createLog(on ? 'UNSET HOLIDAY' : 'SET HOLIDAY', `${on ? 'Cleared' : 'Marked'} ${dayLabel} as a public holiday`);
-  }, [holidays, commitWeek, isReadOnly, currentWeek, language]);
 
   const handleUpdateStaffList = async (newList: Staff[], newGuests: string[] = guestEmails) => {
     setStaffList(newList);
     setGuestEmails(newGuests);
-    if (user && !isGuest) {
+    if (connected) {
       await saveStaffToFirebase(newList, newGuests);
       triggerSyncFeedback();
     } else if (isGuest) {
@@ -1006,7 +1359,7 @@ const App: React.FC = () => {
    * une fenetre ouverte n'a aucun sens) ; Echap ferme la fenetre du dessus.
    */
   useEffect(() => {
-    const anyModalOpen = isShiftModalOpen || isStaffModalOpen || isHistoryModalOpen ||
+    const anyModalOpen = isShiftModalOpen || isStaffModalOpen || isExtrasModalOpen || isHistoryModalOpen ||
       isSettingsModalOpen || isAbsenceModalOpen || !!editingShiftId || isMonthPickerOpen;
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1016,9 +1369,12 @@ const App: React.FC = () => {
       if (e.key === 'Escape') {
         if (isMonthPickerOpen) setIsMonthPickerOpen(false);
         else if (editingShiftId) setEditingShiftId(null);
-        else if (isAbsenceModalOpen) setIsAbsenceModalOpen(false);
+        // Fermer oublie la periode ouverte : sinon rouvrir la fenetre retomberait
+        // en modification de l'absence precedente au lieu d'une saisie vierge.
+        else if (isAbsenceModalOpen) { setIsAbsenceModalOpen(false); setEditingPeriodId(null); }
         else if (isShiftModalOpen) setIsShiftModalOpen(false);
         else if (isStaffModalOpen) setIsStaffModalOpen(false);
+        else if (isExtrasModalOpen) setIsExtrasModalOpen(false);
         else if (isHistoryModalOpen) setIsHistoryModalOpen(false);
         else if (isSettingsModalOpen) setIsSettingsModalOpen(false);
         else if (selectedShiftIds.length > 0) setSelectedShiftIds([]);
@@ -1047,7 +1403,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, redo, isShiftModalOpen, isStaffModalOpen, isHistoryModalOpen, isSettingsModalOpen,
+  }, [undo, redo, isShiftModalOpen, isStaffModalOpen, isExtrasModalOpen, isHistoryModalOpen, isSettingsModalOpen,
       isAbsenceModalOpen, editingShiftId, isMonthPickerOpen, isMobileSidebarOpen, currentWeek,
       selectedShiftIds]);
 
@@ -1100,7 +1456,7 @@ const App: React.FC = () => {
     const prevWeekId = toWeekId(prevWeek);
 
     let prevShifts: Shift[] = [];
-    if (user && !isGuest) {
+    if (connected) {
       prevShifts = (await loadShiftsFromFirebase(prevWeekId)) || [];
     } else {
       const cached = localStorage.getItem(`sandbox_week_${prevWeekId}`);
@@ -1144,11 +1500,11 @@ const App: React.FC = () => {
         baseUpdatedAt: weekVersion.current ?? null,
       };
       setDraft(copy);
-      if (user && !isGuest) saveDraft(weekId, copy);
+      if (connected) saveDraft(weekId, copy);
       else if (isGuest) localStorage.setItem(`sandbox_draft_${weekId}`, JSON.stringify(copy));
     }
     setDraftMode(true);
-  }, [isReadOnly, isLoading, draft, officialWeek, user, isGuest, weekId]);
+  }, [isReadOnly, isLoading, draft, officialWeek, user, isGuest, orgId, weekId]);
 
   /**
    * Le brouillon remplace la semaine officielle en UNE ecriture, avec le meme
@@ -1158,7 +1514,7 @@ const App: React.FC = () => {
   const publishDraft = useCallback(async () => {
     if (isReadOnly || !draft) return;
     const week: WeekData = { shifts: draft.shifts, absences: draft.absences, holidays: draft.holidays };
-    const online = !!user && !isGuest;
+    const online = connected;
     const stale = online && draft.baseUpdatedAt !== (weekVersion.current ?? null);
     const question = stale ? t('draftStale') : t('confirmDraftPublish').replace('{n}', String(week.shifts.length));
     if (!window.confirm(question)) return;
@@ -1188,15 +1544,15 @@ const App: React.FC = () => {
     draftModeRef.current = false; // sinon createLog ignorerait CETTE ligne-ci
     createLog('PUBLISH DRAFT', `Published draft for week ${getWeekRangeString(currentWeek)} — ${week.shifts.length} shifts`);
     triggerSyncFeedback();
-  }, [isReadOnly, draft, user, isGuest, weekId, currentWeek, t]);
+  }, [isReadOnly, draft, user, isGuest, orgId, weekId, currentWeek, t]);
 
   const discardDraft = useCallback(async () => {
     if (isReadOnly || !window.confirm(t('confirmDraftDiscard'))) return;
     setDraft(null);
     setDraftMode(false);
-    if (user && !isGuest) await deleteDraft(weekId);
+    if (connected) await deleteDraft(weekId);
     else localStorage.removeItem(`sandbox_draft_${weekId}`);
-  }, [isReadOnly, user, isGuest, weekId, t]);
+  }, [isReadOnly, user, isGuest, orgId, weekId, t]);
 
 
   const handleExportSnapshot = async () => {
@@ -1284,6 +1640,24 @@ const App: React.FC = () => {
             </svg>
             <span className="text-xl">{t('signInGoogle')}</span>
           </button>
+          {USE_EMULATORS && (
+            // Emulateur seulement : comptes de test crees par scripts/seed-emulator.mjs.
+            // L'ecran d'inscription definitif arrive au lot 1d.
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const f = new FormData(e.currentTarget);
+                const r = await loginWithEmail(String(f.get('email')), String(f.get('password')));
+                if (r.error) setAuthError(r.error);
+              }}
+              className="flex flex-col gap-2 bg-white/10 border border-white/20 rounded-3xl p-4"
+            >
+              <input name="email" type="email" placeholder="email (emulateur)" aria-label="Email" className="rounded-xl px-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-white/60 focus:outline-none focus:ring-2 focus:ring-lime-400" />
+              <input name="password" type="password" placeholder="mot de passe" aria-label="Mot de passe" className="rounded-xl px-3 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-white/60 focus:outline-none focus:ring-2 focus:ring-lime-400" />
+              <button type="submit" className="bg-lime-400 text-emerald-950 font-bold rounded-xl py-2">Connexion emulateur</button>
+              {authError && <p className="text-red-200 text-sm">{authError.code}</p>}
+            </form>
+          )}
           {SHOW_SANDBOX && <button onClick={handleBypass} className="bg-white/10 backdrop-blur-xl text-emerald-100 border border-white/20 px-8 py-5 rounded-[2.5rem] font-bold hover:text-white hover:bg-white/20 hover:border-white/30 transition-all flex items-center justify-center gap-3 active:scale-95">
             <svg className="w-5 h-5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
@@ -1294,6 +1668,27 @@ const App: React.FC = () => {
       </div>
     );
   }
+
+  // Connecte, mais le jeton n'a pas encore dit a quels restaurants on a droit.
+  if (user && !isGuest && memberships === null) {
+    return <div className="min-h-screen flex items-center justify-center text-slate-500">{t('loading')}</div>;
+  }
+
+  // Compte valide, mais rattache a aucun restaurant : ni membre, ni invite.
+  // Le lot 1d remplacera cet ecran par la creation d'un restaurant.
+  if (user && !isGuest && !orgId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
+        <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 p-8 text-center space-y-4">
+          <h1 className="text-xl font-bold text-slate-900">{t('noOrgTitle')}</h1>
+          <p className="text-slate-600">{t('noOrgBody').replace('{email}', user.email || '')}</p>
+          <button onClick={handleLogout} className="text-red-600 font-semibold hover:underline">{t('signOut')}</button>
+        </div>
+      </div>
+    );
+  }
+
+  const orgIds = memberships ? Object.keys(memberships) : [];
 
   return (
     <div className="flex h-screen bg-white">
@@ -1361,6 +1756,18 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-2 md:gap-3 relative">
+            {orgIds.length > 1 ? (
+              <select
+                value={orgId ?? ''}
+                onChange={e => switchOrg(e.target.value)}
+                aria-label={t('restaurant')}
+                className="hidden sm:block max-w-[160px] text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5"
+              >
+                {orgIds.map(id => <option key={id} value={id}>{id === orgId && org?.name ? org.name : id}</option>)}
+              </select>
+            ) : org?.name ? (
+              <span className="hidden sm:block max-w-[160px] truncate text-sm font-semibold text-slate-500" title={t('restaurant')}>{org.name}</span>
+            ) : null}
             <button
               onClick={() => setIsSettingsModalOpen(true)}
               className="w-9 h-9 md:w-9 md:h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
@@ -1420,7 +1827,7 @@ const App: React.FC = () => {
           <Calendar
             isDraft={inDraft}
             shifts={shifts}
-            staff={staffList} 
+            staff={displayStaff} 
             currentWeek={currentWeek} 
             navDirection={navDirection}
             onUpdateShift={updateShift} 
@@ -1439,15 +1846,17 @@ const App: React.FC = () => {
             onToggleSelect={toggleShiftSelection}
             me={me}
             monthHours={monthHours}
+            weekAbsence={weekAbsence}
+            monthAbsence={monthAbsence}
             absences={absences}
-            holidays={holidays}
+            holidays={weekHolidays}
             onRemoveAbsence={removeAbsence}
           />
         </div>
       </div>
       <Sidebar
         shifts={shifts}
-        staff={staffList}
+        staff={displayStaff}
         currentWeek={currentWeek}
         onAddClick={fromSidebar(() => setIsShiftModalOpen(true))}
         onAbsenceClick={fromSidebar(() => setIsAbsenceModalOpen(true))}
@@ -1456,12 +1865,15 @@ const App: React.FC = () => {
         onPeriodChange={setStatsPeriod}
         monthHours={monthHours}
         monthLoading={monthLoading}
+        weekAbsence={weekAbsence}
+        monthAbsence={monthAbsence}
         cost={Object.keys(rates).length === 0 ? null
           : statsPeriod === 'month' ? (monthShifts && !monthLoading ? totalCost(monthShifts, rates) : null)
           : totalCost(shifts, rates)}
         monthLabel={new Date(getShiftIsoDate(currentWeek, 3) + 'T12:00:00Z').toLocaleDateString(
           language === 'fr' ? 'fr-FR' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
         onManageStaffClick={fromSidebar(() => setIsStaffModalOpen(true))}
+        onManageExtrasClick={isAdmin ? fromSidebar(() => setIsExtrasModalOpen(true)) : undefined}
         onCopyLastWeek={handleCopyLastWeek}
         onStartDraft={!inDraft && effectiveViewType === 'day' ? fromSidebar(startDraft) : undefined}
         draftExists={draft !== null}
@@ -1480,7 +1892,7 @@ const App: React.FC = () => {
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
       />
-      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} onAdd={handleAddShift} onCheck={previewViolations} onEmployment={employmentCheck} language={language} hours={operatingHours} />
+      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} onAdd={handleAddShift} onAddExtra={addExtraShift} extras={Object.values(extras)} onCheck={previewViolations} onEmployment={employmentCheck} language={language} hours={operatingHours} />
       <StaffModal 
         isOpen={isStaffModalOpen} 
         onClose={() => setIsStaffModalOpen(false)} 
@@ -1490,9 +1902,22 @@ const App: React.FC = () => {
         onUpdate={(s) => handleUpdateStaffList(staffList.map(item => item.id === s.id ? s : item))}
         onAddGuest={handleAddGuest}
         onRemoveGuest={handleRemoveGuest}
-        language={language} 
+        language={language}
+        periods={Object.values(absencePeriods)}
+        leaveBalances={leaveBalances}
+        onSaveLeaveBalance={isReadOnly ? undefined : updateLeaveBalance}
+        leaveUnit={leaveUnit}
+        closedHolidays={closedHolidays}
       />
-      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={staffList} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onCheck={previewViolations} onEmployment={employmentCheck} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} hours={operatingHours} />
+      <ExtrasModal
+        isOpen={isExtrasModalOpen}
+        onClose={() => setIsExtrasModalOpen(false)}
+        extras={Object.values(extras)}
+        onSave={saveExtraFiche}
+        language={language}
+        isReadOnly={isReadOnly}
+      />
+      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={displayStaff} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onCheck={previewViolations} onEmployment={employmentCheck} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} hours={operatingHours} />
       {/* La barre n'existe que pendant une selection : elle occupe le bas de
           l'ecran, et rien ne justifie de manger cette place le reste du temps. */}
       {selectedShiftIds.length > 0 && !isReadOnly && (
@@ -1508,18 +1933,25 @@ const App: React.FC = () => {
       <LogHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} language={language} />
       <AbsenceModal
         isOpen={isAbsenceModalOpen}
-        onClose={() => setIsAbsenceModalOpen(false)}
+        onClose={() => { setIsAbsenceModalOpen(false); setEditingPeriodId(null); }}
         staff={assignableStaff}
-        absences={absences}
-        holidays={holidays}
-        days={language === 'fr' ? DAYS_FR : DAYS_EN}
-        shortDays={language === 'fr' ? DAYS_FR_SHORT : DAYS_EN_SHORT}
-        onAdd={addAbsences}
-        onRemove={removeAbsence}
-        onToggleHoliday={toggleHoliday}
+        closedHolidays={closedHolidays}
+        periods={Object.values(absencePeriods)}
+        editingPeriodId={editingPeriodId}
+        weekMonday={getShiftIsoDate(currentWeek, 0)}
+        defaultStart={(() => {
+          const today = new Date().toISOString().slice(0, 10);
+          const monday = getShiftIsoDate(currentWeek, 0);
+          return today >= monday && today <= getShiftIsoDate(currentWeek, 6) ? today : monday;
+        })()}
+        leaveUnit={leaveUnit}
+        leaveBalances={leaveBalances}
+        loadPlanned={loadPlanned}
+        onSaveChanges={writeAbsenceChanges}
+        onDeletePeriod={deletePeriod}
         language={language}
       />
-      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : updateOperatingHours} />
+      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : updateOperatingHours} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit} />
     </div>
   );
 };

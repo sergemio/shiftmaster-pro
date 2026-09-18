@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { Language } from '../types';
 
 interface DateFieldProps {
@@ -44,6 +44,9 @@ const DateField: React.FC<DateFieldProps> = ({
   labelClassName = '',
 }) => {
   const locale = language === 'fr' ? 'fr-FR' : 'en-GB';
+  // Libelle relie au champ : un clic sur le libelle place le curseur, et un
+  // lecteur d'ecran annonce ce que l'on saisit.
+  const id = useId();
 
   // On construit la date en UTC : `new Date('2026-09-14')` est deja interprete
   // en UTC, mais l'afficher dans un fuseau a l'ouest reculerait d'un jour.
@@ -65,8 +68,9 @@ const DateField: React.FC<DateFieldProps> = ({
 
   return (
     <div>
-      <label className={labelClassName}>{label}</label>
+      <label htmlFor={id} className={labelClassName}>{label}</label>
       <input
+        id={id}
         type="date"
         required={required}
         value={value}

@@ -1,5 +1,8 @@
 # ShiftMaster Pro — Feuille de route
-> Last update: 2026-09-13
+> Last update: 2026-09-17
+
+> **17/09/2026 — Passage en produit SaaS decide.** Le plan, les decisions et l'avancement sont
+> dans `SAAS-PLAN.md` (branche `saas`). Cette feuille de route reste celle de l'app Sezam.
 
 Etabli le 2026-09-06 apres audit UX de l'existant. Cadrage donne par Serge :
 

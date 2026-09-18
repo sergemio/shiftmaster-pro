@@ -7,10 +7,10 @@ import { Shift, Staff, Language, Absence } from '../types';
 const ABSENCE_LABELS: Record<string, string> = {
   conge: 'absenceConge',
   maladie: 'absenceMaladie',
-  repos: 'absenceRepos',
+  absent: 'absenceAbsent',
 };
 import { getTranslation } from '../utils/translations';
-import { isStaffActiveInWeek, contractHoursOn, monthlyContractHours, getShiftIsoDate, formatMoney } from '../utils/helpers';
+import { isStaffActiveInWeek, contractHoursOn, monthlyContractHours, getShiftIsoDate, formatMoney, AbsenceDeduction, expectedNote, visibleAbsenceKind } from '../utils/helpers';
 
 /**
  * Bloc repliable de la colonne de droite (version A de la maquette du 13/09/2026,
@@ -85,6 +85,9 @@ interface SidebarProps {
   /** Heures du mois par employe, chargees a la demande. null = pas encore demande. */
   monthHours?: Record<string, number> | null;
   monthLoading?: boolean;
+  /** Attendu perdu pour absence, par personne : semaine affichee, mois charge. */
+  weekAbsence?: Record<string, AbsenceDeduction>;
+  monthAbsence?: Record<string, AbsenceDeduction> | null;
   onPeriodChange?: (period: 'week' | 'month') => void;
   period?: 'week' | 'month';
   monthLabel?: string;
@@ -92,6 +95,8 @@ interface SidebarProps {
    *  montrer : pas admin, aucun taux, ou mois encore en chargement. */
   cost?: { total: number; missing: number } | null;
   onManageStaffClick: () => void;
+  /** Vivier d'extras. Absent = compte sans acces aux fiches (employe, invite). */
+  onManageExtrasClick?: () => void;
   onCopyLastWeek: () => void;
   /** Ouvre ou reprend le brouillon. Absent = pas propose (hors vue jour, ou deja dedans). */
   onStartDraft?: () => void;
@@ -126,11 +131,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   absences = [],
   monthHours = null,
   monthLoading = false,
+  weekAbsence = {},
+  monthAbsence = null,
   onPeriodChange,
   period = 'week',
   monthLabel = '',
   cost = null,
   onManageStaffClick,
+  onManageExtrasClick,
   onCopyLastWeek,
   onStartDraft,
   draftExists = false,
@@ -218,6 +226,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     const workedHours = isMonth ? (monthHours?.[person.id] ?? 0) : (worked[person.id] || 0);
     const extraHours = isMonth ? 0 : (extra[person.id] || 0);
     const totalWorked = workedHours + extraHours;
+    // L'attendu, c'est le contrat MOINS les heures d'absence de la periode : une
+    // personne en conge n'est pas « en dessous de son contrat ». C'est a cet
+    // attendu que la barre, l'ecart et le resume se comparent.
+    const deduction = person.isExtra ? undefined : (isMonth ? monthAbsence?.[person.id] : weekAbsence[person.id]);
+    const expected = deduction && deduction.hours > 0
+      ? Math.max(0, Math.round((contractHours - deduction.hours) * 10) / 10)
+      : contractHours;
 
     // Un 0.0 ressemble a un oubli de planification. Quand la personne est
     // notee absente, on affiche le motif A LA PLACE de la barre vide : la
@@ -225,19 +240,23 @@ const Sidebar: React.FC<SidebarProps> = ({
     const myAbsences = absences.filter(a => a.staffId === person.id);
     const absenceLabel = (() => {
       if (isMonth || totalWorked > 0 || myAbsences.length === 0) return null;
-      const kinds = [...new Set(myAbsences.map(a => a.kind))];
+      const kinds = [...new Set(myAbsences.map(a => visibleAbsenceKind(a.kind, !isReadOnly)))];
       const kindLabel = kinds.length === 1
-        ? t(ABSENCE_LABELS[kinds[0]] ?? 'absenceRepos')
+        ? t(ABSENCE_LABELS[kinds[0]] ?? 'absenceAbsent')
         : t('absences');
       return myAbsences.length >= 5
         ? `${kindLabel} · ${t('allWeek')}`
-        : `${kindLabel} · ${myAbsences.length}${t('daysShort')}`;
+        : `${kindLabel} · ${myAbsences.length}${t(myAbsences.length === 1 ? 'daysShortOne' : 'daysShort')}`;
     })();
-    return { person, contractHours, workedHours, extraHours, totalWorked, absenceLabel };
+    const note = deduction && deduction.hours > 0 && !absenceLabel
+      ? expectedNote(t, expected, deduction, language) : null;
+    return { person, contractHours: expected, workedHours, extraHours, totalWorked, absenceLabel, note };
   });
 
-  // Resume du bloc ferme : combien de personnes au-dessus et en dessous de leur contrat.
-  const withContract = rows.filter(r => r.contractHours > 0);
+  // Resume du bloc ferme : combien de personnes au-dessus et en dessous de leur attendu.
+  // Un extra n'a pas de contrat : le compter « sous son contrat » serait faux,
+  // et ferait passer une semaine normale pour une semaine a rattraper.
+  const withContract = rows.filter(r => r.contractHours > 0 && !r.person.isExtra);
   const overCount = withContract.filter(r => r.totalWorked > r.contractHours).length;
   const underCount = withContract.filter(r => r.totalWorked < r.contractHours).length;
 
@@ -387,7 +406,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {isMonth && monthLoading && (
             <p className="text-sm text-slate-400 italic">{t('loadingMonth')}</p>
           )}
-          {rows.map(({ person, contractHours, workedHours, extraHours, totalWorked, absenceLabel }) => (
+          {rows.map(({ person, contractHours, workedHours, extraHours, totalWorked, absenceLabel, note }) => (
             <div key={person.id} className="space-y-1">
               <div className="flex justify-between text-xs font-medium">
                 <span className="flex items-center gap-2 text-slate-700">
@@ -395,7 +414,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {person.name}
                 </span>
                 <span className="text-slate-400 font-bold tabular-nums">
-                  {totalWorked.toFixed(1)} / {contractHours}h
+                  {/* Un extra n'a pas d'heures de contrat : « 12.0 / 0h » se lirait
+                      comme un depassement, alors qu'il n'y a rien a comparer. */}
+                  {person.isExtra ? `${totalWorked.toFixed(1)}h` : `${totalWorked.toFixed(1)} / ${contractHours}h`}
                   {isMonth && contractHours > 0 && (
                     <span className={`ml-1.5 ${totalWorked >= contractHours ? 'text-emerald-600' : 'text-amber-600'}`}>
                       {totalWorked >= contractHours ? '+' : '−'}
@@ -448,6 +469,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </>
                 )}
               </div>
+              )}
+              {note && (
+                <p data-testid="expected-note" className="text-xs text-slate-400">{note}</p>
               )}
             </div>
           ))}
@@ -580,22 +604,40 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </Section>
 
-      <div className="mt-auto flex-none">
+      <div className="mt-auto flex-none flex items-stretch gap-2">
+        {/* Les deux boutons sur UNE ligne : la barre laterale se dispute la
+            hauteur avec le planning, et une deuxieme ligne de 44 px se paye sur
+            ce qui est reellement consulte. « Gerer l'equipe » garde la largeur
+            et le fond noir — c'est le geste courant ; les extras sont un detour
+            occasionnel, d'ou le bouton court et clair a cote. */}
         {!isReadOnly && (
           <button
             type="button"
             onClick={onManageStaffClick}
-            className="w-full h-11 px-6 bg-slate-900 text-slate-100 rounded-xl font-bold border border-slate-800 hover:bg-slate-800 transition-all duration-200 active:scale-95 flex items-center justify-center gap-3 shadow-sm"
+            className="flex-1 min-w-0 h-11 px-4 bg-slate-900 text-slate-100 rounded-xl font-bold border border-slate-800 hover:bg-slate-800 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 shadow-sm"
           >
             <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
             </svg>
-            <span className="text-sm">{t('manageStaff')}</span>
+            <span className="text-sm truncate">{t('manageStaff')}</span>
+          </button>
+        )}
+
+        {!isReadOnly && onManageExtrasClick && (
+          <button
+            type="button"
+            onClick={onManageExtrasClick}
+            className="flex-none h-11 px-4 bg-white text-slate-700 rounded-xl font-bold border border-slate-200 hover:bg-slate-50 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 shadow-sm"
+          >
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            <span className="text-sm">{t('extrasTitle')}</span>
           </button>
         )}
 
         {isReadOnly && (
-          <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
+          <div className="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
             <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Status</p>
             <p className="text-sm font-bold text-slate-600 flex items-center justify-center gap-2">
               <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>

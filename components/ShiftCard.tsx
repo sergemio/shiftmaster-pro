@@ -19,6 +19,9 @@ interface ShiftCardProps {
   orphanReason?: OrphanReason;
   /** Cette personne a un autre shift au meme moment le meme jour. */
   hasOverlap?: boolean;
+  /** La personne est absente toute la journee (conge, arret...) : shift pose
+   *  avant la saisie de l'absence, a retirer ou a faire reprendre. */
+  absenceConflict?: boolean;
   /** Phrases des regles de duree du travail que ce shift enfreint. Ambre et non
    *  rouge : depasser 10 h n'est pas une erreur de saisie, c'est une decision
    *  que l'employeur a le droit de prendre en connaissance de cause. */
@@ -49,6 +52,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   language = 'en',
   orphanReason = null,
   hasOverlap = false,
+  absenceConflict = false,
   ruleWarnings = [],
   cost,
   isDraft = false,
@@ -86,6 +90,11 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
 
   const coverStaff = allStaff?.find(s => s.id === shift.coverageBy);
   
+  /** Extra dont la fiche n'est pas remplie : le creneau est tenu, la personne
+   *  n'est pas encore identifiee. Hachures et bordure pointillee, jamais de
+   *  rouge : ce n'est pas une erreur, c'est une etape. */
+  const isPendingExtra = !!shift.extraPending;
+
   const startTime = renderStartTime ?? shift.startTime;
   const endTime = renderEndTime ?? shift.endTime;
   const duration = endTime - startTime;
@@ -135,9 +144,15 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
         borderWidth: '0 0 0 4px',
         // Brouillon : rayures legeres et bordure en pointilles, sur la couleur de
         // la personne. Neutre, jamais rouge : un essai n'est pas une erreur.
-        borderStyle: isDraft ? 'dashed' : 'solid',
+        // Un extra en attente est POINTILLE, un brouillon est TIRETE, et les
+        // hachures penchent dans l'autre sens : les deux etats peuvent se
+        // cumuler (un extra cree dans un brouillon), il faut donc que chacun
+        // reste reconnaissable sans l'autre.
+        borderStyle: isDraft ? 'dashed' : isPendingExtra ? 'dotted' : 'solid',
         backgroundImage: isDraft
           ? 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(100,116,139,0.13) 6px 12px)'
+          : isPendingExtra
+          ? 'repeating-linear-gradient(45deg, transparent 0 5px, rgba(100,116,139,0.16) 5px 10px)'
           : undefined,
         // Un CONTOUR, pas une bordure : le contour ne prend pas de place, donc
         // cocher une carte ne decale pas ses voisines dans la colonne.
@@ -180,6 +195,32 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             <span className="bg-slate-200/60 text-slate-600 text-xs font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-slate-300/30">
               {duration.toFixed(duration % 1 === 0 ? 0 : 1)}H
             </span>
+            {isPendingExtra && (
+              /* Le badge dit ce que les hachures ne peuvent pas dire. Neutre et
+                 non ambre : personne n'a rien fait de mal, il manque juste un
+                 nom et un numero. */
+              <span
+                title={t('extraPendingTitle')}
+                /* Libelle court et AUCUNE coupe forcee. Dans une colonne partagee
+                   a deux shifts le badge tient sur deux lignes, un mot par ligne.
+                   Essaye avant : `truncate` donnait « A r... » (illisible), et
+                   `break-all` coupait « remplir » au milieu. */
+                className="bg-slate-200/80 text-slate-700 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-slate-300 basis-full leading-tight"
+              >
+                {t('extraPendingBadge')}
+              </span>
+            )}
+            {absenceConflict && (
+              /* Rouge, comme le chevauchement : la personne ne viendra pas, le
+                 creneau n'est pas tenu. C'est une erreur de planning, pas une
+                 information (R5.2). Le libelle ne dit pas le motif. */
+              <span
+                title={t('blockedAbsent').replace('{name}', staff.name).replace('{date}', '')}
+                className="bg-red-100 text-red-800 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-red-300 basis-full leading-tight"
+              >
+                ⚠ {t('absentConflict')}
+              </span>
+            )}
             {hasOverlap && (
               /* Rouge assume ici, contrairement au badge de periode d'emploi :
                  personne ne peut etre a deux endroits a la fois, c'est une

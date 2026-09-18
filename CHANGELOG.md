@@ -5,6 +5,413 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-18 18h00 — Absences, lot 4 : fiche salarie et compteur de conges payes (branche `saas`)
+
+- **Fiche salarie** (Gerer l'equipe -> clic sur la personne) : « Jours travailles / semaine » (1 a 6,
+  defaut 5) — sert a estimer les heures d'absence sans planning (35 h sur 4 jours = 8,75 h par jour).
+- **Compteur de conges payes** dans la fiche : l'admin saisit le solde LU SUR LE DERNIER BULLETIN
+  (date + jours). L'app ajoute l'acquis depuis (2,5 j/mois au prorata des jours ; 2 j/mois pendant un
+  arret maladie, loi 2024 ; rien en sans solde ni absence injustifiee ; assimiles : conges, AT/MP,
+  maternite/paternite, evenement familial ; borne par l'embauche et le depart) et retire le pris.
+  Affiche : bulletin, acquis, pris, **solde aujourd'hui**, conges deja poses a venir et solde apres.
+  Marque « Provisoire : le bulletin fait foi ». Historique complet des absences de la personne.
+- **Rappel a la saisie d'un conge** : « Solde de congés après celui-ci : 6,5 j (provisoire) » (ambre
+  si negatif).
+- **Parametres** : decompte en jours ouvrables (lun-sam, 30 j/an, defaut du Code du travail) ou ouvres
+  (lun-ven, 25 j/an). Admin seulement.
+- Base : `orgs/{orgId}/leaveBalances/{staffId}` — lisible des admins et de la personne concernee,
+  ecrit par les admins (solde entre -60 et 200 j). Service `subscribeToLeaveBalances`, `saveLeaveBalance`.
+- **Image PNG exportee** (envoyee a l'equipe) : plus aucun montant (ligne « Coût » et cout par shift
+  retires pendant l'export), decision de Serge.
+- Tests : `test-absences.mjs` 91 cas (+13 compteur) ; regles +7 cas ; navigateur `leave_balance_test.py`
+  19 cas, `export_png_test.py` 8 cas ; non-regression complete (11 suites navigateur, build) : tout passe.
+- Fichiers : `utils/helpers.ts` (`leaveBalanceSummary`), `types.ts` (`LeaveBalance`), `components/LeaveCard.tsx`
+  (nouveau), `StaffModal.tsx`, `AbsenceModal.tsx`, `SettingsModal.tsx`, `Calendar.tsx`, `App.tsx`,
+  `services/firebaseService.ts`, `firestore.rules`, `utils/translations.ts`, `scripts/seed-emulator.mjs`.
+
+## 2026-09-18 17h15 — Motif medical cache a l'equipe, y compris dans les anciennes donnees
+
+Les anciennes etiquettes jour par jour « maladie » (donnees d'avant les periodes, Sezam) s'affichaient
+en clair a toute l'equipe. Desormais « Absent » pour l'equipe (lecture seule), dans la barre laterale et
+dans l'image PNG exportee ; seuls les administrateurs voient « Arrêt maladie ». Aucune donnee modifiee :
+la conversion viendra avec la migration (lot 6). Le journal d'activite, lisible par toute l'equipe
+(regles Firestore), notait « Recorded maladie for Omar » : il note maintenant le motif public
+(conge / absent). `utils/helpers.ts` (`visibleAbsenceKind`), `Calendar.tsx`, `Sidebar.tsx`, `App.tsx` ;
+`legacy_labels_test.py` 12 cas. Export PNG : non teste dans le navigateur.
+
+## 2026-09-18 17h00 — Absences : chasse aux bugs (demande de Serge)
+
+Trois defauts trouves et corriges :
+- **Arret pose sur un jour de conge dont le shift avait ete retire** : l'arret reprenait 0 h (le
+  planning de ce jour etait vide), et l'attendu du contrat remontait (Omar 35 h au lieu de 30 h).
+  Les jours deja portes par une periode (la periode modifiee, ou les conges qu'un arret raccourcit)
+  reprennent desormais SES heures. `components/AbsenceModal.tsx`.
+- **Arrondi des heures jour par jour** : le reste tombait sur le dernier jour (4,02 h au lieu de 4 h).
+  Methode des plus forts restes. `utils/helpers.ts` (`spreadAbsenceHours`), +1 cas unitaire.
+- **« 1 jours »** dans la liste et la barre laterale -> « 1 jour ».
+Verifie sans defaut : mode invite (coupe, stockage, planning), anciennes etiquettes jour par jour
+(remplacees sur les jours d'une periode, pas de faux conflit, attendu estime), arret au milieu de deux
+semaines de conges, arret allonge qui raccourcit encore la suite, rechargement.
+Nouveaux tests permanents : `scripts/browser/overlap_edge_test.py`, `legacy_labels_test.py`.
+Suite complete : 10 tests navigateur, 78 + 16 cas unitaires, regles, build : tout passe.
+
+## 2026-09-18 16h35 — Absences : le formulaire reste sur la meme personne (bug signale par Serge)
+
+Apres une mise a jour, une annulation ou une suppression, le formulaire revenait au premier de la
+liste (Serge) : la saisie suivante partait au mauvais nom (un conge 17-20/09 a ete cree ainsi pour
+Serge dans les donnees de demo). Il reste desormais sur la personne. Le conflit ne s'affiche plus sur
+un formulaire vierge, seulement apres une premiere saisie. `components/AbsenceModal.tsx` ;
+`overlap_ui_test.py` 23 cas.
+
+## 2026-09-18 16h20 — Absences : une seule absence par jour, l'arret interrompt les conges (branche `saas`)
+
+Constat de Serge : l'app acceptait conge 14-16/09 + arret 16-17/09 + demi-conge le 16/09 pour Omar ;
+le mercredi etait decompte trois fois. Conception : `PROPOSITION-absences.md` section 8.
+
+- **Refus** de tout chevauchement pour une meme personne, verifie en direct contre TOUTES ses
+  periodes : encadre rouge qui nomme l'absence en conflit + bouton « Modifier cette absence ».
+  Conges poses sur un arret : refus explicite (« on ne pose pas de congés pendant un arrêt »).
+  Matin + apres-midi le meme jour : accepte.
+- **Exception de droit** : un arret (maladie, AT/MP, maternite/paternite) pose sur des conges payes
+  les raccourcit (coupe en deux si l'arret tombe au milieu, annule s'il couvre tout). Encadre ambre
+  AVANT l'enregistrement : « Congés du 14 au 16 sept → désormais du 14 au 15 sept · 1 jour rendu ».
+  Heures du morceau = celles de ses jours (detail jour par jour), sinon au prorata.
+- **Une seule transaction** pour toutes les periodes touchees (saisie + conges raccourcis), semaines
+  et brouillons compris ; meme logique en mode invite (fonctions pures partagees
+  `applyAbsenceChanges`, `shiftsWithoutAbsence`). Une periode remplace les anciennes etiquettes jour
+  par jour de la personne sur ses jours.
+- **Demi-journee** reservee aux conges payes, sans solde et absence injustifiee (un arret se compte
+  en jours entiers) — dans la fenetre ET dans les regles Firestore.
+- Supprimer un arret previent que les conges raccourcis ne sont pas retablis.
+- Tests : `test-absences.mjs` 77 cas (+28) ; regles +2 cas ; navigateur `overlap_ui_test.py` 19 cas ;
+  non-regression (absences, service, feries, attendu, extras x3, build) : tout passe.
+- Fichiers : `utils/helpers.ts`, `services/firebaseService.ts` (`saveAbsenceChanges` remplace
+  `saveAbsencePeriod`), `App.tsx`, `components/AbsenceModal.tsx`, `utils/translations.ts`,
+  `firestore.rules`, `scripts/test-absences.mjs`, `scripts/test-rules.mjs`, `scripts/browser/`.
+
+## 2026-09-18 14h55 — Absences, lot 3 : l'attendu du contrat baisse des heures d'absence (branche `saas`)
+
+Une personne en conge ou en arret n'apparait plus « en dessous de son contrat ». Barre laterale
+(semaine et mois) et « Ma semaine » comparent les heures faites a l'**attendu** = contrat moins les
+heures d'absence qui tombent dans la periode, avec la note « 30,5 h attendues (1 j de congé) ».
+L'ecart du mois et le resume « x au-dessus · y sous » suivent l'attendu. Motif prive : l'equipe lit
+« d'absence », jamais « maladie ».
+
+- La periode enregistre ses heures **jour par jour** (`hoursByDate`, somme = heures retenues, meme
+  corrigees a la main) ; chaque jour projete dans la semaine porte ses heures (`hours`). Une semaine
+  ou un mois retranche exactement ce qui y tombe — c'est aussi ce qu'il faudra a l'export de paie (lot 5).
+- Anciennes etiquettes sans heures : estimees contrat / jours travailles (lun-sam, moitie pour une
+  demi-journee). Plafond : le contrat de la semaine, jamais d'attendu negatif.
+- Regles Firestore : `hoursByDate` (map, 400 max) sur la periode, `hours` (nombre >= 0) sur le jour.
+- Tests : `test-absences.mjs` 49 cas (+17) ; navigateur `scripts/browser/expected_hours_test.py`
+  16 cas ; non-regression absences, service, feries, extras, regles : tout passe.
+- Fichiers : `utils/helpers.ts`, `types.ts`, `App.tsx`, `components/{Sidebar,MyWeekView,Calendar,AbsenceModal}.tsx`,
+  `utils/translations.ts`, `firestore.rules`.
+
+## 2026-09-18 13h25 — Absences : section « Jours de repos » retiree (branche `saas`)
+
+Decision de Serge : le repos, c'est l'absence de shift ; l'app controle deja le repos legal (11 h,
+35 h, 6 jours) a partir des shifts, et une etiquette posee a la main n'ajoutait rien. Le besoin voisin
+(« je ne suis pas disponible mardi ») releve des demandes des salaries, chantier a venir. La fenetre
+Absences ne contient plus que les periodes. La saisie jour par jour (`addAbsences`) disparait.
+Puis (13h26) Serge confirme que Sezam n'a aucune etiquette « Repos » dans ses donnees : le motif est
+retire **completement** (type, styles, libelles, regle Firestore qui ne l'accepte plus). Seul reste
+le controle legal du repos a partir des shifts (11 h, 35 h, 6 jours). Suites absences (32 cas),
+feries (18) et regles vertes.
+
+---
+
+## 2026-09-18 13h40 — Jours feries : calcules par l'app, fermeture reglee dans les parametres (branche `saas`)
+
+Decision de Serge (13h09, « ok pour les jours feries »), pensee pour tous les restaurants et pas pour
+Sezam seul : certains ferment les feries, d'autres (Sezam) sont ouverts.
+
+- **Les 11 feries legaux sont calcules** (`frenchPublicHolidays`, Paques par l'algorithme gregorien,
+  lundi de Paques, Ascension, lundi de Pentecote en derives) : plus personne ne les coche a la main,
+  semaine par semaine. Ils apparaissent tout seuls dans la bande du calendrier et dans « ma semaine »,
+  avec leur nom (« Armistice »).
+- **Parametres > Jours feries** (admins) : les 11 feries de l'annee, un interrupteur « Ferme » par
+  ferie, **ouvert par defaut**, valable chaque annee (`settings.closedHolidays`). Un ferie ferme :
+  « Ferme · Armistice » sur le calendrier, fond de colonne teinte, **aucun shift possible** (meme
+  garde-fou que les absences), et **non decompte des conges payes** (un ferie travaille, lui,
+  l'est — Code du travail).
+- La section « Jours feries » quitte la fenetre Absences : ce n'est pas l'absence d'une personne.
+  Les anciennes cases cochees (`weeks/*.holidays`) restent dans les donnees, plus lues.
+- Non couvert : Alsace-Moselle (Vendredi saint, 26 decembre).
+- Regle Firestore : `closedHolidays` doit etre une liste (11 max).
+- Tests : **16 cas unitaires** (`scripts/test-holidays.mjs` : Paques 2024-2027 et 2038, Ascension,
+  Pentecote, periode a cheval sur deux annees, feries fermes), **18 cas navigateur**
+  (`holidays_ui_test.py` : Armistice detecte seul, 6 jours ouvert / 5 jours ferme, shift bloque,
+  persistance, vue employe sans interrupteurs), **3 cas de regles**. Suites absences (31), extras
+  (18), regles, unitaires : vertes. `tsc --noEmit` propre.
+
+---
+
+## 2026-09-18 13h10 — Absences : le motif se choisit dans une liste (branche `saas`)
+
+Demande de Serge : « un clic avec une liste de selection plutot que plein de boutons ». Les sept
+boutons de motif deviennent un selecteur : le motif choisi avec sa pastille de couleur et une phrase
+d'aide (« Decompte du solde de conges payes », « Avis d'arret a transmettre sous 48 h »…), une liste
+qui s'ouvre au clic, les sept motifs visibles sans defilement, coche sur le choix courant. Clavier :
+fleches, Entree ; Echap ferme la liste sans fermer la fenetre ; clic ailleurs la referme. 4 cas
+navigateur ajoutes (31 au total, tous verts).
+
+Recommandation faite pour les jours feries (non codee, en attente de Serge) : les sortir de la
+fenetre Absences vers les Parametres du restaurant, avec les 11 feries legaux de l'annee listes
+d'office et un interrupteur « ferme » par ferie (defaut : ouvert). Un ferie ferme sort du decompte
+des conges et bloque les shifts.
+
+---
+
+## 2026-09-18 14h — Absences, lot 2 : saisie par periode, planning, blocage (branche `saas`)
+
+- **Fenetre « Absences » refondue** (`components/AbsenceModal.tsx`) : qui, motif (7 motifs de paie),
+  **premier jour d'absence** et **date de reprise** — la paie compte jusqu'a la veille de la reprise,
+  et c'est ce que le salarie annonce (« je reviens lundi »). En direct : « 6 jours ouvrables
+  decomptes », heures d'absence proposees **d'apres les shifts prevus** (ou estimees au contrat si
+  la semaine n'est pas planifiee, et la fenetre dit laquelle), modifiables — une correction manuelle
+  n'est jamais ecrasee. Demi-journee pour une absence d'un jour. Justificatif recu (arret, AT,
+  maternite). Note obligatoire pour un evenement familial. Liste « en cours et a venir » (badge
+  « sans justificatif »), modification et suppression avec confirmation.
+- **Retirer ses shifts** prevus pendant l'absence : propose et coche des qu'il y en a, fait dans la
+  meme transaction que la periode (semaines + brouillons). Un shift deja repris par un collegue reste.
+- **Planning** : la bande couvre chaque jour de la periode ; cliquer un jour ouvre la **periode
+  entiere** en modification (retirer un jour isole ferait diverger paie et planning). Un shift pose
+  pendant une absence porte le badge rouge « Absent ce jour ».
+- **Creer un shift** pour quelqu'un d'absent toute la journee est **bloque** avec une phrase claire, sur
+  tous les chemins (creation, deplacement, repetition, collage) — meme garde-fou que les dates
+  d'entree/sortie. Le repos et la demi-journee restent des indications, pas des blocages.
+- **Repos** : reste un marqueur de la semaine, dans sa propre section (« decompte nulle part »).
+- **Bac a sable** : periodes et projection gardees dans le navigateur.
+- Corrige au passage : `DateField` relie son libelle au champ (clic sur le libelle, lecteurs
+  d'ecran) ; fermer la fenetre par Echap oubliait de vider la periode ouverte, la reouverture
+  retombait en modification de l'absence precedente (trouve par les tests). Decimales a la
+  francaise dans le champ des heures.
+- Seed de l'emulateur : les fiches d'equipe portent leur `uid` (lecture de ses propres absences).
+- Limite connue : les jours feries marques ne sont pas exclus du decompte (un ferie marque n'est pas
+  forcement un jour de fermeture pour un restaurant) ; a regler avec un reglage « ferme les jours
+  feries ». `workDaysPerWeek` n'est pas encore saisissable (defaut 5) : l'estimation au contrat
+  d'un temps partiel a 3 jours est donc a corriger a la main — c'est le lot 4 (fiche salarie).
+- Tests : **27 cas navigateur** (`absences_ui_test.py` : 6 jours, 9,5 h depuis le planning, shifts
+  retires, bande sur 7 jours, blocage, modification depuis la bande, conflit, note obligatoire,
+  persistance, vue employe sans « maladie », suppression). Les 16 cas du service et les 18 des extras
+  repassent. `tsc --noEmit` propre.
+
+---
+
+## 2026-09-18 13h — Absences, lot 1 : modele, regles, calculs, service (branche `saas`)
+
+Premier lot de `PROPOSITION-absences.md`. Rien de visible a l'ecran encore : c'est la fondation.
+Precision de Serge (12h25) integree au document : la reference est la loi et la pratique standard
+de la paie (« elements variables de paie »), pas nos mails au comptable.
+
+- **Modele** (`types.ts`) : `AbsencePeriod` — une periode du premier jour a la veille de la reprise,
+  motif de paie (`cp`, `maladie`, `at_mp`, `maternite_paternite`, `famille`, `sans_solde`,
+  `injustifiee`), jours decomptes, heures d'absence, justificatif, semaines couvertes. Reglage
+  `leaveUnit` (ouvrables / ouvres), `Staff.workDaysPerWeek`.
+- **Calculs purs** (`utils/helpers.ts`) : `countLeaveDays` (jours ouvrables du premier jour a la
+  veille de la reprise, dimanche et feries chomes exclus — une semaine = 6 jours meme a temps
+  partiel), `absenceHours` (heures des shifts planifies sur les jours d'absence ; semaine non
+  planifiee = contrat / jours travailles, plafonne), `projectAbsencePeriod` (un jour par date,
+  range par semaine, motif anonymise : `conge` ou `absent`).
+- **Regles Firestore** : `orgs/{orgId}/absences/{id}` lisible des admins et de la **personne
+  concernee seulement** (le motif d'un arret est une donnee de sante) ; un employe doit filtrer sur
+  son uid ; evenement familial sans note refuse ; demi-journee seulement sur un jour ; `absent` admis
+  dans les semaines ; `leaveUnit` valide.
+- **Service** (`firebaseService.ts`) : `subscribeToAbsencePeriods`, `saveAbsencePeriod`,
+  `deleteAbsencePeriod`. Periode + projection dans chaque semaine + projection dans les
+  **brouillons** ouverts, en **une transaction** : sans le brouillon, publier un brouillon commence
+  avant la saisie aurait efface l'arret du planning. Les champs vides sont omis (un `null` serait
+  refuse par la regle).
+- **Affichage** : le motif `absent` a son libelle (« Absent ») et une couleur neutre dans le
+  calendrier, « ma semaine » et la barre laterale — sinon il serait apparu comme « Repos ».
+- Le seed de l'emulateur vide aussi `absences/`.
+- Tests : **32 cas unitaires** (`scripts/test-absences.mjs` : semaine = 6 j, mer->jeu = 2 j,
+  sam->lun = 2 j, ferie chome/travaille, ouvres, demi-journee, heures planifiees vs contrat,
+  avenant, projection anonymisee et sans doublon), **21 cas de regles** ajoutes a
+  `test-rules.mjs` (tout conforme), **16 cas de bout en bout** dans l'emulateur via le vrai
+  service (projection sur deux semaines, raccourcissement, brouillon, suppression, lecture par
+  l'employe). Les 11 autres suites unitaires repassent. `tsc --noEmit` propre.
+
+---
+
+## 2026-09-18 — Absences : proposition de refonte (document, pas de code)
+
+`PROPOSITION-absences.md` : constat (etiquette par jour, sans fin, sans heures, sans effet, motif
+medical visible de tous), regles francaises a porter (jours ouvrables du premier jour non travaille a la
+veille de la reprise, 2,5 j/mois, periode 1er juin-31 mai, heures reelles d'absence, RGPD sur le motif),
+parcours cible (saisie par periode + reprise, blocage des shifts, attendu reduit, compteur CP ancre sur le
+bulletin, export « elements de paie » au format du mail au comptable), modele `orgs/{orgId}/absences/` +
+projection anonymisee dans les semaines, ordre de construction en 7 lots. Ancre sur ce que le comptable demande
+reellement (historique `topics/fiches-de-paye/`).
+
+---
+
+## 2026-09-17 22h20 — Extras, lot 3 : le creneau en attente se voit (branche `saas`)
+
+- **Un shift d'extra dont la fiche est vide est hachure** : bordure gauche en **pointilles**
+  (un brouillon est en tirets) et hachures penchees dans l'autre sens, pour que les deux etats
+  restent reconnaissables quand ils se cumulent — un extra cree dans un brouillon. Plus un badge
+  **« A remplir »**, avec l'infobulle « Extra pas encore identifie : ni nom, ni numero ».
+- **L'etat est pose SUR le shift** (`Shift.extraPending`), pas deduit de la fiche : l'equipe ne lit
+  pas les fiches, et sans ce champ un employe ne pourrait pas distinguer un creneau incertain d'un
+  extra confirme. Verifie en test avec le compte employe.
+- **Enregistrer la fiche retire les hachures** des shifts de la semaine affichee, en meme temps que
+  la mise a jour du prenom.
+- Le badge : ni tronque (« A r... » illisible) ni coupe au milieu du mot (`break-all`), mais un
+  libelle assez court pour tenir sur deux lignes dans une colonne partagee a deux shifts.
+- **Aucune regle Firestore a changer** : `isValidShift` ne liste pas les champs autorises.
+- Tests : **14 cas navigateur** (`extras_pending_test.py`), dont la persistance apres rechargement
+  et la vue de l'employe. Les 15 de la fiche et les 18 du lot 1 repassent. `tsc --noEmit` propre.
+
+---
+
+## 2026-09-17 21h55 — Extras, lot 2 : la fiche que l'admin remplit lui-meme (branche `saas`)
+
+Serge : « c'est ou qu'on remplit, quand c'est un extra, les informations, genre son numero de
+telephone, numero de securite ? J'ai pas vu ces champs-la. » Ils n'existaient nulle part : le lot 1
+creait une fiche vide depuis le shift, et le formulaire etait prevu pour la page publique (lot 3,
+qui demande le plan Blaze). Cet ecran ne remplace pas ce lien — le manager a souvent le numero dans
+son telephone et va plus vite a le recopier.
+
+- **Bouton « Extras »** dans la barre laterale, sous « Gerer l'equipe », **admins seulement**
+  (`components/Sidebar.tsx`). Une fiche d'extra n'est pas une fiche de salarie : pas de contrat,
+  pas d'heures dues, et elle se remplit apres la mission.
+- **`components/ExtrasModal.tsx`** (nouveau) : la liste du vivier — fiches a completer en tete,
+  puis la mission la plus recente — et la fiche elle-meme : prenom, nom, telephone, email, cout
+  horaire charge, case « retenir », puis une section **repliee** « Pour la paie (facultatif) » :
+  date et lieu de naissance, adresse, numero de securite sociale, nationalite.
+- **Un seul champ obligatoire : le prenom** (c'est lui qui s'affiche sur le planning). Tout le reste
+  s'enregistre vide. Le formulaire le dit en tete.
+- **Renommer met a jour le planning de l'equipe** : le prenom est recopie sur les shifts de la
+  semaine affichee (`saveExtraFiche` dans `App.tsx`). Sans cette seconde ecriture, passer
+  « Extra 1 » a « Monique » ne changerait rien pour un employe, qui ne lit pas les fiches. Les
+  semaines passees gardent leur libelle : c'est de l'historique, et les reecrire couterait une
+  lecture par semaine.
+- **Vider une case efface vraiment la donnee** : `saveExtra` ecrit `deleteField()` pour un champ
+  absent au lieu d'un `null` (que la regle `rate is number` refusait). Fusion + `deleteField` est la
+  seule combinaison qui distingue « je ne touche pas a ce champ » de « je le retire ».
+- **`filledAt`** se pose des qu'un nom, un telephone ou un email est saisi : c'est ce qui retire
+  l'etiquette « A completer » de la liste.
+- **Les deux boutons du bas sur une seule ligne** (Serge, 21h58 : la barre laterale se dispute la
+  hauteur avec le planning) : « Gerer l'equipe » large et noir, « Extras » court et clair a sa
+  droite. Une deuxieme ligne de 44 px se payait sur ce qui est reellement consulte.
+- Tests : **15 cas navigateur** (`extras_fiche_test.py`), **14 sur la disposition des deux boutons**
+  (`sidebar_buttons_row.py`, largeurs 1400 et 1024 px), dont la persistance apres rechargement
+  complet, l'effacement du taux, et l'absence du bouton pour un employe. Les 18 cas du lot 1
+  repassent. `tsc --noEmit` propre.
+
+---
+
+## 2026-09-17 — Extras, lot 1 : creer un shift pour un extra (branche `saas`)
+
+Premier lot du chantier decrit dans `PROPOSITION-extras.md` (v3, decisions de Serge).
+
+- **Fenetre « Creer un shift »** : deux onglets « Salarie » / « Extra », avec une pastille blanche
+  qui **glisse** de l'un a l'autre (signale par Serge : le changement d'etat n'etait pas anime).
+  Le fond est porte par la pastille, pas par le bouton actif — sinon il apparaitrait d'un coup a
+  l'autre bout et le geste ne se lirait pas comme un deplacement. Respecte « animations reduites ». En mode extra, un champ
+  « Qui vient ? » (prenom facultatif), un bouton silhouette qui rouvre le **vivier** des extras
+  deja connus, et une case « Retenir cette personne pour la prochaine fois ». Les jours et les
+  heures ne changent pas : c'est le manager qui fixe l'horaire.
+- **Sans prenom**, le shift s'appelle « Extra 1 », « Extra 2 »… (`nextExtraName`, pas de doublon
+  meme apres suppression d'un shift).
+- **Vivier** `orgs/{orgId}/extras/{id}` : prenom, nom, telephone, email, taux, `retained`,
+  `filledAt`, `lastMission`, et une section `payroll` dont **aucun champ n'est obligatoire**
+  (decision de Serge : offrir le moyen d'etre en regle, sans l'imposer). **Lecture reservee aux
+  admins** — ce sont des donnees personnelles ; l'app ne s'y abonne que pour un admin, comme pour
+  les couts.
+- **L'equipe voit les prenoms quand meme** : le prenom est recopie sur le shift (`Shift.extraName`),
+  seul champ que les regles laissent lire a tous. Sans cette copie, un employe verrait un shift
+  sans nom.
+- **Lignes d'extras reconstituees depuis les shifts** (`extraStaffRows`) : seuls les extras qui
+  travaillent dans la periode affichee apparaissent, en gris, sous les salaries. Le vivier
+  n'encombre pas le planning.
+- **Regles de duree du travail** : un extra encore anonyme en est exclu (`isPool`) ; des qu'il est
+  identifie, elles s'appliquent a lui comme a n'importe qui.
+- **Barre laterale** : un extra affiche « 12.0h » et non « 12.0 / 0h », et n'entre pas dans le
+  compte « au-dessus / sous contrat » — il n'a pas de contrat.
+- **Tests** : 15 cas unitaires (`scripts/test-extras.mjs`), 13 cas de regles ajoutes (104 au total),
+  18 cas navigateur (creation nommee, anonyme, reprise depuis le vivier sans doublon, employe qui
+  voit le prenom mais pas la fiche). `scripts/seed-emulator.mjs` efface desormais les collections
+  avant de remplir : un reste de test precedent se lisait comme un doublon.
+
+Reste du chantier : lien de partage a remplir par la personne, etats en attente / confirme,
+puis l'export de paie.
+
+---
+
+## 2026-09-17 — SaaS, lot 1b : les actions reservees au serveur (branche `saas`)
+
+Cinq actions dans `functions/index.js`, que les regles Firestore interdisent a l'application :
+
+| Action | Ce qu'elle fait | Garde-fous |
+|---|---|---|
+| `createOrg` | cree un restaurant, essai 14 jours, createur admin et proprietaire, sa fiche dans l'equipe | nom 1-80 caracteres, 3 restaurants maximum par compte |
+| `acceptInvite` | consomme une invitation et pose le role | adresse invitee ET verifiee obligatoire, jeton a usage unique, rattachement a la fiche prevue |
+| `setMemberRole` | passe un membre admin ou employe | admin du restaurant seulement, le proprietaire reste admin |
+| `removeMember` | detache un compte du restaurant | admin seulement, proprietaire intouchable, la fiche et les shifts passes restent, sessions revoquees |
+| `deleteOrg` | supprime tout le restaurant | proprietaire seulement, nom exact a retaper, detache tous les membres |
+
+Source de verite des roles : `users/{uid}.orgs` ; le jeton en est une copie reecrite en entier a
+chaque changement (`syncClaims`), ce qui evite qu'un changement en ecrase un autre. Delai connu :
+un role retire disparait du jeton en une heure au plus ; les sessions ouvertes sont revoquees pour
+raccourcir ce delai.
+
+`scripts/test-functions.mjs` : 48 cas de bout en bout dans les emulateurs (vrais comptes, vrais
+jetons, vraies regles). Chaque cas verifie la reponse de l'action ET ce que la personne peut
+ensuite faire : l'employe promu ecrit le planning, retrograde il ne peut plus, retire il ne lit
+plus rien, le restaurant supprime disparait des jetons de ses deux membres.
+
+`scripts/emulators.mjs` : lanceur des emulateurs. Sous Windows, la lecture des functions depasse
+le delai par defaut de 10 s et echouait en silence — chaque appel repondait alors « not-found ».
+
+**Rien n'est deploye** : les functions demandent le plan Blaze. Tout tourne en local.
+
+---
+
+## 2026-09-17 — SaaS, lot 1c : l'application travaille dans le restaurant courant (branche `saas`)
+
+- `services/firebaseService.ts` : toutes les lectures et ecritures passent sous `orgs/{orgId}/...`
+  (semaines, brouillons, equipe, couts, journal). Un chemin ne se construit pas sans restaurant
+  choisi. Les reglages (heures, fuseau, convention) vivent sur la fiche `orgs/{orgId}.settings`,
+  ecrits champ par champ. Plus de listes `admins` / `staffEmails` dans `settings/staff`.
+  Nouveaux : `loadMemberships` (restaurants et roles lus dans le jeton), `setCurrentOrg`,
+  `subscribeToOrg`, `loginWithEmail`.
+- `App.tsx` : les droits viennent du jeton, plus de la liste d'equipe par email ; le « mode
+  amorcage » (tous les droits si la liste est vide) est supprime. Admin + abonnement vivant =
+  modification ; essai termine ou annule = lecture seule, couts toujours visibles de l'admin.
+  Selecteur de restaurant dans l'en-tete quand la personne en a plusieurs, choix memorise.
+  Ecran « Aucun restaurant sur ce compte ». Un restaurant vide n'affiche plus l'equipe de demo.
+- Mode emulateur : `npm run emu`, `npm run emu:seed`, `npm run dev:emu` (projet `demo-*`, cache
+  memoire, formulaire email/mot de passe visible seulement dans ce mode).
+  `scripts/seed-emulator.mjs` cree 3 restaurants et 6 comptes de test.
+- Verifie : 28 cas navigateur (isolation entre restaurants, employe sans couts ni ajout, essai
+  termine en lecture seule, compte a deux restaurants, ecriture arrivee sous `orgs/sezam` et rien
+  a la racine), bac a sable intact, 10 suites unitaires, compilation et build OK.
+
+---
+
+## 2026-09-17 — SaaS, lot 1a : modele multi-clients et regles Firestore (branche `saas`)
+
+Decision de Serge : vendre l'application a d'autres restaurateurs. Plan complet dans
+`SAAS-PLAN.md`. Ce lot pose les fondations sans toucher a l'application en service :
+
+- `firestore.rules` : tout vit sous `orgs/{orgId}/...` ; le role vient des custom claims du
+  jeton (`orgs: { <orgId>: 'admin' | 'staff' }`) ; plus aucun email en dur ; ecriture seulement
+  si l'abonnement est vivant (essai non expire, actif, ou en relance) ; `status`, `trialEndsAt`,
+  `ownerUid` et la facturation inaccessibles depuis l'app ; claim `support` pour intervenir chez
+  un client. Couts et brouillons restent invisibles des non-admins.
+- `scripts/test-rules.mjs` : 91 cas dans l'emulateur, dont l'isolation entre clients et les
+  quatre etats d'abonnement. `@firebase/rules-unit-testing` ajoute en devDependency.
+- `scripts/rules-deploy.mjs` : refuse de publier ces regles sur le projet Sezam tant que la
+  migration n'est pas faite (elles fermeraient le planning a toute l'equipe).
+- `types.ts` : `Org`, `OrgSettings`, `OrgStatus`, `Invite`, `UserProfile`, `Staff.uid`.
+
+Rien de deploye. La branche `dev` et le dossier `shift-master/` restent l'app Sezam.
+
+---
+
 ## 2026-09-16 — Montant du shift arrondi a l'euro
 
 Demande de Serge : le montant en pied de carte est informatif, il doit etre visuellement leger.

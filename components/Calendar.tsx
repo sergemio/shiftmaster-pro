@@ -1,12 +1,12 @@
 
 import React, { useRef, useState, useMemo, useEffect, useLayoutEffect } from 'react';
-import { Shift, Staff, DragState, DragType, Language, Absence, ViewType } from '../types';
+import { Shift, Staff, DragState, DragType, Language, Absence, ViewType, WeekHoliday } from '../types';
 import { DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT, START_HOUR, END_HOUR, HOUR_HEIGHT } from '../constants';
 import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import MyWeekView from './MyWeekView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, shiftCost, totalCost, formatMoney, staffingPerSlot, formatTime, getWeekRangeLongEn, getIsoWeekNumber } from '../utils/helpers';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, shiftCost, totalCost, formatMoney, staffingPerSlot, formatTime, getWeekRangeLongEn, getIsoWeekNumber, AbsenceDeduction, visibleAbsenceKind } from '../utils/helpers';
 import { SEZAM_LOGO_DATA_URI } from '../utils/brandLogo';
 
 // Branded header stamped on top of the grid in the PNG export only.
@@ -26,13 +26,16 @@ const COVERAGE_SLOT = 0.5;
 const ABSENCE_STYLES: Record<string, { cls: string; label: string }> = {
   conge:   { cls: 'bg-sky-100 text-sky-800 border-sky-300',          label: 'absenceConge' },
   maladie: { cls: 'bg-amber-100 text-amber-800 border-amber-300',    label: 'absenceMaladie' },
-  repos:   { cls: 'bg-slate-100 text-slate-600 border-slate-300',    label: 'absenceRepos' },
+  // Projection d'un arret, d'un evenement familial... : la couleur ne doit pas
+  // trahir le motif que le libelle tait. Ni ambre (maladie) ni bleu (conge).
+  absent:  { cls: 'bg-slate-200 text-slate-700 border-slate-400',    label: 'absenceAbsent' },
 };
 
 interface CalendarProps {
   shifts: Shift[];
   absences?: Absence[];
-  holidays?: number[];
+  /** Feries de la semaine, calcules (voir `holidaysBetween`). */
+  holidays?: WeekHoliday[];
   onRemoveAbsence?: (id: string) => void;
   showCoverage?: boolean;
   /** La semaine affichee est un brouillon : les cartes le montrent. */
@@ -58,6 +61,9 @@ interface CalendarProps {
   /** L'employe connecte, quand on le connait. Absent pour un invite. */
   me?: Staff | null;
   monthHours?: Record<string, number> | null;
+  /** Attendu perdu pour absence, par personne (semaine affichee / mois charge). */
+  weekAbsence?: Record<string, AbsenceDeduction>;
+  monthAbsence?: Record<string, AbsenceDeduction> | null;
   /** Phrases des regles enfreintes, par identifiant de shift. */
   ruleWarnings?: Record<string, string[]>;
   /** Shifts coches. Non vide = on est en mode selection. */
@@ -163,6 +169,8 @@ const Calendar: React.FC<CalendarProps> = ({
   viewType = 'day',
   me = null,
   monthHours = null,
+  weekAbsence = {},
+  monthAbsence = null,
   ruleWarnings = {},
   selectedShiftIds = [],
   onToggleSelect
@@ -253,6 +261,12 @@ const Calendar: React.FC<CalendarProps> = ({
 
   // Recalcule seulement quand les shifts changent, pas a chaque rendu.
   const overlappingIds = useMemo(() => findOverlappingShiftIds(shifts), [shifts]);
+  // Qui est absent toute la journee, jour par jour. Un shift repris par un
+  // collegue n'est pas en conflit : il sera fait.
+  const absentKeys = useMemo(
+    () => new Set(absences.filter(a => !a.half).map(a => `${a.staffId}|${a.dayIndex}`)),
+    [absences],
+  );
 
   const processedShifts = useMemo(() => {
     const layoutShifts: LayoutShift[] = [];
@@ -384,6 +398,8 @@ const Calendar: React.FC<CalendarProps> = ({
           currentWeek={currentWeek}
           days={localizedDays}
           monthHours={monthHours ? (monthHours[me.id] ?? 0) : null}
+          weekAbsence={weekAbsence[me.id]}
+          monthAbsence={monthAbsence ? monthAbsence[me.id] : undefined}
           todayIsoDate={now.isoDate}
           nowHour={now.hour + now.minute / 60}
           language={language as Language}
@@ -504,24 +520,32 @@ const Calendar: React.FC<CalendarProps> = ({
           </div>
           {localizedDays.map((_, i) => {
             const dayAbsences = absences.filter(a => a.dayIndex === i);
-            const isHoliday = holidays.includes(i);
+            const holiday = holidays.find(h => h.dayIndex === i);
             return (
               <div
                 key={i}
                 className={`flex-1 border-r last:border-r-0 p-1 flex flex-col gap-1 min-w-0 ${i === activeDayIndex ? 'block' : 'hidden md:flex'}`}
               >
-                {isHoliday && (
-                  <div className="rounded px-1.5 py-0.5 text-xs font-bold text-center truncate bg-violet-100 text-violet-700 border border-violet-200">
-                    {t('publicHoliday')}
+                {holiday && (
+                  /* Ferme : on le dit en premier, c'est ce qui change le planning.
+                     Ouvert : juste le nom du ferie, un jour de service comme un autre. */
+                  <div
+                    data-testid="holiday-chip"
+                    title={`${t('holiday_' + holiday.key)} — ${t(holiday.closed ? 'holidayClosedHint' : 'holidayOpenHint')}`}
+                    className={`rounded px-1.5 py-0.5 text-xs font-bold text-center truncate border ${holiday.closed ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-200'}`}
+                  >
+                    {holiday.closed ? `${t('holidayClosed')} · ` : ''}{t('holiday_' + holiday.key)}
                   </div>
                 )}
                 {dayAbsences.map(a => {
                   const person = staff.find(p => p.id === a.staffId);
-                  const style = ABSENCE_STYLES[a.kind] ?? ABSENCE_STYLES.repos;
+                  // L'image exportee part a l'equipe : elle ne montre pas le motif non plus.
+                  const style = ABSENCE_STYLES[visibleAbsenceKind(a.kind, !isReadOnly && !isExporting)] ?? ABSENCE_STYLES.absent;
                   return (
                     <button
                       key={a.id}
                       type="button"
+                      data-testid="absence-band"
                       disabled={isReadOnly || !onRemoveAbsence}
                       onClick={() => onRemoveAbsence?.(a.id)}
                       title={`${person?.name || '?'} — ${t(style.label)}${isReadOnly ? '' : ` · ${t('tapToRemove')}`}`}
@@ -604,7 +628,9 @@ const Calendar: React.FC<CalendarProps> = ({
           « ≥ » quand un shift n'a pas de taux : le montant affiche est alors un
           minimum, et le dire vaut mieux que presenter un total incomplet comme exact.
           ------------------------------------------------------------------- */}
-      {Object.keys(rates).length > 0 && shifts.length > 0 && (() => {
+      {/* Jamais dans l'image exportee : elle part a l'equipe, et le cout employeur
+          d'un shift n'a rien a faire sur un emploi du temps (decision de Serge, 18/09). */}
+      {!isExporting && Object.keys(rates).length > 0 && shifts.length > 0 && (() => {
         const money = (c: { total: number; missing: number }) =>
           `${c.missing > 0 ? '≥ ' : ''}${formatMoney(Math.round(c.total), language as Language)}`;
         const hint = (title: string, c: { missing: number }) =>
@@ -645,7 +671,7 @@ const Calendar: React.FC<CalendarProps> = ({
             d'heure, sinon elles se decaleraient des etiquettes. */}
         <div className={`flex-1 flex calendar-grid relative transition-all duration-300 bg-white ${visualStateClass}`} key={weekId} style={{ backgroundSize: `100% ${hourHeight}px` }}>
           {localizedDays.map((_, i) => (
-            <div key={i} className={`flex-1 border-r last:border-r-0 h-full relative ${holidays.includes(i) ? 'bg-violet-50/60' : 'bg-transparent'} ${i === activeDayIndex ? 'block' : 'hidden md:block'}`}>
+            <div key={i} className={`flex-1 border-r last:border-r-0 h-full relative ${holidays.some(h => h.dayIndex === i && h.closed) ? 'bg-violet-50/60' : 'bg-transparent'} ${i === activeDayIndex ? 'block' : 'hidden md:block'}`}>
               {i === todayIndex && !isExporting && <CurrentTimeIndicator timezone={timezone} startHour={startHour} endHour={endHour} hourHeight={hourHeight} />}
             </div>
           ))}
@@ -730,8 +756,9 @@ const Calendar: React.FC<CalendarProps> = ({
                   allStaff={staff}
                   orphanReason={orphanReason}
                   hasOverlap={overlappingIds.has(shift.id)}
+                  absenceConflict={!shift.coverageBy && absentKeys.has(`${shift.staffId}|${shift.dayIndex}`)}
                   ruleWarnings={ruleWarnings[shift.id]}
-                  cost={shiftCost(shift, rates) ?? undefined}
+                  cost={isExporting ? undefined : shiftCost(shift, rates) ?? undefined}
                   isDraft={isDraft}
                   isReadOnly={isReadOnly}
                   isSelected={selectedShiftIds.includes(shift.id)}

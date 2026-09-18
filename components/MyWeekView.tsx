@@ -1,20 +1,24 @@
 import React, { useMemo } from 'react';
-import { Shift, Staff, Absence, Language } from '../types';
+import { Shift, Staff, Absence, Language, WeekHoliday } from '../types';
 import { getTranslation } from '../utils/translations';
 import {
   formatTime, getShiftIsoDate, formatShortDate, contractHoursOn, monthlyContractHours,
+  AbsenceDeduction, expectedNote,
 } from '../utils/helpers';
 
 interface MyWeekViewProps {
   shifts: Shift[];
   absences: Absence[];
-  holidays: number[];
+  holidays: WeekHoliday[];
   me: Staff;
   allStaff: Staff[];
   currentWeek: Date;
   days: string[];
   /** Heures deja faites ce mois-ci, ou null si la donnee n'a pas ete demandee. */
   monthHours?: number | null;
+  /** Attendu perdu pour absence : semaine affichee, mois charge. */
+  weekAbsence?: AbsenceDeduction;
+  monthAbsence?: AbsenceDeduction;
   /** ISO du jour, injecte pour rester testable et coherent avec le fuseau de l'app. */
   todayIsoDate: string;
   nowHour: number;
@@ -24,7 +28,7 @@ interface MyWeekViewProps {
 const KIND_STYLES: Record<string, { cls: string; label: string }> = {
   conge:   { cls: 'bg-sky-50 border-sky-200 text-sky-800',       label: 'absenceConge' },
   maladie: { cls: 'bg-amber-50 border-amber-200 text-amber-800', label: 'absenceMaladie' },
-  repos:   { cls: 'bg-slate-50 border-slate-200 text-slate-600', label: 'absenceRepos' },
+  absent:  { cls: 'bg-slate-100 border-slate-300 text-slate-700', label: 'absenceAbsent' },
 };
 
 /**
@@ -38,7 +42,7 @@ const KIND_STYLES: Record<string, { cls: string; label: string }> = {
  */
 const MyWeekView: React.FC<MyWeekViewProps> = ({
   shifts, absences, holidays, me, allStaff, currentWeek, days,
-  monthHours = null, todayIsoDate, nowHour, language = 'en',
+  monthHours = null, weekAbsence, monthAbsence, todayIsoDate, nowHour, language = 'en',
 }) => {
   const t = getTranslation(language as Language);
 
@@ -54,7 +58,7 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
         iso,
         isToday: iso === todayIsoDate,
         isPast: iso < todayIsoDate,
-        isHoliday: holidays.includes(dayIndex),
+        holiday: holidays.find(h => h.dayIndex === dayIndex),
         shifts: mine.filter(s => s.dayIndex === dayIndex).sort((a, b) => a.startTime - b.startTime),
         absences: absences.filter(a => a.staffId === me.id && a.dayIndex === dayIndex),
       };
@@ -75,8 +79,15 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
 
   const weekHours = byDay.reduce(
     (sum, d) => sum + d.shifts.reduce((a, s) => a + (s.endTime - s.startTime), 0), 0);
-  const weekContract = contractHoursOn(me, getShiftIsoDate(currentWeek, 0));
-  const monthContract = Math.round(monthlyContractHours(me, getShiftIsoDate(currentWeek, 3)));
+  // Attendu = contrat moins les heures d'absence : en conge, on n'est pas en retard.
+  const reduce = (contract: number, d?: AbsenceDeduction) =>
+    d && d.hours > 0 ? Math.max(0, Math.round((contract - d.hours) * 10) / 10) : contract;
+  const weekContract = reduce(contractHoursOn(me, getShiftIsoDate(currentWeek, 0)), weekAbsence);
+  const monthContract = reduce(Math.round(monthlyContractHours(me, getShiftIsoDate(currentWeek, 3))), monthAbsence);
+  const noteOf = (expected: number, d?: AbsenceDeduction) =>
+    d && d.hours > 0 ? expectedNote(t, expected, d, language) : null;
+  const weekNote = noteOf(weekContract, weekAbsence);
+  const monthNote = monthHours === null ? null : noteOf(monthContract, monthAbsence);
 
   const nameOf = (id?: string) => allStaff.find(s => s.id === id)?.name || '?';
 
@@ -114,6 +125,7 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
           <div className="mt-1 text-xl font-black text-slate-900 tabular-nums">
             {weekHours.toFixed(1)}<span className="text-sm font-bold text-slate-400"> / {weekContract}h</span>
           </div>
+          {weekNote && <div data-testid="expected-note" className="mt-0.5 text-xs text-slate-400">{weekNote}</div>}
         </div>
         <div className="rounded-xl border border-slate-200 p-4">
           <div className="text-xs font-bold uppercase tracking-widest text-slate-400">{t('periodMonth')}</div>
@@ -122,6 +134,7 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
               ? <span className="text-sm font-bold text-slate-300">—</span>
               : <>{monthHours.toFixed(1)}<span className="text-sm font-bold text-slate-400"> / {monthContract}h</span></>}
           </div>
+          {monthNote && <div data-testid="expected-note" className="mt-0.5 text-xs text-slate-400">{monthNote}</div>}
         </div>
       </div>
 
@@ -144,13 +157,13 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
             </div>
 
             <div className="flex-1 min-w-0 flex flex-col gap-1.5 justify-center">
-              {day.isHoliday && (
+              {day.holiday && (
                 <span className="self-start text-xs font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200">
-                  {t('publicHoliday')}
+                  {day.holiday.closed ? `${t('holidayClosed')} · ` : ''}{t('holiday_' + day.holiday.key)}
                 </span>
               )}
               {day.absences.map(a => {
-                const st = KIND_STYLES[a.kind] ?? KIND_STYLES.repos;
+                const st = KIND_STYLES[a.kind] ?? KIND_STYLES.absent;
                 return (
                   <span key={a.id} className={`self-start text-xs font-bold px-2 py-0.5 rounded-full border ${st.cls}`}>
                     {t(st.label)}
@@ -173,7 +186,7 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
                   {s.notes && <span className="w-full text-xs text-slate-500 italic">{s.notes}</span>}
                 </div>
               ))}
-              {day.shifts.length === 0 && day.absences.length === 0 && !day.isHoliday && (
+              {day.shifts.length === 0 && day.absences.length === 0 && !day.holiday && (
                 /* Un jour vide reste affiche : « je ne travaille pas jeudi » est
                    une information, pas un blanc a supprimer. */
                 <span className="text-sm text-slate-400 italic">{t('notWorking')}</span>

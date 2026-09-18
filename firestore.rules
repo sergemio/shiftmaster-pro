@@ -3,70 +3,88 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ===============================================================
-    // Data model
+    // ShiftMaster SaaS — regles multi-clients
     // ===============================================================
     //
-    // weeks/{weekId}         weekId = ISO date of the SUNDAY before the week.
-    //                        shifts: Shift[], updatedAt: ISO string.
-    //                        absences: Absence[] (optionnel, ajoute le 06/09/2026)
-    //                        holidays: int[] (optionnel, dayIndex des feries)
-    //                        dayIndex 0 = Monday .. 6 = Sunday.
+    // Un client = une org. Toutes ses donnees vivent sous orgs/{orgId}.
     //
-    // settings/staff         list: Staff[]         (full objects, for the app)
-    //                        admins: string[]      (emails, flat — rules cannot
-    //                        staffEmails: string[]  read inside arrays of objects,
-    //                        guests: string[]       hence these flat mirrors)
+    // orgs/{orgId}                   name, ownerUid, createdAt, updatedAt,
+    //                                status: trialing | active | past_due | canceled,
+    //                                trialEndsAt: timestamp | null,
+    //                                settings: { timezone, language, openHour,
+    //                                            closeHour, convention }
+    // orgs/{orgId}/private/billing   identifiants Stripe (admins en lecture)
+    // orgs/{orgId}/weeks/{weekId}    shifts[], absences[]?, holidays[]?, updatedAt
+    // orgs/{orgId}/drafts/{weekId}   meme forme, + baseUpdatedAt
+    // orgs/{orgId}/logs/{logId}      journal, jamais modifie
+    // orgs/{orgId}/settings/staff    { list: Staff[] }
+    // orgs/{orgId}/settings/rates    { rates: { staffId: number }, updatedAt }
+    // orgs/{orgId}/invites/{token}   email, role, staffId?, createdAt, createdBy
+    // orgs/{orgId}/absences/{id}     periode d'absence (motif de paie) ; admins +
+    //                                la personne concernee en lecture
+    // users/{uid}                    email, orgs: { orgId: role }
     //
-    // settings/global        timezone, language
+    // Le ROLE vient du jeton d'authentification (custom claims poses par les
+    // Cloud Functions) : request.auth.token.orgs = { "<orgId>": "admin"|"staff" }.
+    // Les regles n'ont donc plus a lire settings/staff pour savoir qui est qui,
+    // et plus aucun email n'est code en dur. Le claim `support: true` sert a
+    // intervenir chez un client sans en etre membre (assistance, reparation).
     //
-    // logs/{logId}           userId, userName, action, details, timestamp,
-    //                        and on newer entries targetStaffId/Name, weekId.
-    //                        NOTE: there is no `id` field — Firestore assigns
-    //                        the document id, addDoc never writes one. A rule
-    //                        requiring data.id would reject every single log.
-    //
+    // Ce que l'application NE PEUT PAS ecrire, quel que soit le role :
+    // status, trialEndsAt, ownerUid, la facturation, users/*, la creation et la
+    // suppression d'une org. Tout cela passe par les functions (Admin SDK).
     // ===============================================================
 
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function staffDoc() {
-      return get(/databases/$(database)/documents/settings/staff).data;
-    }
-
-    function staffDocExists() {
-      return exists(/databases/$(database)/documents/settings/staff);
-    }
-
-    function email() {
-      return request.auth.token.email;
-    }
-
-    // Serge is hardcoded on purpose: it is the lock-out escape hatch. If the
-    // roster document is ever emptied or corrupted again (as on 2026-05-04),
-    // every other admin check evaluates false and nobody could repair it.
-    // This works from anywhere in the world — it is the account that matters,
-    // not the location.
-    function isOwner() {
+    function isSupport() {
       return isSignedIn()
-             && email() == "sergemenassa@gmail.com"
-             && request.auth.token.email_verified == true;
+             && 'support' in request.auth.token
+             && request.auth.token.support == true;
     }
 
-    function isAdmin() {
-      return isOwner()
-             || (isSignedIn() && staffDocExists() && email() in staffDoc().admins);
+    // '' quand la personne n'a aucun role dans cette org.
+    function roleIn(orgId) {
+      return (isSignedIn()
+              && 'orgs' in request.auth.token
+              && orgId in request.auth.token.orgs)
+             ? request.auth.token.orgs[orgId] : '';
     }
 
-    // Anyone on the team, plus invited guests. Reading the planning is allowed;
-    // only admins write. Previously this returned true for ANY signed-in Google
-    // account, because its second clause was `list.size() > 0` — always true.
-    function isTeamMember() {
-      return isAdmin()
-             || (isSignedIn() && staffDocExists()
-                 && (email() in staffDoc().staffEmails || email() in staffDoc().guests));
+    function isOrgAdmin(orgId) {
+      return isSupport() || roleIn(orgId) == 'admin';
     }
+
+    function isOrgMember(orgId) {
+      return isSupport() || roleIn(orgId) in ['admin', 'staff'];
+    }
+
+    function orgDoc(orgId) {
+      return get(/databases/$(database)/documents/orgs/$(orgId)).data;
+    }
+
+    // Un abonnement « vivant » : essai non expire, actif, ou en relance de
+    // paiement (Stripe reessaie pendant quelques semaines, on ne coupe pas
+    // l'acces a ce moment-la). Annule = lecture seule, l'export reste possible.
+    // L'expiration de l'essai est jugee ICI, sur l'horloge du serveur : pas
+    // besoin d'une tache planifiee pour fermer les essais termines.
+    function isAlive(org) {
+      return org.status in ['active', 'past_due']
+             || (org.status == 'trialing'
+                 && org.trialEndsAt is timestamp
+                 && org.trialEndsAt > request.time);
+    }
+
+    // Ecrire dans une org : admin, ET abonnement vivant. Le support passe
+    // toujours, c'est le but (reparer un client dont l'essai est fini).
+    function canWrite(orgId) {
+      return isSupport()
+             || (roleIn(orgId) == 'admin' && isAlive(orgDoc(orgId)));
+    }
+
+    // --- formes ------------------------------------------------------------
 
     function isValidShift(shift) {
       return shift.id is string
@@ -84,16 +102,13 @@ service cloud.firestore {
              && a.staffId is string
              && a.dayIndex is int
              && a.dayIndex >= 0 && a.dayIndex <= 6
-             && a.kind in ['conge', 'maladie', 'repos'];
+             && a.kind in ['conge', 'maladie', 'absent']
+             && (!('hours' in a) || (a.hours is number && a.hours >= 0));
     }
 
-    // Rules have no loops. Validating a sample of the array is a deliberate
-    // trade-off: it catches a malformed client without making the rule
-    // unreadable. The shape is enforced end-to-end by the app's types.
-    //
-    // `absences` et `holidays` sont OPTIONNELS : les ~38 semaines ecrites avant
-    // leur existence n'ont pas ces champs, et un restore depuis une vieille
-    // sauvegarde serait refuse si on les exigeait.
+    // Les regles n'ont pas de boucle : on valide le premier et le dernier
+    // element. Ca attrape un client mal forme sans rendre la regle illisible ;
+    // la forme complete est tenue par les types de l'application.
     function isValidWeeklyData(data) {
       return data.shifts is list
              && data.shifts.size() <= 100
@@ -115,59 +130,189 @@ service cloud.firestore {
              && data.action is string
              && data.details is string
              && data.timestamp is string
-             && data.userId == request.auth.uid;   // cannot log as someone else
+             && data.userId == request.auth.uid;   // impossible de signer pour un autre
+    }
+
+    function isHalfHour(v) {
+      return v is number && v >= 0 && v <= 24 && (v * 2) == int(v * 2);
+    }
+
+    function isValidSettings(s) {
+      return s is map
+             && (!('timezone' in s) || s.timezone is string)
+             && (!('language' in s) || s.language in ['en', 'fr'])
+             && (!('openHour' in s) || isHalfHour(s.openHour))
+             && (!('closeHour' in s) || isHalfHour(s.closeHour))
+             && (!('openHour' in s && 'closeHour' in s) || s.closeHour - s.openHour >= 1)
+             && (!('convention' in s) || s.convention in ['hcr', 'none'])
+             && (!('leaveUnit' in s) || s.leaveUnit in ['ouvrables', 'ouvres'])
+             && (!('closedHolidays' in s) || (s.closedHolidays is list && s.closedHolidays.size() <= 11));
+    }
+
+    // Fiche d'extra. Les champs de paie sont tous OPTIONNELS par decision
+    // produit : le formulaire les propose, il ne les exige pas.
+    function isValidExtra(data) {
+      return data.firstName is string
+             && data.firstName.size() >= 1 && data.firstName.size() <= 60
+             && data.retained is bool
+             && data.createdAt is string
+             && (!('lastName' in data) || data.lastName is string)
+             && (!('phone' in data) || data.phone is string)
+             && (!('email' in data) || data.email is string)
+             && (!('rate' in data) || (data.rate is number && data.rate > 0))
+             && (!('filledAt' in data) || data.filledAt == null || data.filledAt is string)
+             && (!('lastMission' in data) || data.lastMission is string)
+             && (!('payroll' in data) || data.payroll is map);
+    }
+
+    // Periode d'absence. `end` est le dernier jour d'absence (la veille de la
+    // reprise). Un evenement familial exige une note : sa duree depend de
+    // l'evenement (mariage, naissance, deces), le comptable doit savoir lequel.
+    function isValidAbsencePeriod(d) {
+      return d.staffId is string
+             && d.kind in ['cp', 'maladie', 'at_mp', 'maternite_paternite', 'famille', 'sans_solde', 'injustifiee']
+             && d.start is string && d.start.size() == 10
+             && d.end is string && d.end.size() == 10
+             && d.end >= d.start
+             && d.daysCounted is number && d.daysCounted >= 0
+             && d.hoursLost is number && d.hoursLost >= 0
+             && d.justificatif in ['none', 'received']
+             && d.weekIds is list && d.weekIds.size() <= 60
+             && d.createdAt is string && d.createdBy is string && d.updatedAt is string
+             && (!('staffUid' in d) || d.staffUid is string)
+             && (!('half' in d) || (d.half in ['am', 'pm'] && d.start == d.end && d.kind in ['cp', 'sans_solde', 'injustifiee']))
+             && (!('note' in d) || (d.note is string && d.note.size() <= 500))
+             && (!('hoursByDate' in d) || (d.hoursByDate is map && d.hoursByDate.size() <= 400))
+             && (d.kind != 'famille' || ('note' in d && d.note.size() > 0));
+    }
+
+    function isValidInvite(data) {
+      return data.email is string
+             && data.email.size() >= 3 && data.email.size() <= 254
+             && data.role in ['admin', 'staff']
+             && data.createdAt is string
+             && data.createdBy == request.auth.uid
+             && (!('staffId' in data) || data.staffId is string);
     }
 
     // ===============================================================
-    // Rules
+    // Regles
     // ===============================================================
 
-    match /weeks/{weekId} {
-      allow read: if isTeamMember();
-      allow write: if isAdmin() && isValidWeeklyData(request.resource.data);
+    // Le profil d'une personne : elle seule le lit, personne ne l'ecrit depuis
+    // l'app (les functions y tiennent le miroir des claims).
+    match /users/{uid} {
+      allow read: if isSupport() || (isSignedIn() && request.auth.uid == uid);
+      allow write: if false;
     }
 
-    match /settings/staff {
-      allow read: if isTeamMember();
-      allow write: if isAdmin();
-    }
+    match /orgs/{orgId} {
+      // L'equipe a besoin du nom, des reglages et du statut (pour afficher
+      // « essai termine »). Les identifiants Stripe sont ailleurs (private/).
+      allow read: if isOrgMember(orgId);
+      // Creation et suppression : functions seulement (createOrg / deleteOrg).
+      allow create, delete: if false;
+      // Un admin ne touche qu'au nom et aux reglages. Le statut, l'essai et le
+      // proprietaire sont hors de portee de l'application, meme pour lui.
+      allow update: if isOrgAdmin(orgId)
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['name', 'settings', 'updatedAt'])
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() >= 1
+                    && request.resource.data.name.size() <= 80
+                    && isValidSettings(request.resource.data.settings);
 
-    match /settings/global {
-      allow read: if isTeamMember();
-      allow write: if isAdmin();
-    }
+      match /private/billing {
+        allow read: if isOrgAdmin(orgId);
+        allow write: if false;          // webhooks Stripe seulement
+      }
 
-    // Cout horaire charge, par salarie. Document SEPARE de settings/staff, et
-    // c'est tout l'interet : settings/staff est lisible par TOUTE l'equipe (il
-    // porte les noms et les couleurs, dont le planning a besoin), donc y ranger
-    // un salaire l'exposerait a n'importe quel employe via l'onglet reseau du
-    // navigateur. Masquer le chiffre dans l'interface ne protege rien : seule
-    // une regle de lecture le protege.
-    //
-    // Forme : { rates: { <staffId>: number }, updatedAt: string }.
-    match /settings/rates {
-      allow read: if isAdmin();
-      allow write: if isAdmin()
-                   && request.resource.data.rates is map
-                   && request.resource.data.updatedAt is string;
-    }
+      match /weeks/{weekId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if canWrite(orgId) && isValidWeeklyData(request.resource.data);
+      }
 
-    // Brouillon d'une semaine (lot 12) : meme forme que weeks/{weekId}. Reserve
-    // aux admins en LECTURE aussi : l'equipe ne doit voir que la semaine
-    // officielle, et seule une regle de lecture le garantit.
-    match /drafts/{weekId} {
-      allow read, delete: if isAdmin();
-      allow create, update: if isAdmin() && isValidWeeklyData(request.resource.data);
-    }
+      // Brouillons : reserves aux admins en LECTURE aussi. L'equipe ne doit
+      // voir que la semaine officielle, et seule une regle de lecture le garantit.
+      match /drafts/{weekId} {
+        allow read: if isOrgAdmin(orgId);
+        allow delete: if canWrite(orgId);
+        allow create, update: if canWrite(orgId) && isValidWeeklyData(request.resource.data);
+      }
 
-    match /logs/{logId} {
-      // Readable by the team: the journal is a shared record, and restricting
-      // reads to admins would make subscribing crash for everyone else.
-      allow read: if isTeamMember();
-      allow create: if isTeamMember() && isValidLog(request.resource.data);
-      // The journal is an audit trail. Nobody edits it from the app; pruning
-      // old entries is done with the admin SDK, which bypasses these rules.
-      allow update, delete: if false;
+      match /settings/staff {
+        allow read: if isOrgMember(orgId);
+        allow write: if canWrite(orgId) && request.resource.data.list is list;
+      }
+
+      // Cout horaire charge, par salarie. Document SEPARE de settings/staff :
+      // settings/staff est lisible par toute l'equipe (noms, couleurs), donc y
+      // ranger un salaire l'exposerait a n'importe quel employe via l'onglet
+      // reseau du navigateur. Masquer le chiffre dans l'interface ne protege
+      // rien : seule une regle de lecture le protege.
+      match /settings/rates {
+        allow read: if isOrgAdmin(orgId);
+        allow write: if canWrite(orgId)
+                     && request.resource.data.rates is map
+                     && request.resource.data.updatedAt is string;
+      }
+
+      // Le journal est un registre partage : l'equipe le lit, chacun y ecrit
+      // en son nom, personne ne le modifie. Le nettoyage passe par l'Admin SDK.
+      match /logs/{logId} {
+        allow read: if isOrgMember(orgId);
+        allow create: if isOrgMember(orgId) && isValidLog(request.resource.data);
+        allow update, delete: if false;
+      }
+
+      // Vivier d'extras. LECTURE RESERVEE AUX ADMINS : telephone, email et
+      // informations de paie sont des donnees personnelles, et l'equipe n'a
+      // aucun besoin d'y acceder — le planning porte le prenom sur le shift.
+      // Le remplissage par l'extra lui-meme ne passe pas par ici : il n'a pas
+      // de compte, c'est une Cloud Function qui ecrit pour lui apres avoir
+      // verifie le jeton du lien.
+      match /extras/{extraId} {
+        allow read: if isOrgAdmin(orgId);
+        allow create, update: if canWrite(orgId) && isValidExtra(request.resource.data);
+        allow delete: if canWrite(orgId);
+      }
+
+      // Absences par periode. Le MOTIF est une donnee de sante quand c'est un
+      // arret (RGPD) : lecture reservee aux admins et a la personne concernee.
+      // L'equipe voit une projection anonymisee dans chaque semaine
+      // (`absent`, jamais `maladie`). Une requete d'employe doit filtrer sur
+      // son propre `staffUid`, sinon Firestore refuse la liste entiere.
+      // Solde de conges lu sur le bulletin, par salarie. Meme confidentialite
+      // que les absences : admins, et la personne concernee en lecture.
+      match /leaveBalances/{staffId} {
+        allow read: if isOrgAdmin(orgId)
+                    || (isOrgMember(orgId) && resource.data.staffUid == request.auth.uid);
+        allow create, update: if canWrite(orgId)
+                    && request.resource.data.staffId == staffId
+                    && request.resource.data.anchorDate is string && request.resource.data.anchorDate.size() == 10
+                    && request.resource.data.anchorBalance is number
+                    && request.resource.data.anchorBalance >= -60 && request.resource.data.anchorBalance <= 200
+                    && request.resource.data.updatedAt is string
+                    && request.resource.data.updatedBy is string
+                    && (!('staffUid' in request.resource.data) || request.resource.data.staffUid is string);
+        allow delete: if canWrite(orgId);
+      }
+
+      match /absences/{absenceId} {
+        allow read: if isOrgAdmin(orgId)
+                    || (isOrgMember(orgId) && resource.data.staffUid == request.auth.uid);
+        allow create, update: if canWrite(orgId) && isValidAbsencePeriod(request.resource.data);
+        allow delete: if canWrite(orgId);
+      }
+
+      // Invitations. L'id du document est le jeton du lien envoye par email ;
+      // l'invite ne lit jamais ce document : la function acceptInvite le fait
+      // avec l'Admin SDK, verifie l'email, pose le claim et supprime l'invitation.
+      match /invites/{inviteId} {
+        allow read, delete: if isOrgAdmin(orgId);
+        allow create: if canWrite(orgId) && isValidInvite(request.resource.data);
+        allow update: if false;
+      }
     }
 
     match /{path=**} {

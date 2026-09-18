@@ -75,6 +75,15 @@ if (mode === '--show' || mode === '--diff') {
 
 if (mode === '--publish') {
   const local = readFileSync(LOCAL, 'utf8');
+  // Garde-fou SaaS : les regles multi-clients ne connaissent que orgs/{orgId}.
+  // Publiees sur le projet Sezam AVANT la migration des donnees, elles fermeraient
+  // le planning a toute l'equipe. On refuse tant que la migration (lot 1g) n'a
+  // pas explicitement leve ce verrou.
+  if (PROJECT === 'shiftmaster-pro-9e20d' && local.includes('match /orgs/{orgId}') && process.env.SAAS_MIGRATED !== 'oui') {
+    console.error('REFUS : ces regles sont celles du SaaS (orgs/). Le projet Sezam n est pas migre.');
+    console.error('Publier maintenant enfermerait toute l equipe dehors. Voir SAAS-PLAN.md, lot 1g.');
+    process.exit(3);
+  }
   const before = await fetchLive();
   if (before.source.trim() === local.trim()) {
     console.log('Les regles en production sont deja identiques au fichier local. Rien a faire.');

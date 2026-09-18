@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Staff, Language } from '../types';
+import { Staff, Language, AbsencePeriod, LeaveBalance, LeaveUnit } from '../types';
+import { getTranslation } from '../utils/translations';
+import LeaveCard from './LeaveCard';
 import { isFormerStaff, todayIso, currentContractHours, formatShortDate } from '../utils/helpers';
 import DateField from './DateField';
 
@@ -13,6 +15,12 @@ interface StaffModalProps {
   onAddGuest: (email: string) => void;
   onRemoveGuest: (email: string) => void;
   language: string;
+  /** Absences de toute l'equipe (admins) : historique et compteur de conges. */
+  periods?: AbsencePeriod[];
+  leaveBalances?: Record<string, LeaveBalance>;
+  onSaveLeaveBalance?: (staffId: string, anchorDate: string, anchorBalance: number) => void;
+  leaveUnit?: LeaveUnit;
+  closedHolidays?: string[];
 }
 
 const StaffModal: React.FC<StaffModalProps> = ({
@@ -24,7 +32,12 @@ const StaffModal: React.FC<StaffModalProps> = ({
   onUpdate,
   onAddGuest,
   onRemoveGuest,
-  language
+  language,
+  periods = [],
+  leaveBalances = {},
+  onSaveLeaveBalance,
+  leaveUnit = 'ouvrables',
+  closedHolidays = [],
 }) => {
   if (!isOpen) return null;
 
@@ -54,6 +67,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
   const [editIsPool, setEditIsPool] = useState(false);
+  const [editWorkDays, setEditWorkDays] = useState(5);
+  const t = getTranslation(language as Language);
   const [showSavedId, setShowSavedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ staff: Staff; action: 'leave' | 'reinstate' } | null>(null);
 
@@ -123,6 +138,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
     setEditStartDate(staff.startDate || '');
     setEditEndDate(staff.endDate || '');
     setEditIsPool(!!staff.isPool);
+    setEditWorkDays(staff.workDaysPerWeek || 5);
     setIsAddingNew(false); // Hide add form if we start editing someone
   };
 
@@ -146,6 +162,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
       startDate: editStartDate || undefined,
       endDate: editEndDate || null,
       isPool: editIsPool,
+      workDaysPerWeek: editWorkDays,
     });
     
     setShowSavedId(staff.id);
@@ -321,6 +338,19 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         </select>
                       </div>
                     </div>
+                    {/* Jours travailles par semaine : estime les heures d'une
+                        absence quand la semaine n'est pas encore planifiee
+                        (contrat / jours travailles, par jour d'absence). */}
+                    <div>
+                      <label className="block text-xs font-bold text-indigo-700 uppercase mb-1" htmlFor={`workdays-${staff.id}`}>{t('workDaysPerWeek')}</label>
+                      <select id={`workdays-${staff.id}`} value={editWorkDays}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setEditWorkDays(parseInt(e.target.value) || 5)}
+                        className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+                        {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <p className="text-xs text-slate-500 mt-1 leading-snug">{t('workDaysHint')}</p>
+                    </div>
                     {/* --------------------------------------------------------
                         Avenants. Un salarie peut passer de 24h a 30h en cours
                         d'annee : sans dater le changement, le nouveau chiffre
@@ -469,6 +499,15 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         />
                       </div>
                     </div>
+                    <LeaveCard
+                      person={staff}
+                      periods={periods}
+                      balance={leaveBalances[staff.id]}
+                      onSave={onSaveLeaveBalance}
+                      leaveUnit={leaveUnit}
+                      closedHolidays={closedHolidays}
+                      language={language as Language}
+                    />
                     <div className="flex gap-2 pt-1">
                       <button 
                         type="button"

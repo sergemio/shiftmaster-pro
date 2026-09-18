@@ -4,7 +4,7 @@ import { Language, Staff, ViewType } from '../types';
 import ExportDataButton from './ExportDataButton';
 import HourlyRatesEditor from './HourlyRatesEditor';
 import { getTranslation } from '../utils/translations';
-import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
+import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours, frenchPublicHolidays } from '../utils/helpers';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -24,6 +24,12 @@ interface SettingsModalProps {
    *  absent = pas admin, la section n'apparait pas. */
   hours?: OperatingHours;
   onHoursChange?: (hours: OperatingHours) => void;
+  /** Feries ou le restaurant ferme. `onClosedHolidaysChange` absent = pas admin. */
+  closedHolidays?: string[];
+  onClosedHolidaysChange?: (keys: string[]) => void;
+  /** Decompte des conges payes. `onLeaveUnitChange` absent = pas admin. */
+  leaveUnit?: 'ouvrables' | 'ouvres';
+  onLeaveUnitChange?: (unit: 'ouvrables' | 'ouvres') => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -39,7 +45,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   rates = {},
   onRatesChange,
   hours = DEFAULT_OPERATING_HOURS,
-  onHoursChange
+  onHoursChange,
+  closedHolidays = [],
+  onClosedHolidaysChange,
+  leaveUnit = 'ouvrables',
+  onLeaveUnitChange,
 }) => {
   if (!isOpen) return null;
   const t = getTranslation(language);
@@ -157,6 +167,69 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   </select>
                 </label>
               </div>
+            </section>
+          )}
+
+          {/* Jours feries (18/09/2026) : ils etaient coches a la main, semaine par
+              semaine, dans la fenetre des absences. L'app les calcule desormais ;
+              le restaurant dit seulement lesquels il FERME, une fois pour toutes. */}
+          {/* Decompte des conges : reglage du restaurant, une fois pour toutes. */}
+          {onLeaveUnitChange && (
+            <section>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">{t('leaveUnitTitle')}</h3>
+              <div className="flex flex-col gap-2" role="radiogroup" aria-label={t('leaveUnitTitle')}>
+                {(['ouvrables', 'ouvres'] as const).map(u => (
+                  <button key={u} type="button" role="radio" aria-checked={leaveUnit === u}
+                    onClick={() => onLeaveUnitChange(u)}
+                    className={`text-left px-4 py-3 rounded-xl border text-sm font-bold transition-all ${leaveUnit === u ? 'bg-indigo-50 border-indigo-600 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                    {t(u === 'ouvrables' ? 'leaveUnitOuvrables' : 'leaveUnitOuvres')}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">{t('leaveUnitHint')}</p>
+            </section>
+          )}
+
+          {onClosedHolidaysChange && (
+            <section>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">
+                {t('holidaysTitle')}
+              </h3>
+              <p className="text-xs text-slate-500 leading-snug mb-3">{t('holidaysHint')}</p>
+              <ul className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+                {frenchPublicHolidays(new Date().getFullYear()).map(h => {
+                  const closed = closedHolidays.includes(h.key);
+                  const name = t('holiday_' + h.key);
+                  return (
+                    <li key={h.key} className="flex items-center gap-3 px-4 py-2.5 bg-white">
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold text-slate-800">{name}</span>
+                        <span className="block text-xs text-slate-500">
+                          {new Date(h.date + 'T12:00:00Z').toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-GB',
+                            { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}
+                        </span>
+                      </span>
+                      <span className={`text-xs font-bold ${closed ? 'text-violet-700' : 'text-slate-400'}`}>
+                        {t(closed ? 'holidayClosed' : 'holidayOpen')}
+                      </span>
+                      {/* Interrupteur : role="switch" pour qu'un lecteur d'ecran
+                          annonce « active / desactive » et le nom du ferie. */}
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={closed}
+                        aria-label={`${name} — ${t('holidayClosed')}`}
+                        onClick={() => onClosedHolidaysChange(closed
+                          ? closedHolidays.filter(k => k !== h.key)
+                          : [...closedHolidays, h.key])}
+                        className={`relative w-10 h-6 rounded-full flex-none transition-colors duration-200 motion-reduce:transition-none ${closed ? 'bg-violet-600' : 'bg-slate-200'}`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 motion-reduce:transition-none ${closed ? 'translate-x-4' : 'translate-x-0'}`} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             </section>
           )}
 
