@@ -5,6 +5,45 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-17 — Barre de defilement des fenetres de shift dans le cadre arrondi
+
+Signale par Serge (capture) : dans « Modifier le shift », la barre de defilement verticale
+depassait des coins arrondis. Le cadre entier defilait. Desormais le cadre coupe ce qui depasse,
+le titre reste fixe et seul le formulaire defile, comme la fenetre Parametres. Meme correction
+sur « Creer un shift ». Verifie a 1200x620 : le formulaire defile, le cadre tient dans l'ecran.
+Fichiers : `EditShiftModal.tsx`, `ShiftModal.tsx`. Non pousse.
+
+---
+
+## 2026-09-17 — Fusion en production + test de restauration de la sauvegarde
+
+**Fusion `dev` → `master` a 18h35** (GO de Serge) : l'equipe recoit les lots 11 et 12 et les
+retouches du 16/09. Point de retour demande par Serge : tag `avant-fusion-2026-09-17` (commit
+`dbf906d`). Sauvegarde de la base lancee juste avant (16:33 UTC). Regles Firestore inchangees.
+
+**Test de restauration : REUSSI a 18h45.** Jamais fait depuis la mise en place des sauvegardes
+(audit du 09/08). La sauvegarde `0042__2026-09-17` a ete remise par le vrai script
+`restore.js --oui` dans une base Firestore LOCALE (emulateur), puis comparee document par document :
+
+| Collection | Sauvegarde | Restaure | Ecarts |
+|---|---|---|---|
+| weeks | 41 | 41 | 0 |
+| settings | 3 | 3 | 0 |
+| logs | 4111 | 4111 | 0 |
+
+Controle : 10 fiches equipe, 1048 shifts. La base de production n'a ete ni lue ni ecrite : fausse
+cle de service generee a la volee (projet `demo-restore-test`), et refus si l'emulateur est absent.
+
+Pour le refaire : cloner `sergemio/shiftmaster-backup`, y ajouter `firebase.json` = `{"firestore":{}}`
+et un script qui lance `restore.js <weeks|settings|logs> --oui` avec la fausse cle, puis compare la
+base locale au dossier de sauvegarde ; le tout via
+`npx firebase emulators:exec --only firestore --project demo-restore-test "sh run.sh"`.
+
+⚠️ **Trou decouvert** : la sauvegarde ne copie pas `drafts/` (brouillons). Un brouillon perdu ne
+se restaure pas ; les semaines publiees, l'equipe, les couts et le journal, si.
+
+---
+
 ## 2026-09-16 — Montant du shift arrondi a l'euro
 
 Demande de Serge : le montant en pied de carte est informatif, il doit etre visuellement leger.

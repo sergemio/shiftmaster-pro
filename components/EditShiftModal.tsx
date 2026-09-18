@@ -129,8 +129,8 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
-        <div className="p-6 md:p-8 pb-4 flex justify-between items-start border-b border-slate-50">
+      <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
+        <div className="flex-none p-6 md:p-8 pb-4 flex justify-between items-start border-b border-slate-50">
           <div>
             <h2 className="text-xl md:text-2xl font-bold text-slate-800">{isReadOnly ? 'View Shift' : 'Edit Shift'}</h2>
             <p className="text-xs md:text-sm text-slate-400 font-medium">{isReadOnly ? 'Details' : 'Detailed configuration'}</p>
@@ -140,7 +140,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="p-6 md:p-8 pt-6 space-y-4 md:space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 md:p-8 pt-6 space-y-4 md:space-y-6">
           {!isConfirmingDelete ? (
             <>
               <div>
