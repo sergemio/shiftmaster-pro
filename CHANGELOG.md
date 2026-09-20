@@ -5,13 +5,19 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-18 — Maquettes du selecteur de semaine (6 pistes)
+
+Demande de Serge : le selecteur « ‹ 14 sept. - 20 sept. › » ne montre pas ce qui est cliquable.
+6 variantes interactives (ordinateur + telephone), barre verticale retiree : `maquettes/nav-semaine-variantes.html`.
+Rien de modifie dans l'app ; en attente du choix de Serge.
+
 ## 2026-09-17 — Barre de defilement des fenetres de shift dans le cadre arrondi
 
 Signale par Serge (capture) : dans « Modifier le shift », la barre de defilement verticale
 depassait des coins arrondis. Le cadre entier defilait. Desormais le cadre coupe ce qui depasse,
 le titre reste fixe et seul le formulaire defile, comme la fenetre Parametres. Meme correction
 sur « Creer un shift ». Verifie a 1200x620 : le formulaire defile, le cadre tient dans l'ecran.
-Fichiers : `EditShiftModal.tsx`, `ShiftModal.tsx`. Non pousse.
+Fichiers : `EditShiftModal.tsx`, `ShiftModal.tsx`. Pousse sur `dev` le 18/09 (commit `abe0055`, go de Serge).
 
 ---
 

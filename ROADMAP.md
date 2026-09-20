@@ -29,7 +29,7 @@ validation de Serge. Detail de ce qui est fait : `CHANGELOG.md`.
 | 9 | Confort de saisie — multi-jours + raccourcis | ✅ fait |
 | 9b | Selection multiple et actions en bloc | ✅ fait |
 | 4 | Publication et notification | 🔒 **demande une decision de Serge** |
-| 6b | Semaine type et shifts types | ⬜ a faire |
+| 6b | Semaine type et shifts types | ❌ ecartee par Serge le 20/09 |
 | 10 | Contraintes legales (4 regles, IDCC 1501) | ✅ fait |
 | 11 | Cout charge sur chaque shift (admins seulement) | ✅ sur la preview (`dev`), pas encore dans `master` |
 | 12 | Mode brouillon par semaine, valide en une fois | ✅ sur la preview (`dev`), pas encore dans `master` |
@@ -46,17 +46,15 @@ fichier exact publie, puis relecture depuis l API pour verifier.
 
 Outil : `node scripts/rules-deploy.mjs --show | --diff | --publish`.
 
-**Il reste a fusionner `dev` dans `master`** pour que l equipe recoive les dix lots — a faire
-apres validation de Serge sur la preview.
+**Fusion `dev` -> `master` : faite jusqu'a 049ed85.** Reste en attente de la validation de Serge
+le seul commit `abe0055` (barre de defilement des fenetres de shift), encore absent de la production.
 
 ---
 
 ## Ce qui reste
 
-### Lot 6b — Semaine type et shifts types
-Au-dela de la copie de la semaine precedente : enregistrer une trame de reference, et des shifts
-types (« midi 11h30-16h ») a poser en un clic. Petite question ouverte : la trame appartient-elle
-au restaurant ou a chaque personne ?
+### Lot 6b — Semaine type et shifts types ❌ ecarte
+Serge l'a ecarte le 20/09/2026 : la copie de la semaine precedente suffit pour l'instant.
 
 ### Lot 4 — Publication et notification 🔒
 Etat **brouillon / publie** par semaine, et notification a la publication ou a la modification
