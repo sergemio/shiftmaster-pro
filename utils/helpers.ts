@@ -18,7 +18,24 @@ export const getWeekRangeString = (date: Date, lang: Language = 'en'): string =>
   return `${start.toLocaleDateString(locale, options)} - ${end.toLocaleDateString(locale, options)}`;
 };
 
-export const getIsoDateString = (date: Date, timeZone: string = 'Europe/Paris'): string => {
+/** « 14 – 20 sept. » : le mois une seule fois, sauf semaine a cheval (« 28 sept. – 4 oct. »). */
+export const getWeekRangeCompact = (date: Date, lang: Language = 'en'): string => {
+  const start = new Date(date);
+  start.setDate(start.getDate() + 1); // weekStart = dimanche, affichage du lundi
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const locale = lang === 'fr' ? 'fr-FR' : 'en-US';
+  const month = (d: Date) => d.toLocaleDateString(locale, { month: 'short' });
+  if (start.getMonth() !== end.getMonth()) {
+    const f = (d: Date) => d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+    return `${f(start)} – ${f(end)}`;
+  }
+  return lang === 'fr'
+    ? `${start.getDate()} – ${end.getDate()} ${month(end)}`
+    : `${month(end)} ${start.getDate()} – ${end.getDate()}`;
+};
+
+export const getIsoDateString =(date: Date, timeZone: string = 'Europe/Paris'): string => {
   try {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone,

@@ -1,3 +1,4 @@
+import re
 """Absences, lot 3 : l'attendu du contrat baisse des heures d'absence.
 
 Jeu de demo : semaine du lundi 14/09/2026. Omar (35 h) a deux shifts : lun 11h30-16h
@@ -79,7 +80,7 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Semaine", exact=True).click(); p.wait_for_timeout(800)
 
     # --- 4. semaine du 21/09 : 0 h faite, l'etiquette d'absence remplace la barre -
-    p.get_by_role("button", name="Next week").click(); p.wait_for_timeout(1800)
+    p.get_by_role("button", name=re.compile("^(Next week|Semaine suivante)$")).click(); p.wait_for_timeout(1800)
     txt = row(p, "Omar").inner_text()
     check("Semaine du 21/09 : Omar 0.0 / 21h (35 - 14)", "0.0 / 21h" in txt, txt)
     check("Semaine du 21/09 : l etiquette « Absent » reste, sans note en double", "Absent" in txt and not notes(p), (txt, notes(p)))

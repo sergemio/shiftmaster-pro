@@ -1,3 +1,4 @@
+import re
 """Jours feries : calcules par l'app, fermes par reglage, effets sur shifts et conges.
 
 Semaine du lundi 9 novembre 2026 : l'Armistice tombe le mercredi 11.
@@ -21,7 +22,7 @@ def login(p, email):
 
 def to_november(p):
     for _ in range(8):
-        p.get_by_role("button", name="Next week").click()
+        p.get_by_role("button", name=re.compile("^(Next week|Semaine suivante)$")).click()
         p.wait_for_timeout(250)
     p.wait_for_timeout(1200)
 

@@ -178,5 +178,24 @@ check('CSV : virgule decimale', rows.some(r => r.startsWith('Lina;Événement fa
 check('CSV : une note contenant « ; » est entre guillemets', rows.some(r => r.endsWith('"Mariage; frère"')), rows.filter(r => r.startsWith('Lina')));
 check('CSV : heures supplementaires d\'Omar', rows.includes('Omar;supplémentaires;2026-09-07;2026-09-13;;5;'), rows.filter(r => r.startsWith('Omar')));
 
+// --- fermetures decidees par le restaurant (18/09/2026) -------------------------
+{
+  const closures = [
+    { start: '2026-08-10', end: '2026-08-23', note: 'vacances' },   // aout : hors mois
+    { start: '2026-09-28', end: '2026-10-04', note: 'travaux' },    // a cheval sur octobre
+    { start: '2026-09-14', end: '2026-09-14' },                     // un seul jour, sans motif
+  ];
+  const pmC = payrollVariables('2026-09', staff, {}, [], countDays, {}, closures);
+  check('Fermetures : seules celles qui touchent le mois, dans l\'ordre', pmC.closures.length === 2 && pmC.closures[0].start === '2026-09-14' && pmC.closures[1].end === '2026-10-04', JSON.stringify(pmC.closures));
+  const LC = { ...L, closuresTitle: 'FERMETURE :', closureLine: 'du {from} au {to}', csvClosure: 'Fermeture du restaurant' };
+  const t2 = payrollText(pmC, LC);
+  check('Fermetures : en tete du texte, dates completes et motif', t2.includes('FERMETURE :\n  - du 14/09 au 14/09\n  - du 28/09 au 04/10 — travaux'), t2.slice(0, 200));
+  const r2 = payrollCsv(pmC, LC).split('\r\n');
+  check('Fermetures : une ligne CSV chacune, sans salarie', r2[1] === ';Fermeture du restaurant;2026-09-14;2026-09-14;;;' && r2[2] === ';Fermeture du restaurant;2026-09-28;2026-10-04;;;travaux', r2.slice(1, 3));
+  check('Fermetures : aucun effet sur les absences des salaries', pmC.lines.every(l => l.absences.length === 0));
+  const pmN = payrollVariables('2026-09', staff, {}, [], countDays);
+  check('Sans fermeture : rien en tete du texte', !payrollText(pmN, LC).includes('FERMETURE'));
+}
+
 console.log(fails ? `\n${fails} ECHEC(S)` : '\nTOUT PASSE');
 process.exit(fails ? 1 : 0);

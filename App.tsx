@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Staff, Shift, Language, Absence, AbsencePeriod, WeekData, DraftData, EMPTY_WEEK, ViewType, Org, OrgRole, Extra, WeekHoliday, LeaveBalance, LeaveUnit, LeaveRequest, RequestableLeaveKind, LaborConvention, Invite } from './types';
-import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind, costRates, leaveBalanceSummary, countLeaveDays, closedHolidayDates, todayIso } from './utils/helpers';
+import { Staff, Shift, Language, Absence, AbsencePeriod, WeekData, DraftData, EMPTY_WEEK, ViewType, Org, OrgRole, Extra, WeekHoliday, LeaveBalance, LeaveUnit, LeaveRequest, RequestableLeaveKind, LaborConvention, Invite, Closure } from './types';
+import { getWeekStart, getWeekRangeString, getWeekRangeCompact, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind, costRates, leaveBalanceSummary, countLeaveDays, closedHolidayDates, todayIso } from './utils/helpers';
 import { INITIAL_STAFF } from './constants';
 import { DEFAULT_CONVENTION, conventionFor, conventionLabel, findViolations, DatedShift, Violation } from './utils/laborRules';
 import { violationText, violationWho } from './utils/violationText';
@@ -678,12 +678,33 @@ const App: React.FC = () => {
     try { return JSON.parse(localStorage.getItem('sandbox_closed_holidays') || '[]'); } catch { return []; }
   });
   const closedHolidays: string[] = isGuest ? sandboxClosedHolidays : (org?.settings?.closedHolidays || []);
+  // Fermetures decidees par le restaurant (vacances, travaux...) : bloquent les
+  // shifts comme un ferie ferme, sortent dans l'export de paie, ne touchent pas
+  // aux soldes de conges.
+  const [sandboxClosures, setSandboxClosures] = useState<Closure[]>(() => {
+    try { return JSON.parse(localStorage.getItem('sandbox_closures') || '[]'); } catch { return []; }
+  });
+  const closures: Closure[] = useMemo(
+    () => (isGuest ? sandboxClosures : (org?.settings?.closures || [])),
+    [isGuest, sandboxClosures, org?.settings?.closures],
+  );
   const weekHolidays: WeekHoliday[] = useMemo(() => {
     const monday = getShiftIsoDate(currentWeek, 0);
-    return holidaysBetween(monday, getShiftIsoDate(currentWeek, 6)).map(h => ({
+    const sunday = getShiftIsoDate(currentWeek, 6);
+    const days: WeekHoliday[] = holidaysBetween(monday, sunday).map(h => ({
       dayIndex: isoDayIndex(h.date), key: h.key, date: h.date, closed: closedHolidays.includes(h.key),
     }));
-  }, [currentWeek, closedHolidays]);
+    // Un jour a la fois : un ferie ferme garde son nom, sinon la fermeture passe devant.
+    for (let i = 0; i < 7; i++) {
+      const date = getShiftIsoDate(currentWeek, i);
+      const c = closures.find(x => x.start <= date && x.end >= date);
+      if (!c || days.some(h => h.dayIndex === i && h.closed)) continue;
+      const rest = days.filter(h => h.dayIndex !== i);
+      days.length = 0;
+      days.push(...rest, { dayIndex: i, key: 'closure', date, closed: true, note: c.note });
+    }
+    return days;
+  }, [currentWeek, closedHolidays, closures]);
 
   // Decompte des conges : jours ouvrables (regle du Code du travail) ou ouvres.
   const [sandboxLeaveUnit, setSandboxLeaveUnit] = useState<LeaveUnit>(() =>
@@ -722,6 +743,16 @@ const App: React.FC = () => {
       return;
     }
     saveGlobalSettings({ closedHolidays: next });
+  }, [isReadOnly, isGuest]);
+
+  const updateClosures = useCallback((next: Closure[]) => {
+    if (isReadOnly) return;
+    if (isGuest) {
+      setSandboxClosures(next);
+      localStorage.setItem('sandbox_closures', JSON.stringify(next));
+      return;
+    }
+    saveGlobalSettings({ closures: next });
   }, [isReadOnly, isGuest]);
 
   const updateOperatingHours = useCallback((next: OperatingHours) => {
@@ -1952,31 +1983,37 @@ const App: React.FC = () => {
               )}
               <span className={`relative w-2.5 h-2.5 rounded-full transition-colors duration-300 ${dot.color}`} />
             </span>
-            <div className="h-6 w-px bg-slate-200 hidden md:block" />
-            <div className="flex items-center gap-0 relative">
-              <button onClick={() => changeWeek(-1)} title={t('previousWeek')} aria-label="Previous week" className="p-1 hover:bg-gray-100 rounded-lg transition-colors active:scale-95">
-                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-              </button>
-              <div className="relative" ref={monthPickerRef}>
-                <button 
+            {/* Selecteur de semaine : un seul bloc borde, trois boutons (semaine
+                precedente, choix du mois, semaine suivante) — chaque zone se lit
+                comme cliquable sans survol. */}
+            <div className="relative" ref={monthPickerRef}>
+              <div className="flex items-stretch h-10 border border-slate-300 rounded-xl bg-white shadow-sm overflow-hidden" data-testid="week-nav">
+                <button onClick={() => changeWeek(-1)} title={t('previousWeek')} aria-label={t('previousWeek')} className="w-9 sm:w-10 grid place-items-center text-slate-700 border-r border-slate-200 hover:bg-slate-100 active:bg-slate-200 transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M15 18l-6-6 6-6" /></svg>
+                </button>
+                <button
                   onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
-                  className={`font-semibold text-slate-700 text-center px-0 sm:px-1 py-2 hover:bg-slate-50 rounded-xl transition-all flex items-center justify-center gap-1 border-2 sm:min-w-[220px] ${isMonthPickerOpen ? 'border-indigo-500 bg-indigo-50/30' : 'border-transparent'}`}
+                  aria-haspopup="dialog"
+                  aria-expanded={isMonthPickerOpen}
+                  title={t('selectMonth')}
+                  className={`flex items-center gap-2 px-2 sm:px-4 text-[15px] font-medium whitespace-nowrap transition-colors ${isMonthPickerOpen ? 'bg-indigo-50 text-indigo-700' : 'text-slate-800 hover:bg-slate-100 active:bg-slate-200'}`}
                 >
-                  <span className="hidden sm:inline">{getWeekRangeString(currentWeek, language)}</span>
-                  <span className="sm:hidden text-xs">{currentWeek.toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { month: 'short', day: 'numeric' })}</span>
-                  <svg className={`hidden sm:block w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isMonthPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                  <svg className={`hidden sm:block w-5 h-5 ${isMonthPickerOpen ? 'text-indigo-500' : 'text-slate-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" strokeWidth={2} /><path strokeLinecap="round" strokeWidth={2} d="M16 3v4M8 3v4M3 10h18" /></svg>
+                  <span className="hidden sm:inline">{getWeekRangeCompact(currentWeek, language)}</span>
+                  <span className="sm:hidden text-sm">{/* currentWeek = dimanche ; la semaine affichee commence le lundi */}{new Date(currentWeek.getTime() + 864e5).toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { month: 'short', day: 'numeric' })}</span>
+                  <svg className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${isMonthPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 9l6 6 6-6" />
                   </svg>
                 </button>
-                {isMonthPickerOpen && (
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50">
-                    <MonthYearPicker selectedDate={currentWeek} onSelect={handleJumpToMonth} onJumpToToday={handleJumpToToday} language={language} />
-                  </div>
-                )}
+                <button onClick={() => changeWeek(1)} title={t('nextWeek')} aria-label={t('nextWeek')} className="w-9 sm:w-10 grid place-items-center text-slate-700 border-l border-slate-200 hover:bg-slate-100 active:bg-slate-200 transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M9 6l6 6-6 6" /></svg>
+                </button>
               </div>
-              <button onClick={changeWeek.bind(null, 1)} title={t('nextWeek')} aria-label="Next week" className="p-1 hover:bg-gray-100 rounded-lg transition-colors active:scale-95">
-                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-              </button>
+              {isMonthPickerOpen && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50">
+                  <MonthYearPicker selectedDate={currentWeek} onSelect={handleJumpToMonth} onJumpToToday={handleJumpToToday} language={language} />
+                </div>
+              )}
             </div>
           </div>
           
@@ -2198,7 +2235,7 @@ const App: React.FC = () => {
         onRefuseRequest={(req, reply) => decideLeaveRequest(req, 'refused', { reply })}
         language={language}
       />
-      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : updateOperatingHours} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit}
+      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : updateOperatingHours} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} closures={closures} onClosuresChange={isReadOnly ? undefined : updateClosures} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit}
         convention={conventionFor(conventionId).id} onConventionChange={isReadOnly ? undefined : updateConvention}
         onOpenPayroll={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setIsPayrollOpen(true); }} />
       <PayrollModal
@@ -2209,6 +2246,7 @@ const App: React.FC = () => {
         extras={extras}
         leaveUnit={leaveUnit}
         closedHolidays={closedHolidays}
+        closures={closures}
         loadWeeks={loadOfficialWeeks}
         language={language}
       />

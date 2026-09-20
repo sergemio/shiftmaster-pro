@@ -5,7 +5,25 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
-## 2026-09-18 19h30 — Chantiers restants : image exportee, fiche en francais, solde employe, taux extras, lots 1d-1f (branche `saas`, non commite)
+## 2026-09-18 19h15 — Fermetures decidees par le restaurant (branche `saas`, non commite)
+
+- Parametres -> « Fermetures du restaurant » : du / au (inclus) / motif facultatif, liste, retrait. Admin seul.
+- Planning : chaque jour ferme porte « Fermé · motif » et bloque les shifts, comme un ferie ferme ; l'employe le voit.
+- Export de paie : les fermetures du mois en tete (« a voir avec l'employeur : conges imposes ou jours payes »)
+  et une ligne CSV chacune. **Aucun effet sur les soldes ni les absences** (decision de Serge : le comptable et le
+  patron tranchent ; le solde se recale sur le bulletin suivant).
+- Regles : `settings.closures` = liste (60 max). Tests : paie +5, regles +3, navigateur `closures_test.py` 18 ;
+  non-regression feries, paie, image exportee, build : OK.
+
+## 2026-09-18 18h50 — Selecteur de semaine : variante A (branche `saas`, non commite)
+
+- Barre verticale retiree ; fleches et dates dans un seul bloc borde, trois boutons (maquette A,
+  `topics/shift-master/maquettes/nav-semaine-variantes.html`). Dates « 14 – 20 sept. » (mois une fois),
+  texte 15 px non gras sous le nom de l'app (18 px gras), icone calendrier.
+- Corrige : sur telephone, la date affichee etait le dimanche (13 sept.) au lieu du lundi.
+- Libelles des fleches traduits ; 3 tests navigateur adaptes (passent).
+
+## 2026-09-18 19h30 — Chantiers restants : image exportee, fiche en francais, solde employe, taux extras, lots 1d-1f (branche `saas`, commit `a758575` pousse)
 
 - **Image PNG exportee** : plus de logo ni de nom Sezam&Co en dur. En-tete = initiale et nom du
   restaurant connecte, « Planning de la semaine », dates et numero de semaine dans la langue de l'app.

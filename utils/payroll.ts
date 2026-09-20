@@ -84,6 +84,8 @@ export interface PayrollMonth {
   month: string;
   lines: PayrollLine[];
   extras: PayrollExtraLine[];
+  /** Fermetures du restaurant qui touchent le mois (dates completes). */
+  closures: { start: string; end: string; note?: string }[];
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -104,6 +106,7 @@ export const payrollVariables = (
   periods: AbsencePeriod[],
   countDays: (start: string, end: string) => number,
   extraNames: Record<string, string> = {},
+  closures: { start: string; end: string; note?: string }[] = [],
 ): PayrollMonth => {
   const first = `${month}-01`;
   const last = `${month}-${String(daysInMonth(first)).padStart(2, '0')}`;
@@ -215,7 +218,10 @@ export const payrollVariables = (
   const extras = [...extraRows.values()]
     .map(r => ({ ...r, days: r.days.sort(), hours: round2(r.hours) }))
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  return { month, lines, extras };
+  const monthClosures = closures
+    .filter(c => c.start <= last && c.end >= first)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  return { month, lines, extras, closures: monthClosures };
 };
 
 // -----------------------------------------------------------------------------
@@ -247,6 +253,9 @@ export interface PayrollLabels {
   extraLine: string;          // « {name} : {h} h sur {n} jour(s) — {dates} »
   daysUnit: string;           // « j »
   footer: string;             // « Chiffres issus du planning… »
+  closuresTitle?: string;     // « Fermeture décidée par le restaurant : … »
+  closureLine?: string;       // « du {from} au {to} »
+  csvClosure?: string;        // « Fermeture du restaurant »
   kindLabel: (kind: LeaveKind) => string;
   date: (iso: string) => string;
   num: (n: number) => string;
@@ -263,6 +272,15 @@ const fill = (tpl: string, vars: Record<string, string>) =>
 
 export const payrollText = (pm: PayrollMonth, L: PayrollLabels): string => {
   const out: string[] = [L.title, ''];
+  // En tete : un evenement du restaurant, qui touche toute l'equipe. Le
+  // comptable demande au patron s'il s'agit de conges imposes ou de jours payes.
+  if (pm.closures.length && L.closuresTitle && L.closureLine) {
+    out.push(L.closuresTitle);
+    for (const c of pm.closures) {
+      out.push('  - ' + fill(L.closureLine, { from: L.date(c.start), to: L.date(c.end) }) + (c.note ? ` — ${c.note}` : ''));
+    }
+    out.push('');
+  }
   for (const line of pm.lines) {
     const head = line.weeklyHours > 0
       ? fill(L.contract, { h: L.num(line.weeklyHours), base: L.num(line.monthlyBase) })
@@ -320,6 +338,7 @@ export const payrollText = (pm: PayrollMonth, L: PayrollLabels): string => {
 /** CSV au format des tableurs francais : point-virgule, virgule decimale. */
 export const payrollCsv = (pm: PayrollMonth, L: PayrollLabels): string => {
   const rows: string[][] = [L.csvHeader];
+  for (const c of pm.closures) rows.push(['', L.csvClosure || '', c.start, c.end, '', '', c.note || '']);
   const n = (x: number) => String(x).replace('.', ',');
   for (const line of pm.lines) {
     if (line.entry) rows.push([line.name, L.csvEntry, line.entry, '', '', '', '']);

@@ -544,10 +544,14 @@ const Calendar: React.FC<CalendarProps> = ({
                      Ouvert : juste le nom du ferie, un jour de service comme un autre. */
                   <div
                     data-testid="holiday-chip"
-                    title={`${t('holiday_' + holiday.key)} — ${t(holiday.closed ? 'holidayClosedHint' : 'holidayOpenHint')}`}
+                    title={holiday.key === 'closure'
+                      ? `${t('holiday_closure')}${holiday.note ? ` — ${holiday.note}` : ''}`
+                      : `${t('holiday_' + holiday.key)} — ${t(holiday.closed ? 'holidayClosedHint' : 'holidayOpenHint')}`}
                     className={`rounded px-1.5 py-0.5 text-xs font-bold text-center truncate border ${holiday.closed ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-200'}`}
                   >
-                    {holiday.closed ? `${t('holidayClosed')} · ` : ''}{t('holiday_' + holiday.key)}
+                    {holiday.key === 'closure'
+                      ? `${t('holidayClosed')}${holiday.note ? ` · ${holiday.note}` : ''}`
+                      : <>{holiday.closed ? `${t('holidayClosed')} · ` : ''}{t('holiday_' + holiday.key)}</>}
                   </div>
                 )}
                 {dayAbsences.map(a => {

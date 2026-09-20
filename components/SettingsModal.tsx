@@ -1,10 +1,10 @@
 
-import React from 'react';
-import { Language, Staff, ViewType } from '../types';
+import React, { useState } from 'react';
+import { Language, Staff, ViewType, Closure } from '../types';
 import ExportDataButton from './ExportDataButton';
 import HourlyRatesEditor from './HourlyRatesEditor';
 import { getTranslation } from '../utils/translations';
-import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours, frenchPublicHolidays } from '../utils/helpers';
+import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours, frenchPublicHolidays, formatShortDate, todayIso } from '../utils/helpers';
 import { CONVENTIONS, conventionLabel } from '../utils/laborRules';
 
 interface SettingsModalProps {
@@ -28,6 +28,9 @@ interface SettingsModalProps {
   /** Feries ou le restaurant ferme. `onClosedHolidaysChange` absent = pas admin. */
   closedHolidays?: string[];
   onClosedHolidaysChange?: (keys: string[]) => void;
+  /** Fermetures decidees par le restaurant. `onClosuresChange` absent = pas admin. */
+  closures?: Closure[];
+  onClosuresChange?: (next: Closure[]) => void;
   /** Decompte des conges payes. `onLeaveUnitChange` absent = pas admin. */
   leaveUnit?: 'ouvrables' | 'ouvres';
   onLeaveUnitChange?: (unit: 'ouvrables' | 'ouvres') => void;
@@ -37,6 +40,73 @@ interface SettingsModalProps {
   /** Ouvre l'export des elements variables de paie. Absent = pas admin. */
   onOpenPayroll?: () => void;
 }
+
+/**
+ * Fermetures decidees par le restaurant : une periode (du, au) et un motif
+ * facultatif. Les jours passes restent visibles jusqu'a ce que la paie du mois
+ * soit faite : on ne les masque pas, on les range apres les prochaines.
+ */
+const ClosuresEditor: React.FC<{ closures: Closure[]; onChange: (next: Closure[]) => void; language: Language }> = ({ closures, onChange, language }) => {
+  const t = getTranslation(language);
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [note, setNote] = useState('');
+  const valid = !!start && !!end && end >= start;
+  const today = todayIso();
+  const sorted = [...closures].sort((a, b) => a.start.localeCompare(b.start));
+  const add = () => {
+    if (!valid) return;
+    const c: Closure = { start, end };
+    if (note.trim()) c.note = note.trim().slice(0, 80);
+    onChange([...closures, c]);
+    setStart(''); setEnd(''); setNote('');
+  };
+  const input = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-base sm:text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500';
+  return (
+    <section data-testid="closures">
+      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">{t('closuresTitle')}</h3>
+      <p className="text-xs text-slate-500 leading-snug mb-3">{t('closuresHint')}</p>
+      {sorted.length > 0 && (
+        <ul className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden mb-3">
+          {sorted.map(c => (
+            <li key={`${c.start}_${c.end}`} className={`flex items-center gap-3 px-4 py-2.5 bg-white ${c.end < today ? 'opacity-60' : ''}`} data-testid="closure-row">
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold text-slate-800">
+                  {c.start === c.end
+                    ? formatShortDate(c.start, language)
+                    : t('closureRange').replace('{from}', formatShortDate(c.start, language)).replace('{to}', formatShortDate(c.end, language))}
+                </span>
+                {c.note && <span className="block text-xs text-slate-500 truncate">{c.note}</span>}
+              </span>
+              <button type="button" onClick={() => onChange(closures.filter(x => x !== c))}
+                className="text-xs font-bold text-slate-400 hover:text-red-600" aria-label={`${t('closureRemove')} — ${c.start}`}>
+                {t('closureRemove')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs font-semibold text-slate-600">
+          {t('closureFrom')}
+          <input type="date" value={start} onChange={e => { setStart(e.target.value); if (!end || e.target.value > end) setEnd(e.target.value); }} className={`${input} mt-1`} />
+        </label>
+        <label className="text-xs font-semibold text-slate-600">
+          {t('closureTo')}
+          <input type="date" value={end} min={start || undefined} onChange={e => setEnd(e.target.value)} className={`${input} mt-1`} />
+        </label>
+        <label className="col-span-2 text-xs font-semibold text-slate-600">
+          {t('closureNote')}
+          <input type="text" value={note} maxLength={80} onChange={e => setNote(e.target.value)} placeholder={t('closureNotePlaceholder')} className={`${input} mt-1`} />
+        </label>
+      </div>
+      <button type="button" onClick={add} disabled={!valid}
+        className="mt-2 w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+        {t('closureAdd')}
+      </button>
+    </section>
+  );
+};
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, 
@@ -54,6 +124,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onHoursChange,
   closedHolidays = [],
   onClosedHolidaysChange,
+  closures = [],
+  onClosuresChange,
   leaveUnit = 'ouvrables',
   onLeaveUnitChange,
   onOpenPayroll,
@@ -258,6 +330,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 })}
               </ul>
             </section>
+          )}
+
+          {onClosuresChange && (
+            <ClosuresEditor closures={closures} onChange={onClosuresChange} language={language} />
           )}
 
           {canSeeMoney && onRatesChange && (

@@ -221,6 +221,9 @@ await check('Unite de decompte inconnue refusee',                    assertFails
 await check('Feries fermes enregistres dans les reglages',            assertSucceeds(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, closedHolidays: ['dec25', 'jan1'] }, updatedAt: 'z2' })));
 await check('Feries fermes : une liste, pas autre chose',             assertFails(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, closedHolidays: 'dec25' }, updatedAt: 'z3' })));
 await check('Staff NE CHANGE PAS les feries fermes',                  assertFails(updateDoc(doc(OMAR, 'orgs/sezam'), { settings: { ...SETTINGS, closedHolidays: [] }, updatedAt: 'z4' })));
+await check('Fermetures du restaurant enregistrees dans les reglages',  assertSucceeds(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, closures: [{ start: '2026-08-10', end: '2026-08-23', note: 'vacances' }] }, updatedAt: 'z5' })));
+await check('Fermetures : une liste, pas autre chose',                 assertFails(updateDoc(doc(SERGE, 'orgs/sezam'), { settings: { ...SETTINGS, closures: 'aout' }, updatedAt: 'z6' })));
+await check('Staff NE CHANGE PAS les fermetures',                      assertFails(updateDoc(doc(OMAR, 'orgs/sezam'), { settings: { ...SETTINGS, closures: [] }, updatedAt: 'z7' })));
 
 console.log('\n--- demandes de conge (le salarie propose, l admin tranche) ---');
 const REQ = { staffId: 's2', staffUid: 'uid-omar', kind: 'cp', start: '2026-10-12', end: '2026-10-17', status: 'pending', createdAt: 't' };

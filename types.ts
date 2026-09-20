@@ -31,6 +31,20 @@ export interface OrgSettings {
    * restauration. Un ferie ferme bloque les shifts et sort du decompte des CP.
    */
   closedHolidays?: string[];
+  /**
+   * Fermetures decidees par le restaurant (vacances, travaux...). Signalees au
+   * planning et dans l'export de paie ; AUCUN effet sur les soldes de conges :
+   * conges imposes ou jours payes, le comptable et le patron en decident.
+   */
+  closures?: Closure[];
+}
+
+export interface Closure {
+  /** ISO, inclus. */
+  start: string;
+  /** ISO, inclus. */
+  end: string;
+  note?: string;
 }
 
 export interface Org {
@@ -331,6 +345,8 @@ export interface WeekHoliday {
   key: string;
   date: string;
   closed: boolean;
+  /** Fermeture decidee par le restaurant (`key` = 'closure') : son motif. */
+  note?: string;
 }
 
 export const EMPTY_WEEK: WeekData = { shifts: [], absences: [], holidays: [] };

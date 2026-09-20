@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Staff, AbsencePeriod, LeaveUnit, Language, WeekData, Extra } from '../types';
+import { Staff, AbsencePeriod, LeaveUnit, Language, WeekData, Extra, Closure } from '../types';
 import { getTranslation } from '../utils/translations';
 import { weekIdsForMonth, countLeaveDays, closedHolidayDates, formatShortDate, todayIso } from '../utils/helpers';
 import { payrollVariables, payrollText, payrollCsv, PayrollLabels } from '../utils/payroll';
@@ -12,6 +12,7 @@ interface PayrollModalProps {
   extras: Record<string, Extra>;
   leaveUnit: LeaveUnit;
   closedHolidays: string[];
+  closures?: Closure[];
   /** Semaines OFFICIELLES (jamais les brouillons) : la paie suit ce qui est publie. */
   loadWeeks: (weekIds: string[]) => Promise<Record<string, WeekData>>;
   language?: Language;
@@ -33,7 +34,7 @@ const defaultMonth = (today: string): string => {
  * est une donnee de sante.
  */
 const PayrollModal: React.FC<PayrollModalProps> = ({
-  isOpen, onClose, staff, periods, extras, leaveUnit, closedHolidays, loadWeeks, language = 'en',
+  isOpen, onClose, staff, periods, extras, leaveUnit, closedHolidays, closures = [], loadWeeks, language = 'en',
 }) => {
   const t = getTranslation(language as Language);
   const [month, setMonth] = useState(() => defaultMonth(todayIso()));
@@ -66,6 +67,7 @@ const PayrollModal: React.FC<PayrollModalProps> = ({
     complementaires: t('payComp'), supplementaires: t('paySup'),
     extrasTitle: t('payExtrasTitle'), extraLine: t('payExtraLine'),
     daysUnit: t('daysUnit'), footer: t('payFooter'),
+    closuresTitle: t('payClosuresTitle'), closureLine: t('payClosureLine'), csvClosure: t('payCsvClosure'),
     kindLabel: k => t('leaveKind_' + k),
     date: iso => formatShortDate(iso, language as Language),
     num: n => {
@@ -83,8 +85,8 @@ const PayrollModal: React.FC<PayrollModalProps> = ({
     const shiftsByWeek = Object.fromEntries(Object.entries(weeks).map(([id, w]) => [id, w.shifts || []]));
     const countDays = (a: string, b: string) => countLeaveDays(a, b, leaveUnit, closedHolidayDates(a, b, closedHolidays));
     const extraNames = Object.fromEntries(Object.values(extras).map(e => [e.id, [e.firstName, e.lastName].filter(Boolean).join(' ')]));
-    return payrollVariables(month, staff, shiftsByWeek, periods, countDays, extraNames);
-  }, [weeks, month, staff, periods, extras, leaveUnit, closedHolidays]);
+    return payrollVariables(month, staff, shiftsByWeek, periods, countDays, extraNames, closures);
+  }, [weeks, month, staff, periods, extras, leaveUnit, closedHolidays, closures]);
 
   const text = result ? payrollText(result, labels) : '';
   const empty = !!result && result.lines.length === 0 && result.extras.length === 0;

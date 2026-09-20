@@ -146,7 +146,8 @@ service cloud.firestore {
              && (!('openHour' in s && 'closeHour' in s) || s.closeHour - s.openHour >= 1)
              && (!('convention' in s) || s.convention in ['1501', '1979', 'none', 'hcr'])
              && (!('leaveUnit' in s) || s.leaveUnit in ['ouvrables', 'ouvres'])
-             && (!('closedHolidays' in s) || (s.closedHolidays is list && s.closedHolidays.size() <= 11));
+             && (!('closedHolidays' in s) || (s.closedHolidays is list && s.closedHolidays.size() <= 11))
+             && (!('closures' in s) || (s.closures is list && s.closures.size() <= 60));
     }
 
     // Fiche d'extra. Les champs de paie sont tous OPTIONNELS par decision

@@ -1,3 +1,4 @@
+import re
 """Absences, cas limites : heures reprises d un conge par un arret, arret au milieu de deux semaines de conges, arret allonge."""
 import tempfile, json
 from playwright.sync_api import sync_playwright
@@ -91,7 +92,7 @@ with sync_playwright() as pw:
     # ---- 4. raccourcir l'arret : pas de trou dans le conge ? (documente : non retabli)
     # ---- 5. semaine suivante : bandes
     p.keyboard.press("Escape"); p.wait_for_timeout(500)
-    p.get_by_role("button", name="Next week").click(); p.wait_for_timeout(2000)
+    p.get_by_role("button", name=re.compile("^(Next week|Semaine suivante)$")).click(); p.wait_for_timeout(2000)
     bands = [x for x in p.get_by_test_id("absence-band").all_inner_texts() if "Double" in x]
     print("   bands S39:", bands)
     check("Semaine du 21/09 : Double a 7 etiquettes (lun-dim), une par jour", len(bands) == 7, bands)
