@@ -604,7 +604,9 @@ const Calendar: React.FC<CalendarProps> = ({
           « ≥ » quand un shift n'a pas de taux : le montant affiche est alors un
           minimum, et le dire vaut mieux que presenter un total incomplet comme exact.
           ------------------------------------------------------------------- */}
-      {Object.keys(rates).length > 0 && shifts.length > 0 && (() => {
+      {/* Jamais dans l'image exportee : elle part a l'equipe, et le cout employeur
+          d'un shift n'a rien a faire sur un emploi du temps (decision de Serge). */}
+      {!isExporting && Object.keys(rates).length > 0 && shifts.length > 0 && (() => {
         const money = (c: { total: number; missing: number }) =>
           `${c.missing > 0 ? '≥ ' : ''}${formatMoney(Math.round(c.total), language as Language)}`;
         const hint = (title: string, c: { missing: number }) =>
@@ -731,7 +733,7 @@ const Calendar: React.FC<CalendarProps> = ({
                   orphanReason={orphanReason}
                   hasOverlap={overlappingIds.has(shift.id)}
                   ruleWarnings={ruleWarnings[shift.id]}
-                  cost={shiftCost(shift, rates) ?? undefined}
+                  cost={isExporting ? undefined : shiftCost(shift, rates) ?? undefined}
                   isDraft={isDraft}
                   isReadOnly={isReadOnly}
                   isSelected={selectedShiftIds.includes(shift.id)}

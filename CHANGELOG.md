@@ -5,6 +5,12 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-20 — Image exportee : plus aucun montant en euros
+
+Signale par Serge : le planning exporte part a l'equipe, le cout employeur n'a rien a y faire.
+Le montant de chaque shift ET la ligne « Coût » de chaque jour disparaissent de l'image ; a l'ecran,
+rien ne change pour l'admin. Fichier : `components/Calendar.tsx`.
+
 ## 2026-09-18 — Maquettes du selecteur de semaine (6 pistes)
 
 Demande de Serge : le selecteur « ‹ 14 sept. - 20 sept. › » ne montre pas ce qui est cliquable.
