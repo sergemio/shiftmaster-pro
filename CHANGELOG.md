@@ -5,7 +5,22 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
-## 2026-09-18 19h15 — Fermetures decidees par le restaurant (branche `saas`, non commite)
+## 2026-09-21 — Lectures Firestore : le journal ne lit que les jours affiches (branche `saas`)
+
+Memes trois corrections que sur la production (voir `topics/shift-master/CHANGELOG.md` du 21/09) :
+fenetre du journal comptee en jours et ouverte sur 7 jours, semaine affichee non relue pour les
+totaux du mois, semaine precedente terminee servie par le cache pour les seuls avertissements de
+duree du travail. Cote ECRITURE : rien ne change.
+
+Nouveau test : `scripts/browser/quota_reads_test.py` (10 controles) plante deux entrees de journal
+a 1 jour et 20 jours dans la base locale et verifie qu'a l'ouverture seule celle d'hier est lue.
+
+**A savoir — les suites navigateur sont figees sur la semaine du 14/09.** Depuis le 20/09 elles
+echouent pour cette seule raison : 32 controles, compte identique avant et apres ces corrections
+(mesure sur le commit 48b64ff puis sur le code modifie). Prochain chantier : dates relatives au jour
+du test et un lanceur unique qui remet les donnees de demonstration entre chaque suite.
+
+## 2026-09-18 19h15 — Fermetures decidees par le restaurant (branche `saas`, poussee le 20/09 : 48b64ff)
 
 - Parametres -> « Fermetures du restaurant » : du / au (inclus) / motif facultatif, liste, retrait. Admin seul.
 - Planning : chaque jour ferme porte « Fermé · motif » et bloque les shifts, comme un ferie ferme ; l'employe le voit.
@@ -15,7 +30,7 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 - Regles : `settings.closures` = liste (60 max). Tests : paie +5, regles +3, navigateur `closures_test.py` 18 ;
   non-regression feries, paie, image exportee, build : OK.
 
-## 2026-09-18 18h50 — Selecteur de semaine : variante A (branche `saas`, non commite)
+## 2026-09-18 18h50 — Selecteur de semaine : variante A (branche `saas`, poussee le 20/09 : 48b64ff)
 
 - Barre verticale retiree ; fleches et dates dans un seul bloc borde, trois boutons (maquette A,
   `topics/shift-master/maquettes/nav-semaine-variantes.html`). Dates « 14 – 20 sept. » (mois une fois),

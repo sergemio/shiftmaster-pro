@@ -59,7 +59,7 @@ const LogHistoryModal: React.FC<LogHistoryModalProps> = ({ isOpen, onClose, lang
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(7);
   const [role, setRole] = useState<Role>('both');
   const [hideNoise, setHideNoise] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -73,7 +73,7 @@ const LogHistoryModal: React.FC<LogHistoryModalProps> = ({ isOpen, onClose, lang
     if (loadedDays >= days) return;   // already have this range in memory
     let cancelled = false;
     setLoading(true);
-    loadLogs(Math.ceil(days / 30))
+    loadLogs(days)
       .then(rows => {
         if (cancelled) return;
         setLogs(rows);
