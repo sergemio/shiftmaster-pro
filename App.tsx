@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, Language, Absence, AbsenceKind, WeekData, DraftData, EMPTY_WEEK, ViewType } from './types';
-import { getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours } from './utils/helpers';
+import { todayIso, getWeekStart, getWeekRangeString, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours } from './utils/helpers';
 import { INITIAL_STAFF, DAYS_EN, DAYS_FR, DAYS_EN_SHORT, DAYS_FR_SHORT } from './constants';
 import { CONVENTIONS, DEFAULT_CONVENTION, findViolations, DatedShift, Violation } from './utils/laborRules';
 import { violationText, violationWho } from './utils/violationText';
@@ -176,6 +176,8 @@ const App: React.FC = () => {
   // Les shifts du mois eux-memes, pour en tirer le cout sans relire la base
   // quand un taux change.
   const [monthShifts, setMonthShifts] = useState<Shift[] | null>(null);
+  /** Semaines du mois lues au serveur, hors semaine affichee (voir plus bas). */
+  const [monthOtherWeeks, setMonthOtherWeeks] = useState<{ month: string; weeks: Record<string, WeekData> } | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   // Shifts coches. Non vide = mode selection : un appui coche au lieu d'ouvrir
   // la fiche, et la barre d'actions apparait en bas.
@@ -445,6 +447,7 @@ const App: React.FC = () => {
     if (statsPeriod !== 'month' && effectiveViewType !== 'me') {
       setMonthHours(null);
       setMonthShifts(null);
+      setMonthOtherWeeks(null);
       return;
     }
     let cancelled = false;
@@ -459,32 +462,57 @@ const App: React.FC = () => {
     // Le bac a sable n'est pas authentifie : Firestore refuserait la lecture.
     // Il relit ses propres semaines dans le navigateur, ce qui permet aussi de
     // faire une demonstration sans toucher aux donnees reelles.
+    // La semaine affichee est deja servie en direct par son abonnement : la
+    // relire ici serait une lecture facturee pour une donnee qu'on a sous la
+    // main, et moins fraiche. Les autres semaines du mois viennent du SERVEUR,
+    // sans cache : ces totaux servent a la paie.
+    // La semaine affichee est deja servie en direct par son abonnement : la
+    // relire ici serait une lecture facturee pour une donnee qu'on a sous la
+    // main, et moins fraiche. Les AUTRES semaines du mois viennent du serveur,
+    // jamais du cache : ces totaux servent a la paie (21/09/2026).
+    const toRead = ids.filter(wid => wid !== weekId);
     const source = (user && !isGuest)
-      ? loadWeeks(ids)
+      ? loadWeeks(toRead)
       : Promise.resolve(Object.fromEntries(ids.map(wid => {
           const raw = localStorage.getItem(`sandbox_week_${wid}`);
           return [wid, raw ? { ...EMPTY_WEEK, ...JSON.parse(raw) } : EMPTY_WEEK];
         })));
     source.then(weeks => {
       if (cancelled) return;
-      const totals: Record<string, number> = {};
-      const inMonth: Shift[] = [];
-      for (const [wid, data] of Object.entries(weeks)) {
-        const weekStart = new Date(wid + 'T00:00:00Z');
-        for (const sh of data.shifts) {
-          if (getShiftIsoDate(weekStart, sh.dayIndex).slice(0, 7) !== month) continue;
-          inMonth.push(sh);
-          // Un shift couvert par quelqu'un d'autre compte pour celui qui le fait.
-          const who = sh.coverageBy || sh.staffId;
-          totals[who] = (totals[who] || 0) + (sh.endTime - sh.startTime);
-        }
-      }
-      setMonthHours(totals);
-      setMonthShifts(inMonth);
+      setMonthOtherWeeks({ month, weeks });
       setMonthLoading(false);
     }).catch(() => { if (!cancelled) setMonthLoading(false); });
     return () => { cancelled = true; };
-  }, [statsPeriod, effectiveViewType, currentWeek, user, isGuest]);
+    // `officialWeek` n'est PAS une dependance : la semaine affichee est fusionnee
+    // au calcul plus bas. L'y mettre relirait les 4 autres semaines du mois a
+    // chaque shift deplace.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statsPeriod, effectiveViewType, currentWeek, user, isGuest, weekId]);
+
+  /**
+   * Heures et shifts du mois : les semaines lues au serveur, plus la semaine
+   * affichee prise en direct. Un shift deplace met le total a jour aussitot,
+   * sans une seule lecture de plus.
+   */
+  useEffect(() => {
+    if (!monthOtherWeeks || (statsPeriod !== 'month' && effectiveViewType !== 'me')) return;
+    const { month, weeks } = monthOtherWeeks;
+    const all: Record<string, WeekData> = { ...weeks, [weekId]: officialWeek };
+    const totals: Record<string, number> = {};
+    const inMonth: Shift[] = [];
+    for (const [wid, data] of Object.entries(all)) {
+      const weekStart = new Date(wid + 'T00:00:00Z');
+      for (const sh of data.shifts) {
+        if (getShiftIsoDate(weekStart, sh.dayIndex).slice(0, 7) !== month) continue;
+        inMonth.push(sh);
+        // Un shift couvert par quelqu'un d'autre compte pour celui qui le fait.
+        const who = sh.coverageBy || sh.staffId;
+        totals[who] = (totals[who] || 0) + (sh.endTime - sh.startTime);
+      }
+    }
+    setMonthHours(totals);
+    setMonthShifts(inMonth);
+  }, [monthOtherWeeks, officialWeek, weekId, statsPeriod, effectiveViewType]);
 
   /**
    * Charge la semaine precedente et la suivante, uniquement pour les regles de
@@ -503,8 +531,12 @@ const App: React.FC = () => {
     const prev = new Date(currentWeek); prev.setDate(prev.getDate() - 7);
     const next = new Date(currentWeek); next.setDate(next.getDate() + 7);
     const ids = [toWeekId(prev), toWeekId(next)];
+    // La semaine d'avant, si elle est finie, ne bouge plus : le cache du
+    // navigateur suffit. La suivante est relue au serveur — un autre admin peut
+    // etre en train de la remplir, et un avertissement de repos doit etre juste.
+    const prevEnded = toWeekId(currentWeek) < todayIso(timezone);
     const source = (user && !isGuest)
-      ? loadWeeks(ids)
+      ? loadWeeks(ids, prevEnded ? [toWeekId(prev)] : [])
       : Promise.resolve(Object.fromEntries(ids.map(wid => {
           const raw = localStorage.getItem(`sandbox_week_${wid}`);
           return [wid, raw ? { ...EMPTY_WEEK, ...JSON.parse(raw) } : EMPTY_WEEK];
@@ -512,7 +544,7 @@ const App: React.FC = () => {
     source.then(weeks => { if (!cancelled) setNeighbourWeeks(weeks); })
           .catch(() => { if (!cancelled) setNeighbourWeeks({}); });
     return () => { cancelled = true; };
-  }, [currentWeek, user, isGuest]);
+  }, [currentWeek, user, isGuest, timezone]);
 
   const convention = CONVENTIONS[conventionId] || CONVENTIONS[DEFAULT_CONVENTION];
 

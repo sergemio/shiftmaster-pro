@@ -5,6 +5,32 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-21 — Lectures Firestore : le journal ne lit que les jours affiches
+
+Question de Serge : l'app est-elle econome sur le forfait gratuit (50 000 lectures par jour) ?
+Trois points corriges, tous du cote LECTURE — aucune ecriture ne change, donc aucun risque
+nouveau de conflit entre deux administrateurs.
+
+- **Journal** : la fenetre demandee etait comptee en MOIS. Choisir « 7 jours » lisait quand meme
+  30 jours de documents, soit environ 900 lectures pour en afficher 200. Elle est desormais comptee
+  en jours, et le journal s'ouvre sur 7 jours (les boutons 30 jours et 2 mois elargissent).
+  Les entrees elles-memes ne changent pas : une par action, non modifiables (regle Firestore).
+- **Heures du mois** : la semaine affichee n'est plus relue, elle est deja servie en direct par son
+  abonnement — une lecture de moins, et une donnee plus fraiche. Effet visible : un shift deplace met
+  le total du mois a jour aussitot, alors qu'il fallait changer de semaine avant. Les AUTRES semaines
+  du mois restent lues au serveur, jamais au cache : ces totaux servent a la paie.
+- **Semaines voisines** (controle du repos de 11 h) : la semaine precedente, quand elle est terminee,
+  est servie par le cache du navigateur. La suivante reste lue au serveur, parce qu'un autre
+  administrateur peut etre en train de la remplir et qu'un avertissement doit etre juste.
+
+Ecarte volontairement : regrouper le journal en un document par semaine. Il faudrait autoriser la
+modification des entrees, or c'est leur immuabilite qui en fait une preuve ; s'y ajoutent un risque
+d'ecrasement a deux administrateurs et la limite de taille par document.
+
+Verifie sur la version SaaS, avec les emulateurs et deux entrees de journal plantees a 1 jour et
+20 jours : a l'ouverture seule celle d'hier est lue, l'ancienne n'arrive qu'en choisissant 30 jours
+(`scripts/browser/quota_reads_test.py`, 10 controles). Ici : tsc, build et les tests unitaires.
+
 ## 2026-09-20 — Image exportee : plus aucun montant en euros
 
 Signale par Serge : le planning exporte part a l'equipe, le cout employeur n'a rien a y faire.

@@ -550,18 +550,19 @@ export const subscribeToGlobalSettings = (callback: (settings: GlobalSettings) =
  * Two deliberate limits, both because Firestore bills one read per document:
  *  - one-shot read, not a live subscription. The old code kept 50 log documents
  *    streaming for the whole session, for a screen almost nobody had open.
- *  - only the window about to be displayed. The journal opens on 30 days, so it
- *    asks for one month; widening the filter fetches more, on demand.
- * Two months is ~1800 documents — fetching that on every open is what drains a
- * free-tier daily quota.
+ *  - only the window about to be displayed, EN JOURS (21/09/2026). L'appel
+ *    prenait des mois : choisir « 7 jours » lisait quand meme 30 jours de
+ *    documents, soit environ 900 lectures pour en afficher 200. Le journal
+ *    s'ouvre desormais sur 7 jours et n'elargit que si le lecteur le demande.
+ * Rien n'est filtre ni agrege cote serveur : les entrees restent celles
+ * ecrites, une par action, immuables (regle Firestore).
  */
-export const loadLogs = async (months = 1, cap = 3000): Promise<LogEntry[]> => {
+export const loadLogs = async (days = 7, cap = 3000): Promise<LogEntry[]> => {
   if (!auth.currentUser) {
     return JSON.parse(localStorage.getItem('sandbox_logs') || '[]');
   }
   const { fs, db } = await firestore();
-  const since = new Date();
-  since.setMonth(since.getMonth() - months);
+  const since = new Date(Date.now() - days * 86400000);
   const path = 'logs';
   try {
     const q = fs.query(
@@ -602,13 +603,28 @@ export const loadShiftsFromFirebase = async (weekId: string): Promise<Shift[] | 
  * la demande, contre 5 ou 6 a chaque chargement de l'app si on le faisait
  * d'office. Voir la regle du 2026-08-09 sur le quota.
  */
-export const loadWeeks = async (weekIds: string[]): Promise<Record<string, WeekData>> => {
+export const loadWeeks = async (
+  weekIds: string[],
+  /**
+   * Semaines a servir depuis le cache du navigateur quand il les a deja, sans
+   * relire le serveur. RESERVE a ce qui est consultatif : les avertissements de
+   * duree du travail des semaines VOISINES et DEJA TERMINEES. Jamais pour les
+   * heures du mois ni la paie — une semaine corrigee par un autre admin donnerait
+   * un total faux sans que personne le voie (21/09/2026).
+   */
+  preferCache: string[] = [],
+): Promise<Record<string, WeekData>> => {
   if (!auth.currentUser) return {};
   const { fs, db } = await firestore();
   const out: Record<string, WeekData> = {};
   const snaps = await Promise.all(
     weekIds.map(async (wid) => {
       try {
+        if (preferCache.includes(wid)) {
+          // Absente du cache : `getDocFromCache` echoue, on retombe sur le serveur.
+          try { return { wid, snap: await fs.getDocFromCache(fs.doc(db, 'weeks', wid)) }; }
+          catch { /* pas en cache */ }
+        }
         return { wid, snap: await fs.getDoc(fs.doc(db, 'weeks', wid)) };
       } catch (e) {
         handleFirestoreError(e, OperationType.GET, `weeks/${wid}`);
