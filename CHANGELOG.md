@@ -5,6 +5,28 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-21 (suite) — Les tests navigateur ne dependent plus de la date du jour
+
+**Panne silencieuse.** Les suites ecrivaient « 2026-09-14 » en dur. Le 20/09 le calendrier a avance
+d'une semaine et 32 controles sont tombes d'un coup, sans qu'une ligne de l'application ait change.
+Personne ne l'a vu pendant trois jours : les suites se lancaient a la main, une par une.
+
+- **Un fichier de dates partage** (`scripts/browser/dates.py`) : lundi de la semaine en cours,
+  decalages en jours, dates ecrites comme l'app les affiche (« 22 sept 26 »), mois en clair.
+  Deux aides pour les cas de bord : une semaine entierement contenue dans un mois (lignes de paie)
+  et la premiere semaine a cheval sur deux mois.
+- **Les 19 suites** calculent desormais leurs dates a partir du jour ou elles tournent, y compris
+  les cas delicats : arret maladie place dans une semaine NON planifiee (sinon l'app n'estime pas
+  les heures), conge dans une semaine d'un seul mois, prochain 11 novembre pour l'Armistice,
+  identifiant de semaine (le dimanche precedent) passe au navigateur au lieu d'etre ecrit en dur.
+- **Figer l'heure du navigateur a ete ecarte** : la base et les jetons de connexion gardent la vraie
+  heure, on obtiendrait deux verites dans le meme test.
+- **Un lanceur unique** (`scripts/browser/run_all.py`) : donnees de demonstration neuves entre chaque
+  suite, tableau final, code de sortie non nul si quelque chose casse. Un filtre en argument permet
+  de ne relancer qu'une partie.
+
+Resultat : 19 suites, 0 echec. Aucune ligne de l'application n'a ete modifiee dans ce lot.
+
 ## 2026-09-21 — Lectures Firestore : le journal ne lit que les jours affiches (branche `saas`)
 
 Memes trois corrections que sur la production (voir `topics/shift-master/CHANGELOG.md` du 21/09) :

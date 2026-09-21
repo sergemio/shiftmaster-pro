@@ -4,7 +4,10 @@ Seed : Omar 16,5 EUR/h (lun 4,5 h + mar 5 h), Double 15 EUR/h (mer 3 h). On ajou
 d'extra de 5 h sans fiche : non chiffre tant qu'aucun taux par defaut n'existe.
 """
 from playwright.sync_api import sync_playwright
+from dates import MON, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
+# Semaine en cours : son identifiant est le DIMANCHE qui precede son lundi.
+W = iso(MON, -1)
 res = []
 def check(label, ok, extra=""):
     res.append(ok)
@@ -22,12 +25,12 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Se connecter", exact=True).click(); p.wait_for_timeout(3800)
 
     url = p.evaluate("() => performance.getEntriesByType('resource').map(e => e.name).find(n => n.includes('/services/firebaseService.ts'))")
-    p.evaluate("""async (url) => {
+    p.evaluate("""async ({ url, week }) => {
       const S = await import(url);
-      const w = (await S.loadWeeks(['2026-09-13']))['2026-09-13'];
-      await S.saveWeekToFirebase('2026-09-13', { ...w, shifts: [...w.shifts,
+      const w = (await S.loadWeeks([week]))[week];
+      await S.saveWeekToFirebase(week, { ...w, shifts: [...w.shifts,
         { id: 'xs1', staffId: 'xtra1', dayIndex: 3, startTime: 18, endTime: 23, extraName: 'Extra 1', extraPending: true }] });
-    }""", url)
+    }""", {"url": url, "week": W})
     p.wait_for_timeout(1500)
     side = lambda: p.locator("body").inner_text()
     euros = [l for l in side().split("\n") if "€" in l]

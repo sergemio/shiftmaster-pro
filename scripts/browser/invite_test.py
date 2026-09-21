@@ -2,6 +2,7 @@
 elle ouvre le lien, se trompe d'abord de compte, cree le bon, confirme son adresse,
 et arrive dans Sezam (demo), reliee a sa fiche. Emulateurs seulement."""
 from playwright.sync_api import sync_playwright
+from dates import MON, iso, fr
 import time, json, urllib.request
 URL = "http://localhost:3100/shiftmaster-pro/"
 OOB = "http://127.0.0.1:9099/emulator/v1/projects/demo-shiftmaster/oobCodes"
@@ -47,7 +48,7 @@ with sync_playwright() as pw:
     s.get_by_role("button", name="Ajouter une personne").first.click(); s.wait_for_timeout(400)
     s.get_by_label("Nom", exact=True).fill("Nora Test")
     s.locator('input[type="email"]').last.fill(NORA)
-    s.get_by_label("Date d'arrivée").last.fill("2026-09-01")
+    s.get_by_label("Date d'arrivée").last.fill(iso(MON, -30))
     s.get_by_role("button", name="Ajouter à l'équipe").click(); s.wait_for_timeout(1500)
     row = s.locator("div.cursor-pointer").filter(has_text="Nora Test").first
     check("Nouvelle fiche : bouton « Inviter dans l'app »", row.get_by_test_id("access-invite").count() == 1)
@@ -109,7 +110,7 @@ with sync_playwright() as pw:
     s.get_by_role("button", name="Ajouter une personne").first.click(); s.wait_for_timeout(400)
     s.get_by_label("Nom", exact=True).fill("Leo Test")
     s.locator('input[type="email"]').last.fill(f"leo{TS}@test.fr")
-    s.get_by_label("Date d'arrivée").last.fill("2026-09-01")
+    s.get_by_label("Date d'arrivée").last.fill(iso(MON, -30))
     s.get_by_role("button", name="Ajouter à l'équipe").click(); s.wait_for_timeout(1500)
     row = s.locator("div.cursor-pointer").filter(has_text="Leo Test").first
     row.get_by_test_id("access-invite").click(); s.wait_for_timeout(1500)

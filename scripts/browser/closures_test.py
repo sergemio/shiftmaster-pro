@@ -1,8 +1,13 @@
 """Fermetures decidees par le restaurant (18/09/2026) : saisies dans les parametres,
 affichees au planning, shifts bloques, listees dans l'export de paie, sans toucher
-aux conges. Semaine du lundi 21 septembre 2026, fermeture du 21 au 23."""
+aux conges.
+
+La fermeture est posee sur la semaine SUIVANTE (3 jours a partir de son lundi) :
+la semaine en cours sert de temoin, elle doit rester sans fermeture. Dates
+calculees a partir d'aujourd'hui — voir `dates.py`."""
 import re
 from playwright.sync_api import sync_playwright
+from dates import NEXT_MON, MON, iso, fr, mois, jour_nom
 URL = "http://localhost:3100/shiftmaster-pro/"
 res = []
 def check(label, ok, extra=""):
@@ -36,26 +41,26 @@ with sync_playwright() as pw:
     sec = p.get_by_test_id("closures")
     check("Parametres : section « Fermetures du restaurant »", sec.count() == 1 and "FERMETURES DU RESTAURANT" in sec.inner_text().upper())
     check("Bouton d'ajout desactive tant que les dates manquent", sec.get_by_role("button", name="Ajouter cette fermeture").is_disabled())
-    sec.get_by_label("Du").fill("2026-09-21")
-    check("Le « au » suit le « du »", sec.get_by_label("Au (inclus)").input_value() == "2026-09-21")
-    sec.get_by_label("Au (inclus)").fill("2026-09-23")
+    sec.get_by_label("Du").fill(iso(NEXT_MON))
+    check("Le « au » suit le « du »", sec.get_by_label("Au (inclus)").input_value() == iso(NEXT_MON))
+    sec.get_by_label("Au (inclus)").fill(iso(NEXT_MON, 2))
     sec.get_by_label("Motif (facultatif)").fill("vacances d'été")
     sec.get_by_role("button", name="Ajouter cette fermeture").click(); p.wait_for_timeout(1500)
     rows = sec.get_by_test_id("closure-row")
-    check("La fermeture est listee avec ses dates et son motif", rows.count() == 1 and "du 21 sept 26 au 23 sept 26" in rows.first.inner_text() and "vacances d'été" in rows.first.inner_text(), rows.all_inner_texts())
+    check("La fermeture est listee avec ses dates et son motif", rows.count() == 1 and f"du {fr(NEXT_MON)} au {fr(NEXT_MON, 2)}" in rows.first.inner_text() and "vacances d'été" in rows.first.inner_text(), rows.all_inner_texts())
     check("Formulaire vide apres ajout", sec.get_by_label("Du").input_value() == "")
     p.keyboard.press("Escape"); p.wait_for_timeout(500)
 
     # --- 2. planning ----------------------------------------------------------------------
-    check("Semaine en cours (14-20) : aucune fermeture affichee", chips(p).count() == 0, chips(p).all_inner_texts())
+    check("Semaine en cours : aucune fermeture affichee", chips(p).count() == 0, chips(p).all_inner_texts())
     next_week(p)
     texts = chips(p).all_inner_texts()
-    check("Semaine du 21 : trois jours « Fermé · vacances d'été »", len(texts) == 3 and all(t.upper() == "FERMÉ · VACANCES D'ÉTÉ" for t in texts), texts)
+    check("Semaine de la fermeture : trois jours « Fermé · vacances d'été »", len(texts) == 3 and all(t.upper() == "FERMÉ · VACANCES D'ÉTÉ" for t in texts), texts)
 
     p.get_by_role("button", name="Ajouter Shift").first.click(); p.wait_for_timeout(500)
     p.locator("select").first.select_option(label="Omar")
-    p.get_by_role("button", name="Mardi", exact=True).click(); p.wait_for_timeout(300)
-    check("Shift le mardi 22 bloque : restaurant ferme",
+    p.get_by_role("button", name=jour_nom(NEXT_MON, 1), exact=True).click(); p.wait_for_timeout(300)
+    check("Shift bloque le 2e jour de la fermeture : restaurant ferme",
           p.get_by_text("Le restaurant est fermé ce jour-là (fermeture du restaurant)").count() >= 1)
     check("Le bouton d'ajout est desactive", p.locator("form button[type=submit]").last.is_disabled())
     p.keyboard.press("Escape"); p.wait_for_timeout(300)
@@ -63,14 +68,14 @@ with sync_playwright() as pw:
     # --- 3. export de paie --------------------------------------------------------------------
     settings(p)
     p.get_by_role("button", name="Éléments variables de paie").click(); p.wait_for_timeout(600)
-    p.get_by_label("Mois").fill("2026-09"); p.wait_for_timeout(2500)
+    p.get_by_label("Mois").fill(mois(NEXT_MON)); p.wait_for_timeout(2500)
     txt = p.get_by_test_id("payroll-text").inner_text()
     check("Export : la fermeture en tete, a voir avec l'employeur",
           "Fermeture décidée par le restaurant (à voir avec l’employeur : congés imposés ou jours payés) :" in txt
-          and "du 21 sept 26 au 23 sept 26 — vacances d'été" in txt, txt[:300])
-    check("Export : aucune absence creee pour les salaries", "Congés payés du 21" not in txt)
-    p.get_by_label("Mois").fill("2026-08"); p.wait_for_timeout(2500)
-    check("Export d'aout : pas de fermeture", "Fermeture" not in p.get_by_test_id("payroll-text").inner_text())
+          and f"du {fr(NEXT_MON)} au {fr(NEXT_MON, 2)} — vacances d'été" in txt, txt[:300])
+    check("Export : aucune absence creee pour les salaries", f"Congés payés du {fr(NEXT_MON)}" not in txt)
+    p.get_by_label("Mois").fill(mois(iso(NEXT_MON, -40))); p.wait_for_timeout(2500)
+    check("Export du mois d'avant : pas de fermeture", "Fermeture" not in p.get_by_test_id("payroll-text").inner_text())
     p.keyboard.press("Escape"); p.wait_for_timeout(300)
 
     # --- 4. employe : voit la fermeture, ne peut pas la changer ------------------------------------

@@ -1,9 +1,19 @@
 import re
 """Jours feries : calcules par l'app, fermes par reglage, effets sur shifts et conges.
 
-Semaine du lundi 9 novembre 2026 : l'Armistice tombe le mercredi 11.
+Semaine du 11 novembre (Armistice), calculee a partir d'aujourd'hui : voir `dates.py`.
 """
+from datetime import date, timedelta
 from playwright.sync_api import sync_playwright
+from dates import MON, TODAY, iso
+
+# Ferie de reference : le prochain 11 novembre (Armistice), un jour qui ne tombe
+# jamais un dimanche deux annees de suite et que l'app calcule toute seule.
+ARMISTICE = date(TODAY.year, 11, 11)
+if ARMISTICE < TODAY + timedelta(days=7):
+    ARMISTICE = date(TODAY.year + 1, 11, 11)
+LUN_FERIE = ARMISTICE - timedelta(days=ARMISTICE.weekday())   # lundi de sa semaine
+SAUTS = (LUN_FERIE - MON).days // 7                            # semaines a parcourir
 URL = "http://localhost:3100/shiftmaster-pro/"
 import tempfile
 DIR = tempfile.gettempdir()  # captures d'ecran : hors du depot
@@ -21,8 +31,9 @@ def login(p, email):
     p.wait_for_timeout(3800)
 
 def to_november(p):
-    for _ in range(8):
-        p.get_by_role("button", name=re.compile("^(Next week|Semaine suivante)$")).click()
+    """Va jusqu'a la semaine du 11 novembre, quel que soit le jour du test."""
+    for _ in range(SAUTS):
+        p.get_by_test_id("week-nav").get_by_role("button", name=re.compile("^(Next week|Semaine suivante)$")).click()
         p.wait_for_timeout(250)
     p.wait_for_timeout(1200)
 
@@ -50,7 +61,7 @@ with sync_playwright() as pw:
     # --- 1. les feries sont connus sans rien saisir ------------------------------
     check("Semaine sans ferie : aucune etiquette", chip(p).count() == 0, chip(p).count())
     to_november(p)
-    check("Semaine du 11 novembre : l Armistice apparait tout seul", chip(p).count() == 1 and "Armistice" in chip(p).inner_text(),
+    check("Semaine de l Armistice : le ferie apparait tout seul", chip(p).count() == 1 and "Armistice" in chip(p).inner_text(),
           chip(p).all_inner_texts())
     check("Par defaut le restaurant est ouvert ce jour-la", "Fermé" not in chip(p).inner_text())
 
@@ -59,8 +70,8 @@ with sync_playwright() as pw:
     check("La fenetre Absences n a plus de section jours feries", p.get_by_text("Jours fériés", exact=True).count() == 0)
     p.get_by_label("Qui est absent").select_option(label="Omar")
     pick_kind(p, "Congés payés")
-    p.get_by_label("Premier jour d'absence").fill("2026-11-09")
-    p.get_by_label("Reprise le").fill("2026-11-16"); p.wait_for_timeout(900)
+    p.get_by_label("Premier jour d'absence").fill(iso(LUN_FERIE))
+    p.get_by_label("Reprise le").fill(iso(LUN_FERIE, 7)); p.wait_for_timeout(900)
     check("Ferie ouvert : la semaine compte 6 jours", p.get_by_test_id("abs-days").inner_text().startswith("6 jour"),
           p.get_by_test_id("abs-days").inner_text())
     p.keyboard.press("Escape"); p.wait_for_timeout(300)
@@ -86,8 +97,8 @@ with sync_playwright() as pw:
 
     p.get_by_role("button", name="Absences", exact=True).first.click(); p.wait_for_timeout(500)
     p.get_by_label("Qui est absent").select_option(label="Omar")
-    p.get_by_label("Premier jour d'absence").fill("2026-11-09")
-    p.get_by_label("Reprise le").fill("2026-11-16"); p.wait_for_timeout(900)
+    p.get_by_label("Premier jour d'absence").fill(iso(LUN_FERIE))
+    p.get_by_label("Reprise le").fill(iso(LUN_FERIE, 7)); p.wait_for_timeout(900)
     check("Ferie ferme : la meme semaine ne compte plus que 5 jours",
           p.get_by_test_id("abs-days").inner_text().startswith("5 jour"), p.get_by_test_id("abs-days").inner_text())
     p.keyboard.press("Escape"); p.wait_for_timeout(300)

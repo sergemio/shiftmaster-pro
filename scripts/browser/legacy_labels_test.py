@@ -1,7 +1,10 @@
 """une periode remplace les anciennes etiquettes sur ses jours."""
 import json, urllib.request
 from playwright.sync_api import sync_playwright
+from dates import MON, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
+# Semaine en cours : son identifiant est le DIMANCHE qui precede son lundi.
+W = iso(MON, -1)
 res = []
 def check(label, ok, extra=""):
     res.append(ok)
@@ -18,14 +21,14 @@ with sync_playwright() as pw:
     p.get_by_label("Email").fill("serge@test.fr"); p.get_by_label("Mot de passe").fill("test1234")
     p.get_by_role("button", name="Se connecter", exact=True).click(); p.wait_for_timeout(3800)
     url = p.evaluate("() => performance.getEntriesByType('resource').map(e => e.name).find(n => n.includes('/services/firebaseService.ts'))")
-    p.evaluate("""async (url) => {
+    p.evaluate("""async ({ url, week }) => {
       const S = await import(url);
-      const w = (await S.loadWeeks(['2026-09-13']))['2026-09-13'];
-      await S.saveWeekToFirebase('2026-09-13', { ...w, absences: [
+      const w = (await S.loadWeeks([week]))[week];
+      await S.saveWeekToFirebase(week, { ...w, absences: [
         { id: 'old-wed', staffId: 's2', dayIndex: 2, kind: 'conge' },
         { id: 'old-fri', staffId: 's2', dayIndex: 4, kind: 'maladie' },
       ] });
-    }""", url)
+    }""", {"url": url, "week": W})
     p.wait_for_timeout(1500)
     bands = [x for x in p.get_by_test_id("absence-band").all_inner_texts() if "Omar" in x]
     check("Depart : 2 anciennes etiquettes pour Omar (mer, ven)", len(bands) == 2, bands)
@@ -37,8 +40,8 @@ with sync_playwright() as pw:
     p.get_by_label("Qui est absent").select_option(label="Omar")
     p.get_by_role("button", name="Motif").click()
     p.get_by_role("listbox").get_by_role("option", name="Arrêt maladie").click()
-    p.get_by_label("Premier jour d'absence").fill("2026-09-16")
-    p.get_by_label("Reprise le").fill("2026-09-18"); p.wait_for_timeout(1200)
+    p.get_by_label("Premier jour d'absence").fill(iso(MON, 2))
+    p.get_by_label("Reprise le").fill(iso(MON, 4)); p.wait_for_timeout(1200)
     check("Ancienne etiquette : pas de faux conflit (ce n est pas une periode)", p.get_by_test_id("abs-conflict").count() == 0)
     p.get_by_role("button", name="Enregistrer l'absence").click(); p.wait_for_timeout(1800)
     p.keyboard.press("Escape"); p.wait_for_timeout(500)

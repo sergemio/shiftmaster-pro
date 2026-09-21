@@ -2,6 +2,7 @@ import re
 """Absences, cas limites : heures reprises d un conge par un arret, arret au milieu de deux semaines de conges, arret allonge."""
 import tempfile, json
 from playwright.sync_api import sync_playwright
+from dates import MON, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
 DIR = tempfile.gettempdir()
 res = []
@@ -54,10 +55,10 @@ with sync_playwright() as pw:
 
     # ---- 1. heures : un arret qui remplace un jour de conge dont le shift a ete retire
     open_modal(p)
-    fill(p, "Omar", "Congés payés", "2026-09-15", "2026-09-16")   # mardi, shift 18-23 (5 h)
+    fill(p, "Omar", "Congés payés", iso(MON, 1), iso(MON, 2))   # mardi de cette semaine, shift 18-23 (5 h)
     check("Conge du mardi : 5 h (son shift)", hours(p) in ("5",), hours(p))
     save(p)
-    fill(p, "Omar", "Arrêt maladie", "2026-09-15", "2026-09-16")
+    fill(p, "Omar", "Arrêt maladie", iso(MON, 1), iso(MON, 2))
     h = hours(p)
     check("Arret sur ce mardi : les 5 h du conge passent a l arret (pas 0)", h == "5", h)
     save(p)
@@ -67,9 +68,9 @@ with sync_playwright() as pw:
 
     # ---- 2. deux semaines de conges, arret au milieu (a cheval sur la 2e semaine)
     open_modal(p)
-    fill(p, "Double", "Congés payés", "2026-09-21", "2026-10-03")
+    fill(p, "Double", "Congés payés", iso(MON, 7), iso(MON, 19))
     save(p)
-    fill(p, "Double", "Arrêt maladie", "2026-09-24", "2026-09-26")
+    fill(p, "Double", "Arrêt maladie", iso(MON, 10), iso(MON, 12))
     cut = p.get_by_test_id("abs-cut")
     print("   cut:", cut.inner_text().replace("\n", " | ") if cut.count() else None)
     save(p)
@@ -79,7 +80,7 @@ with sync_playwright() as pw:
 
     # ---- 3. modifier l'arret pour l'allonger : il mange encore la suite du conge
     p.locator("li button").filter(has_text="Double").filter(has_text="Arrêt maladie").first.click(); p.wait_for_timeout(500)
-    p.get_by_label("Reprise le").fill("2026-09-29"); p.wait_for_timeout(1200)
+    p.get_by_label("Reprise le").fill(iso(MON, 15)); p.wait_for_timeout(1200)
     cut = p.get_by_test_id("abs-cut")
     print("   cut2:", cut.inner_text().replace("\n", " | ") if cut.count() else None)
     check("Allonger l arret annonce le raccourcissement de la suite", cut.count() == 1)
@@ -87,7 +88,8 @@ with sync_playwright() as pw:
     p.wait_for_timeout(1800)
     items = listed(p, "Double")
     print("   list2:", items)
-    check("Toujours 3 lignes, la suite commence le 29/09", len(items) == 3 and any("du 29 sept" in i and "Congés" in i for i in items), items)
+    check(f"Toujours 3 lignes, la suite commence le {fr(MON, 15)}",
+          len(items) == 3 and any(fr(MON, 15) in i and "Congés" in i for i in items), items)
 
     # ---- 4. raccourcir l'arret : pas de trou dans le conge ? (documente : non retabli)
     # ---- 5. semaine suivante : bandes
@@ -95,7 +97,7 @@ with sync_playwright() as pw:
     p.get_by_role("button", name=re.compile("^(Next week|Semaine suivante)$")).click(); p.wait_for_timeout(2000)
     bands = [x for x in p.get_by_test_id("absence-band").all_inner_texts() if "Double" in x]
     print("   bands S39:", bands)
-    check("Semaine du 21/09 : Double a 7 etiquettes (lun-dim), une par jour", len(bands) == 7, bands)
+    check("Semaine suivante : Double a 7 etiquettes (lun-dim), une par jour", len(bands) == 7, bands)
     p.screenshot(path=DIR + r"\bughunt_week2.png")
 
     # ---- 6. rechargement : tout persiste

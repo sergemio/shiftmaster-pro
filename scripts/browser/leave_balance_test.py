@@ -1,10 +1,15 @@
 """Absences, lot 4 : fiche salarie (jours travailles, compteur de conges, historique),
 rappel du solde a la saisie, reglage ouvrables / ouvres.
 
-Aujourd'hui = 18/09/2026 (horloge de la machine). Omar : 35 h, pas de planning la
-semaine du 5/10. Bulletin fictif du 31/08/2026 : 10 j restants.
+Dates calculees a partir d'aujourd'hui (voir `dates.py`). Bulletin fictif au dernier
+jour du mois passe : 10 j restants. Les jours acquis depuis ce bulletin sont
+recalcules ici avec la meme regle que l'app (2,5 j par mois, au prorata des jours
+ecoules), pour ne pas dependre du jour ou le test tourne.
 """
+import calendar
+from datetime import date, timedelta
 from playwright.sync_api import sync_playwright
+from dates import MON, NEXT_MON, TODAY, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
 res = []
 def check(label, ok, extra=""):
@@ -46,14 +51,22 @@ with sync_playwright() as pw:
     # --- 2. compteur de conges : saisie du bulletin ------------------------------------
     card = p.get_by_test_id("leave-card")
     check("Sans bulletin : la fiche invite a saisir le solde", "dernier bulletin" in card.inner_text(), card.inner_text()[:120])
-    card.get_by_label("Date du bulletin").fill("2026-08-31")
+    bulletin = (TODAY.replace(day=1) - timedelta(days=1)).isoformat()
+    # Acquis depuis le bulletin : 2,5 j par mois, au prorata des jours ecoules.
+    jours_mois = calendar.monthrange(TODAY.year, TODAY.month)[1]
+    acquis = round(2.5 / jours_mois * TODAY.day, 2)
+    def jfr(n):
+        return (str(int(n)) if float(n).is_integer() else f"{n:.1f}").replace(".", ",")
+    card.get_by_label("Date du bulletin").fill(bulletin)
     card.get_by_label("Solde (jours)").fill("10")
     card.get_by_role("button", name="Enregistrer le solde").click(); p.wait_for_timeout(1500)
     txt = card.inner_text()
     print("   carte:", txt.replace("\n", " | ")[:300])
-    check("Bulletin du 31 aout : 10 j", "Bulletin du 31 août 26" in txt and "10 j" in txt, txt[:200])
-    check("Acquis depuis : +1,5 j (18 jours de septembre)", "+ 1,5 j" in txt, txt[:300])
-    check("Solde aujourd hui : 11,5 j", p.get_by_test_id("leave-balance").inner_text().endswith("11,5 j"), p.get_by_test_id("leave-balance").inner_text())
+    check("Bulletin du dernier jour du mois passe : 10 j", f"Bulletin du {fr(bulletin)}" in txt and "10 j" in txt, txt[:200])
+    check(f"Acquis depuis le bulletin : + {jfr(acquis)} j ({TODAY.day} jours du mois)", f"+ {jfr(acquis)} j" in txt, txt[:300])
+    solde = p.get_by_test_id("leave-balance").inner_text()
+    check(f"Solde aujourd hui : 10 + {jfr(acquis)} = {jfr(round(10 + acquis, 2))} j",
+          solde.endswith(f"{jfr(round(10 + acquis, 2))} j"), solde)
     check("Marque provisoire, le bulletin fait foi", "le bulletin fait foi" in txt)
     p.keyboard.press("Escape"); p.wait_for_timeout(500)
 
@@ -61,16 +74,18 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Absences", exact=True).first.click(); p.wait_for_timeout(600)
     p.get_by_label("Qui est absent").select_option(label="Omar")
     pick_kind(p, "Congés payés")
-    p.get_by_label("Premier jour d'absence").fill("2026-09-21")
-    p.get_by_label("Reprise le").fill("2026-09-26"); p.wait_for_timeout(1200)
+    p.get_by_label("Premier jour d'absence").fill(iso(NEXT_MON))
+    p.get_by_label("Reprise le").fill(iso(NEXT_MON, 5)); p.wait_for_timeout(1200)
     after = p.get_by_test_id("abs-balance-after")
-    check("Conge 21-25/09 (5 j) : « solde apres : 6,5 j »", after.count() == 1 and "6,5 j" in after.inner_text(), after.all_inner_texts())
+    reste = jfr(round(10 + acquis - 5, 2))
+    check(f"Conge du lundi au vendredi (5 j) : « solde apres : {reste} j »",
+          after.count() == 1 and f"{reste} j" in after.inner_text(), after.all_inner_texts())
     h = p.get_by_label("Heures d'absence").input_value()
     check("Heures estimees avec 4 jours travailles : 35/4 x 4 = 35 h", h == "35", h)
     p.get_by_role("button", name="Enregistrer l'absence").click(); p.wait_for_timeout(1800)
     pick_kind(p, "Arrêt maladie")
-    p.get_by_label("Premier jour d'absence").fill("2026-10-05")
-    p.get_by_label("Reprise le").fill("2026-10-07"); p.wait_for_timeout(1200)
+    p.get_by_label("Premier jour d'absence").fill(iso(NEXT_MON, 14))
+    p.get_by_label("Reprise le").fill(iso(NEXT_MON, 16)); p.wait_for_timeout(1200)
     check("Arret : pas de rappel de solde (ce n est pas un conge)", p.get_by_test_id("abs-balance-after").count() == 0)
     h = p.get_by_label("Heures d'absence").input_value()
     check("Arret de 2 jours, 4 jours travailles : 2 x 35/4 = 17,5 h", h == "17,5", h)
@@ -79,9 +94,10 @@ with sync_playwright() as pw:
     # --- 4. la fiche montre le conge a venir et l'historique -----------------------------
     open_staff(p, "Omar")
     up = p.get_by_test_id("leave-upcoming")
-    check("Fiche : 5 j deja poses a venir, puis 6,5 j", up.count() == 1 and "5 j" in up.inner_text() and "6,5 j" in up.inner_text(), up.all_inner_texts())
+    check(f"Fiche : 5 j deja poses a venir, puis {reste} j",
+          up.count() == 1 and "5 j" in up.inner_text() and f"{reste} j" in up.inner_text(), up.all_inner_texts())
     hist = p.get_by_test_id("leave-history").inner_text()
-    check("Historique : le conge du 21/09 y figure", "Congés payés" in hist and "21 sept" in hist, hist)
+    check("Historique : le conge pose y figure", "Congés payés" in hist and fr(NEXT_MON) in hist, hist)
     p.keyboard.press("Escape"); p.wait_for_timeout(400)
 
     # --- 5. reglage ouvrables / ouvres ------------------------------------------------------
@@ -93,8 +109,8 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Absences", exact=True).first.click(); p.wait_for_timeout(600)
     p.get_by_label("Qui est absent").select_option(label="Omar")
     pick_kind(p, "Congés payés")
-    p.get_by_label("Premier jour d'absence").fill("2026-10-12")
-    p.get_by_label("Reprise le").fill("2026-10-19"); p.wait_for_timeout(1000)
+    p.get_by_label("Premier jour d'absence").fill(iso(NEXT_MON, 21))
+    p.get_by_label("Reprise le").fill(iso(NEXT_MON, 28)); p.wait_for_timeout(1000)
     d = p.get_by_test_id("abs-days").inner_text()
     check("En ouvres, une semaine de conges = 5 jours", d.startswith("5 jour"), d)
     p.keyboard.press("Escape"); p.wait_for_timeout(300)
@@ -117,14 +133,16 @@ with sync_playwright() as pw:
     p2.keyboard.press("Escape"); p2.wait_for_timeout(1200)
     mb = p2.get_by_test_id("my-leave-balance")
     txt = mb.inner_text() if mb.count() else ""
-    check("Employe (Ma semaine) : voit SON solde, 11,5 j aujourd'hui", "11,5 j" in txt, txt)
-    check("... et les 5 j deja poses, 6,5 j ensuite", "5 j" in txt and "6,5 j" in txt, txt)
+    solde_j = jfr(round(10 + acquis, 2))
+    check(f"Employe (Ma semaine) : voit SON solde, {solde_j} j aujourd'hui", f"{solde_j} j" in txt, txt)
+    check(f"... et les 5 j deja poses, {reste} j ensuite", "5 j" in txt and f"{reste} j" in txt, txt)
     panel = p2.get_by_test_id("leave-request-panel")
     panel.get_by_role("button", name="Demander un congé").click()
-    panel.get_by_label("Premier jour d'absence").fill("2026-11-02")
-    panel.get_by_label("Reprise le").fill("2026-11-04"); p2.wait_for_timeout(300)
+    panel.get_by_label("Premier jour d'absence").fill(iso(NEXT_MON, 42))
+    panel.get_by_label("Reprise le").fill(iso(NEXT_MON, 44)); p2.wait_for_timeout(300)
     ra = panel.get_by_test_id("req-balance-after")
-    check("Demande de 2 j : solde apres 4,5 j", ra.count() == 1 and "4,5 j" in ra.inner_text(), ra.all_inner_texts())
+    apres = jfr(round(10 + acquis - 5 - 2, 2))
+    check(f"Demande de 2 j : solde apres {apres} j", ra.count() == 1 and f"{apres} j" in ra.inner_text(), ra.all_inner_texts())
     check("Employe : aucune erreur JavaScript", not err2, err2[:2])
     b.close()
 print("\nTOUT PASSE" if all(res) else f"\n{res.count(False)} ECHEC(S)")

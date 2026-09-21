@@ -5,7 +5,19 @@ la capture), puis on verifie qu'un fichier PNG a bien ete produit.
 """
 import json, urllib.request
 from playwright.sync_api import sync_playwright
+from datetime import date
+from dates import MON, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
+# Semaine en cours : son identifiant est le DIMANCHE qui precede son lundi.
+W = iso(MON, -1)
+# En-tete de l'image : « lun 21 sept - dim 27 sept 2026 » (jour court, mois court).
+def _jour_court(d):
+    return ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'][d.weekday()]
+def _mois_court(d):
+    return ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'][d.month - 1]
+_DIM = date.fromisoformat(iso(MON, 6))
+EN_TETE = (f"{_jour_court(MON)} {MON.day} {_mois_court(MON)} - "
+           f"{_jour_court(_DIM)} {_DIM.day} {_mois_court(_DIM)} {_DIM.year}")
 res = []
 def check(label, ok, extra=""):
     res.append(ok)
@@ -24,11 +36,11 @@ with sync_playwright() as pw:
 
     # une ancienne etiquette « maladie » (donnees d'avant les periodes) pour Omar, vendredi
     url = p.evaluate("() => performance.getEntriesByType('resource').map(e => e.name).find(n => n.includes('/services/firebaseService.ts'))")
-    p.evaluate("""async (url) => {
+    p.evaluate("""async ({ url, week }) => {
       const S = await import(url);
-      const w = (await S.loadWeeks(['2026-09-13']))['2026-09-13'];
-      await S.saveWeekToFirebase('2026-09-13', { ...w, absences: [{ id: 'old-fri', staffId: 's2', dayIndex: 4, kind: 'maladie' }] });
-    }""", url)
+      const w = (await S.loadWeeks([week]))[week];
+      await S.saveWeekToFirebase(week, { ...w, absences: [{ id: 'old-fri', staffId: 's2', dayIndex: 4, kind: 'maladie' }] });
+    }""", {"url": url, "week": W})
     p.wait_for_timeout(1500)
     grid = p.locator("#calendar-grid-capture")
     before = grid.inner_text()
@@ -43,8 +55,9 @@ with sync_playwright() as pw:
     check("Pendant l export : aucun montant", "€" not in during, [l for l in during.split("\n") if "€" in l][:3])
     check("Pendant l export : aucune ligne « Coût »", "Coût" not in during)
     check("En-tete : nom du restaurant et semaine en francais, rien de Sezam&Co en dur",
-          "SEZAM (DEMO)" in during.upper() and "PLANNING DE LA SEMAINE" in during.upper() and "SEMAINE 38" in during.upper()
-          and "lun 14 sept - dim 20 sept 2026" in during and "SEZAM&CO" not in during.upper() and "WEEKLY" not in during.upper(), during[:200])
+          "SEZAM (DEMO)" in during.upper() and "PLANNING DE LA SEMAINE" in during.upper()
+          and f"SEMAINE {MON.isocalendar()[1]}" in during.upper() and EN_TETE in during
+          and "SEZAM&CO" not in during.upper() and "WEEKLY" not in during.upper(), during[:200])
     check("Pendant l export : le motif devient « Absent »", "Arrêt maladie" not in during and "Omar · Absent" in during)
     check("Un fichier PNG est produit", open(path, "rb").read(8) == b"\x89PNG\r\n\x1a\n")
     p.wait_for_timeout(800)

@@ -1,9 +1,10 @@
 """Absences, lot 2 : saisie par periode, planning, blocage, conflit, vue employe.
 
-Jeu de demo : semaine du lundi 14/09/2026. Omar (35 h) a deux shifts : lun 11h30-16h
+Jeu de demo : la semaine EN COURS (dates calculees, voir `dates.py`). Omar (35 h) a deux shifts : lun 11h30-16h
 (4,5 h) et mar 18h-23h (5 h). Double (20 h) a un shift mer 12h-15h.
 """
 from playwright.sync_api import sync_playwright
+from dates import MON, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
 import tempfile
 DIR = tempfile.gettempdir()  # captures d'ecran : hors du depot
@@ -48,8 +49,8 @@ with sync_playwright() as pw:
     open_modal(p)
     p.get_by_label("Qui est absent").select_option(label="Omar")
     pick_kind(p, "Congés payés")
-    p.get_by_label("Premier jour d'absence").fill("2026-09-14")
-    p.get_by_label("Reprise le").fill("2026-09-21")
+    p.get_by_label("Premier jour d'absence").fill(iso(MON, 0))
+    p.get_by_label("Reprise le").fill(iso(MON, 7))
     p.wait_for_timeout(1200)
     days_txt = p.get_by_test_id("abs-days").inner_text()
     check("Une semaine de conges affiche 6 jours ouvrables", days_txt.startswith("6 jour"), days_txt)
@@ -62,7 +63,7 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Enregistrer l'absence").click()
     p.wait_for_timeout(2500)
     check("La periode apparait dans « en cours et a venir »",
-          p.get_by_text("du 14 sept 26 → reprise 21 sept 26").count() == 1)
+          p.get_by_text(f"du {fr(MON, 0)} → reprise {fr(MON, 7)}").count() == 1)
     p.keyboard.press("Escape"); p.wait_for_timeout(400)
 
     check("Les shifts d Omar ont ete retires du planning", cards(p, "Omar").count() == 0, cards(p, "Omar").count())
@@ -83,7 +84,7 @@ with sync_playwright() as pw:
     # --- 3. modifier la periode depuis la bande du calendrier -------------------
     omar_band.first.click(); p.wait_for_timeout(800)
     check("Un clic sur la bande ouvre la periode en modification", p.get_by_text("Modifier l'absence").count() == 1)
-    p.get_by_label("Reprise le").fill("2026-09-17")
+    p.get_by_label("Reprise le").fill(iso(MON, 3))
     p.wait_for_timeout(900)
     check("Raccourcie (reprise jeudi) : 3 jours", p.get_by_test_id("abs-days").inner_text().startswith("3 jour"),
           p.get_by_test_id("abs-days").inner_text())
@@ -97,8 +98,8 @@ with sync_playwright() as pw:
     open_modal(p)
     p.get_by_label("Qui est absent").select_option(label="Double")
     pick_kind(p, "Arrêt maladie")
-    p.get_by_label("Premier jour d'absence").fill("2026-09-16")
-    p.get_by_label("Reprise le").fill("2026-09-17")
+    p.get_by_label("Premier jour d'absence").fill(iso(MON, 2))
+    p.get_by_label("Reprise le").fill(iso(MON, 3))
     p.wait_for_timeout(1200)
     check("Arret d un jour : 3 h d apres son shift",
           p.get_by_label("Heures d'absence").input_value() == "3", p.get_by_label("Heures d'absence").input_value())
@@ -155,7 +156,7 @@ with sync_playwright() as pw:
 
     # --- 8. suppression ------------------------------------------------------------
     open_modal(p)
-    p.get_by_text("du 16 sept 26 → reprise 17 sept 26").click(); p.wait_for_timeout(500)
+    p.get_by_text(f"du {fr(MON, 2)} → reprise {fr(MON, 3)}").click(); p.wait_for_timeout(500)
     p.get_by_role("button", name="Supprimer cette absence").click()
     p.get_by_role("button", name="Oui, Supprimer").click()
     p.wait_for_timeout(2500)

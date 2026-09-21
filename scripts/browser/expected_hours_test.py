@@ -3,10 +3,26 @@ import re
 
 Jeu de demo : semaine du lundi 14/09/2026. Omar (35 h) a deux shifts : lun 11h30-16h
 (4,5 h) et mar 18h-23h (5 h). La semaine du 21/09 n'est pas planifiee.
-Mois de septembre 2026 : 35 h x 52 / 12 = 151,67 h, affiche 152 h.
+Mois : 35 h x 52 / 12 = 151,67 h, affiche 152 h. Dates calculees a partir
+d'aujourd'hui (voir `dates.py`).
 """
 import tempfile
+from datetime import timedelta
 from playwright.sync_api import sync_playwright
+from dates import MON, iso, fr
+
+# La semaine de l'arret maladie : une semaine voisine NON planifiee dont le
+# mercredi ET le jeudi tombent dans le mois de la semaine en cours. Sinon l'arret
+# serait coupe par un changement de mois et l'attendu ne serait plus 152 - 4,5 - 14.
+DECALAGE = next(
+    (d for d in (7, -7, 14, -14)
+     if (MON + timedelta(days=d + 2)).month == MON.month
+     and (MON + timedelta(days=d + 3)).month == MON.month),
+    7,
+)
+SEMAINES = abs(DECALAGE) // 7               # nombre de sauts de semaine a faire
+SENS = 1 if DECALAGE > 0 else -1
+ARRET_LUN = MON + timedelta(days=DECALAGE)  # lundi de cette semaine voisine
 URL = "http://localhost:3100/shiftmaster-pro/"
 DIR = tempfile.gettempdir()  # captures d'ecran : hors du depot
 res = []
@@ -60,14 +76,14 @@ with sync_playwright() as pw:
           row(p, "Omar").inner_text())
 
     # --- 1. un jour de conge sur un jour planifie ---------------------------------
-    h = record(p, "Omar", "Congés payés", "2026-09-14", "2026-09-15")
+    h = record(p, "Omar", "Congés payés", iso(MON), iso(MON, 1))
     check("Lundi de conge : 4,5 h d absence proposees (son shift)", h in ("4.5", "4,5"), h)
     check("Semaine : l attendu d Omar tombe a 30,5 h", "5.0 / 30.5h" in row(p, "Omar").inner_text(), row(p, "Omar").inner_text())
     check("Semaine : la note dit pourquoi", "30,5 h attendues (1 j de congé)" in notes(p), notes(p))
 
     # --- 2. deux jours d'arret sur une semaine non planifiee ----------------------
-    h = record(p, "Omar", "Arrêt maladie", "2026-09-23", "2026-09-25")
-    check("Mer + jeu non planifies : 14 h estimees (35 h / 5 j x 2)", h == "14", h)
+    h = record(p, "Omar", "Arrêt maladie", iso(ARRET_LUN, 2), iso(ARRET_LUN, 4))
+    check("Mer + jeu d une semaine non planifiee : 14 h estimees (35 h / 5 j x 2)", h == "14", h)
 
     # --- 3. vue mois --------------------------------------------------------------
     p.get_by_role("button", name="Mois", exact=True).click(); p.wait_for_timeout(3000)
@@ -80,10 +96,12 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Semaine", exact=True).click(); p.wait_for_timeout(800)
 
     # --- 4. semaine du 21/09 : 0 h faite, l'etiquette d'absence remplace la barre -
-    p.get_by_role("button", name=re.compile("^(Next week|Semaine suivante)$")).click(); p.wait_for_timeout(1800)
+    bouton = "Semaine suivante" if SENS == 1 else "Semaine précédente"
+    for _ in range(SEMAINES):
+        p.get_by_test_id("week-nav").get_by_role("button", name=bouton).click(); p.wait_for_timeout(1800)
     txt = row(p, "Omar").inner_text()
-    check("Semaine du 21/09 : Omar 0.0 / 21h (35 - 14)", "0.0 / 21h" in txt, txt)
-    check("Semaine du 21/09 : l etiquette « Absent » reste, sans note en double", "Absent" in txt and not notes(p), (txt, notes(p)))
+    check("Semaine de l arret : Omar 0.0 / 21h (35 - 14)", "0.0 / 21h" in txt, txt)
+    check("Semaine de l arret : l etiquette « Absent » reste, sans note en double", "Absent" in txt and not notes(p), (txt, notes(p)))
     check("Admin : aucune erreur JavaScript", not errors, errors[:1])
 
     # --- 5. vue de l'employe ------------------------------------------------------

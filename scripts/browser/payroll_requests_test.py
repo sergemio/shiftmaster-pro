@@ -4,6 +4,27 @@ Donnees : seed-emulator. Omar 35 h (shifts lun 14/09 4,5 h, mar 15/09 5 h),
 Double 20 h (mer 16/09 3 h). Lancer `node scripts/seed-emulator.mjs` avant.
 """
 from playwright.sync_api import sync_playwright
+from datetime import date, timedelta
+from dates import MON, iso, fr, mois, mois_long, semaine_entiere
+
+# Semaine de conges : entierement dans un seul mois, sinon la ligne de paie
+# « 6 j, 35 h » serait coupee en deux (voir `dates.py`).
+CP = semaine_entiere(4)
+MOIS_CP = mois(CP)
+# Arret maladie : deux jours d'une semaine NON planifiee, dans le meme mois que la
+# semaine en cours. Sans planning ce jour-la, l'app estime l'absence au contrat
+# (20 h / 5 j = 4 h par jour, donc 8 h), ce que le controle attend.
+ARRET = next(
+    (MON + timedelta(days=d) for d in (7, -7, 14)
+     if (MON + timedelta(days=d)).month == MON.month
+     and (MON + timedelta(days=d + 1)).month == MON.month),
+    MON + timedelta(days=7),
+)
+MOIS_PAIE = mois(ARRET)
+# Heures d'Omar dans ce mois : lundi 11h30-16h (4,5 h) et mardi 18h-23h (5 h) ;
+# si la semaine enjambe deux mois, seules celles du mois du lundi comptent.
+H_OMAR = sum(h for d, h in ((0, 4.5), (1, 5.0)) if (MON + timedelta(days=d)).month == MON.month)
+H_OMAR_TXT = str(H_OMAR).replace('.0', '').replace('.', ',')
 import tempfile, os
 URL = "http://localhost:3100/shiftmaster-pro/"
 res = []
@@ -48,12 +69,12 @@ with sync_playwright() as pw:
     # --- 1. Omar demande ------------------------------------------------------------
     panel = omar.get_by_test_id("leave-request-panel")
     check("Ma semaine : bouton « Demander un congé »", panel.get_by_role("button", name="Demander un congé").count() == 1)
-    d = request_leave(omar, "Congés payés", "2026-10-12", "2026-10-19", "Vacances Liban")
+    d = request_leave(omar, "Congés payés", iso(CP), iso(CP, 7), "Vacances Liban")
     check("Demande 12-17/10 : 6 jours ouvrables annonces", d.startswith("6 jour"), d)
     lst = panel.get_by_test_id("req-list").inner_text()
     check("Mes demandes : en attente", "Congés payés" in lst and "En attente" in lst, lst)
-    request_leave(omar, "Congé sans solde", "2026-11-02", "2026-11-03")
-    request_leave(omar, "Congés payés", "2026-12-21", "2026-12-24")
+    request_leave(omar, "Congé sans solde", iso(CP, 21), iso(CP, 22))
+    request_leave(omar, "Congés payés", iso(CP, 70), iso(CP, 73))
     check("Trois demandes en attente", panel.get_by_test_id("req-list").inner_text().count("En attente") == 3)
     panel.get_by_test_id("req-list").locator("li").filter(has_text="Congé sans solde").get_by_role("button", name="Retirer").click()
     omar.wait_for_timeout(1200)
@@ -73,13 +94,13 @@ with sync_playwright() as pw:
     check("Fenetre Absences : 2 demandes en attente, avec le message", "DEMANDES EN ATTENTE (2)" in pend.inner_text().upper() and "Vacances Liban" in pend.inner_text(), pend.inner_text())
     pend.locator("li").filter(has_text="Vacances Liban").get_by_role("button", name="Examiner").click(); serge.wait_for_timeout(1500)
     check("Examiner : formulaire pre-rempli pour Omar", serge.get_by_label("Qui est absent").input_value() == "s2")
-    check("... dates de la demande", serge.get_by_label("Premier jour d'absence").input_value() == "2026-10-12"
-          and serge.get_by_label("Reprise le").input_value() == "2026-10-19")
+    check("... dates de la demande", serge.get_by_label("Premier jour d'absence").input_value() == iso(CP)
+          and serge.get_by_label("Reprise le").input_value() == iso(CP, 7))
     check("... bandeau « Demande de Omar »", serge.get_by_test_id("req-reviewing").count() == 1)
     h = serge.get_by_label("Heures d'absence").input_value()
     check("... heures proposees au contrat : 35 h", h == "35", h)
     serge.get_by_role("button", name="Accepter la demande").click(); serge.wait_for_timeout(2000)
-    check("Accepte : l'absence existe dans la liste", "12 oct" in serge.locator("body").inner_text())
+    check("Accepte : l'absence existe dans la liste", fr(CP) in serge.locator("body").inner_text(), serge.locator("body").inner_text()[:200])
     pt = serge.get_by_test_id("req-pending").all_inner_texts()
     check("Accepte : plus qu'une demande en attente", any("DEMANDES EN ATTENTE (1)" in x.upper() for x in pt), pt)
 
@@ -101,21 +122,21 @@ with sync_playwright() as pw:
     serge.get_by_label("Qui est absent").select_option(label="Double")
     serge.get_by_role("button", name="Motif").click()
     serge.get_by_role("listbox").get_by_role("option", name="Arrêt maladie").click()
-    serge.get_by_label("Premier jour d'absence").fill("2026-09-21")
-    serge.get_by_label("Reprise le").fill("2026-09-23"); serge.wait_for_timeout(1200)
+    serge.get_by_label("Premier jour d'absence").fill(iso(ARRET))
+    serge.get_by_label("Reprise le").fill(iso(ARRET, 2)); serge.wait_for_timeout(1200)
     serge.get_by_role("button", name="Enregistrer l'absence").click(); serge.wait_for_timeout(1800)
     serge.keyboard.press("Escape"); serge.wait_for_timeout(400)
 
     serge.get_by_role("button", name="Paramètres", exact=True).first.click(); serge.wait_for_timeout(500)
     serge.get_by_role("button", name="Éléments variables de paie").click(); serge.wait_for_timeout(600)
-    serge.get_by_label("Mois").fill("2026-09"); serge.wait_for_timeout(2500)
+    serge.get_by_label("Mois").fill(MOIS_PAIE); serge.wait_for_timeout(2500)
     txt = serge.get_by_test_id("payroll-text").inner_text()
     print("   ---\n" + "\n".join("   " + l for l in txt.splitlines()) + "\n   ---")
-    check("Export : titre du mois", txt.startswith("Éléments variables de paie — septembre 2026"), txt[:60])
+    check("Export : titre du mois", txt.startswith(f"Éléments variables de paie — {mois_long(MON)}"), txt[:60])
     check("Export : Omar, contrat 35 h, base 151,67 h", "OMAR — contrat 35 h/semaine (base 151,67 h/mois)" in txt)
-    check("Export : Omar a travaille 9,5 h", "Heures travaillées : 9,5 h" in txt)
-    check("Export : Double, arret du 21 au 22/09, 2 j, 8 h, justificatif NON recu",
-          "Arrêt maladie du 21 sept 26 au 22 sept 26 : 2 j décomptés, 8 h d'absence, justificatif NON reçu" in txt)
+    check(f"Export : Omar a travaille {H_OMAR_TXT} h", f"Heures travaillées : {H_OMAR_TXT} h" in txt)
+    check("Export : Double, arret de 2 jours, 8 h, justificatif NON recu",
+          f"Arrêt maladie du {fr(ARRET)} au {fr(ARRET, 1)} : 2 j décomptés, 8 h d'absence, justificatif NON reçu" in txt, txt)
     check("Export : Serge (admin sans contrat ni heures) absent", "SERGE" not in txt)
     check("Export : mention des donnees de sante", "données de santé" in serge.locator("body").inner_text())
     serge.get_by_role("button", name="Copier le texte").click(); serge.wait_for_timeout(400)
@@ -128,14 +149,14 @@ with sync_playwright() as pw:
     dl.value.save_as(path)
     raw = open(path, "rb").read()
     csv = raw.decode("utf-8-sig")
-    check("CSV : nom de fichier du mois", dl.value.suggested_filename == "elements-variables-paie-2026-09.csv", dl.value.suggested_filename)
+    check("CSV : nom de fichier du mois", dl.value.suggested_filename == f"elements-variables-paie-{MOIS_PAIE}.csv", dl.value.suggested_filename)
     check("CSV : BOM UTF-8 pour Excel", raw.startswith(b"\xef\xbb\xbf"))
     check("CSV : en-tete francais", csv.splitlines()[0] == "Salarié;Rubrique;Du;Au;Jours;Heures;Détail", csv.splitlines()[0])
-    check("CSV : ligne de l'arret de Double", any(l.startswith("Double;Arrêt maladie;2026-09-21;2026-09-22;2;8;") for l in csv.splitlines()), csv)
-    serge.get_by_label("Mois").fill("2026-10"); serge.wait_for_timeout(2500)
+    check("CSV : ligne de l'arret de Double", any(l.startswith(f"Double;Arrêt maladie;{iso(ARRET)};{iso(ARRET, 1)};2;8;") for l in csv.splitlines()), csv)
+    serge.get_by_label("Mois").fill(MOIS_CP); serge.wait_for_timeout(2500)
     txt10 = serge.get_by_test_id("payroll-text").inner_text()
-    check("Octobre : le conge accepte d'Omar, 6 j, 35 h",
-          "Congés payés du 12 oct 26 au 18 oct 26 : 6 j décomptés, 35 h d'absence — Vacances Liban" in txt10, txt10)
+    check("Mois du conge : le conge accepte d'Omar, 6 j, 35 h",
+          f"Congés payés du {fr(CP)} au {fr(CP, 6)} : 6 j décomptés, 35 h d'absence — Vacances Liban" in txt10, txt10)
     serge.keyboard.press("Escape"); serge.wait_for_timeout(300)
 
     # --- 5. Un employe n'a pas l'export -------------------------------------------------------

@@ -3,7 +3,10 @@ seuils des alertes. Seed : Sezam (demo) en IDCC 1501 (journee max 10 h).
 Un shift de 10 h 30 est une infraction en 1501 et en « Code du travail »,
 pas en HCR (11 h, poste le plus protecteur)."""
 from playwright.sync_api import sync_playwright
+from dates import MON, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
+# Semaine en cours : son identifiant est le DIMANCHE qui precede son lundi.
+W = iso(MON, -1)
 res = []
 def check(label, ok, extra=""):
     res.append(ok)
@@ -25,12 +28,12 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Se connecter", exact=True).click(); p.wait_for_timeout(3800)
 
     url = p.evaluate("() => performance.getEntriesByType('resource').map(e => e.name).find(n => n.includes('/services/firebaseService.ts'))")
-    p.evaluate("""async (url) => {
+    p.evaluate("""async ({ url, week }) => {
       const S = await import(url);
-      const w = (await S.loadWeeks(['2026-09-13']))['2026-09-13'];
-      await S.saveWeekToFirebase('2026-09-13', { ...w, shifts: [...w.shifts,
+      const w = (await S.loadWeeks([week]))[week];
+      await S.saveWeekToFirebase(week, { ...w, shifts: [...w.shifts,
         { id: 'long1', staffId: 's3', dayIndex: 4, startTime: 10, endTime: 20.5 }] });
-    }""", url)
+    }""", {"url": url, "week": W})
     p.wait_for_timeout(1500)
     body = p.locator("body").inner_text()
     check("IDCC 1501 : le shift de 10 h 30 declenche une alerte, convention nommee", FAST in body, [l for l in body.splitlines() if "IDCC" in l])

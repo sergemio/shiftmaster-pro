@@ -1,9 +1,10 @@
 """Absences : une seule absence par jour ; un arret interrompt les conges payes.
 
-Jeu de demo : semaine du lundi 14/09/2026, Omar (35 h) a deux shifts : lun et mar.
+Jeu de demo : la semaine EN COURS (dates calculees, voir `dates.py`), Omar (35 h) a deux shifts : lun et mar.
 """
 import tempfile
 from playwright.sync_api import sync_playwright
+from dates import MON, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
 DIR = tempfile.gettempdir()  # captures d'ecran : hors du depot
 res = []
@@ -46,47 +47,48 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Absences", exact=True).first.click(); p.wait_for_timeout(600)
 
     # --- 1. conges du lundi 14 au mercredi 16 ------------------------------------
-    fill(p, "Congés payés", "2026-09-14", "2026-09-17")
+    fill(p, "Congés payés", iso(MON, 0), iso(MON, 3))
     check("Pas de conflit sur une saisie libre", p.get_by_test_id("abs-conflict").count() == 0)
     save(p)
     check("Apres enregistrement, le formulaire reste sur Omar (pas sur le premier de la liste)",
           p.locator("#abs-who option:checked").inner_text() == "Omar", p.locator("#abs-who option:checked").inner_text())
-    p.get_by_label("Premier jour d'absence").fill("2026-09-14"); p.get_by_label("Reprise le").fill("2026-09-15")
+    p.get_by_label("Premier jour d'absence").fill(iso(MON, 0)); p.get_by_label("Reprise le").fill(iso(MON, 1))
     p.wait_for_timeout(500)
 
     # --- 2. demi-journee de conges le 16 : deja couvert ---------------------------
-    fill(p, "Congés payés", "2026-09-16", "2026-09-17")
+    fill(p, "Congés payés", iso(MON, 2), iso(MON, 3))
     p.get_by_role("button", name="Matin").click(); p.wait_for_timeout(400)
     box = p.get_by_test_id("abs-conflict")
     check("Demi-conge le 16 : conflit annonce", box.count() == 1 and "déjà une absence" in box.inner_text(), box.all_inner_texts())
     check("... le bouton d enregistrement est bloque", p.get_by_role("button", name="Enregistrer l'absence").is_disabled())
     p.get_by_role("button", name="Modifier cette absence").click(); p.wait_for_timeout(500)
     check("« Modifier cette absence » ouvre le conge en conflit",
-          p.get_by_role("heading", name="Modifier l'absence").count() == 1 and p.get_by_label("Premier jour d'absence").input_value() == "2026-09-14")
+          p.get_by_role("heading", name="Modifier l'absence").count() == 1 and p.get_by_label("Premier jour d'absence").input_value() == iso(MON, 0))
     p.get_by_role("button", name="Annuler", exact=True).click(); p.wait_for_timeout(400)
     check("Apres annulation, toujours sur Omar", p.locator("#abs-who option:checked").inner_text() == "Omar")
 
     # --- 3. un arret du 16 au 17 interrompt les conges -----------------------------
-    fill(p, "Arrêt maladie", "2026-09-16", "2026-09-18")
+    fill(p, "Arrêt maladie", iso(MON, 2), iso(MON, 4))
     cut = p.get_by_test_id("abs-cut")
     txt = cut.inner_text() if cut.count() else ""
     check("Arret sur les conges : l effet est annonce avant d enregistrer", cut.count() == 1 and "interrompt les congés" in txt, txt)
-    check("... conges du 14 au 16 desormais du 14 au 15", "du 14 sept 26 au 16 sept 26 → désormais du 14 sept 26 au 15 sept 26" in txt, txt)
+    check("... le conge du lundi au mercredi devient lundi-mardi",
+          f"du {fr(MON, 0)} au {fr(MON, 2)} → désormais du {fr(MON, 0)} au {fr(MON, 1)}" in txt, txt)
     check("... 1 jour rendu", "1 jour rendu" in txt, txt)
     p.screenshot(path=DIR + r"\overlap_cut.png")
     save(p)
     items = listed(p)
-    check("Liste : conges 14 -> reprise 16, 2 jours", any("Congés payés" in i and "reprise 16 sept" in i and "2 jours" in i for i in items), items)
-    check("Liste : arret 16 -> reprise 18", any("Arrêt maladie" in i and "du 16 sept" in i for i in items), items)
+    check("Liste : conges 14 -> reprise 16, 2 jours", any("Congés payés" in i and f"reprise {fr(MON, 2)}" in i and "2 jours" in i for i in items), items)
+    check("Liste : arret 16 -> reprise 18", any("Arrêt maladie" in i and f"du {fr(MON, 2)}" in i for i in items), items)
     check("Liste : plus aucun doublon (2 absences pour Omar)", len(items) == 2, items)
 
     # --- 4. conges poses sur l'arret : refuses --------------------------------------
-    fill(p, "Congés payés", "2026-09-17", "2026-09-19")
+    fill(p, "Congés payés", iso(MON, 3), iso(MON, 5))
     box = p.get_by_test_id("abs-conflict")
     check("Conges pendant l arret : refuses avec la raison", box.count() == 1 and "pendant un arrêt" in box.inner_text(), box.all_inner_texts())
 
     # --- 5. demi-journee reservee aux conges ---------------------------------------
-    fill(p, "Arrêt maladie", "2026-09-21", "2026-09-22")
+    fill(p, "Arrêt maladie", iso(MON, 7), iso(MON, 8))
     check("Arret d un jour : pas de choix matin / apres-midi", p.get_by_role("group", name="Demi-journée").count() == 0)
     pick_kind(p, "Congés payés"); p.wait_for_timeout(300)
     check("Conge d un jour : le choix matin / apres-midi est la", p.get_by_role("group", name="Demi-journée").count() == 1)
@@ -109,13 +111,13 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Oui, Supprimer").click(); p.wait_for_timeout(1800)
     check("Apres suppression, toujours sur Omar", p.locator("#abs-who option:checked").inner_text() == "Omar")
     items = listed(p)
-    check("Apres suppression : reste le conge 14 -> reprise 16", len(items) == 1 and "reprise 16 sept" in items[0], items)
+    check("Apres suppression : reste le conge 14 -> reprise 16", len(items) == 1 and f"reprise {fr(MON, 2)}" in items[0], items)
 
     # --- 8. persistance -----------------------------------------------------------------
     p.keyboard.press("Escape"); p.reload(); p.wait_for_timeout(4200)
     p.get_by_role("button", name="Absences", exact=True).first.click(); p.wait_for_timeout(800)
     items = listed(p)
-    check("Apres rechargement : toujours le seul conge 14 -> reprise 16", len(items) == 1 and "reprise 16 sept" in items[0], items)
+    check("Apres rechargement : toujours le seul conge 14 -> reprise 16", len(items) == 1 and f"reprise {fr(MON, 2)}" in items[0], items)
     check("Aucune erreur JavaScript", not errors, errors[:1])
     b.close()
 print("\nTOUT PASSE" if all(res) else f"\n{res.count(False)} ECHEC(S)")
