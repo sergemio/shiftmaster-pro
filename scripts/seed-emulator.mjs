@@ -107,9 +107,9 @@ for (const u of USERS) {
   await auth.createUser({ uid: u.uid, email: u.email, password: PASSWORD, displayName: u.name, emailVerified: true });
   await auth.setCustomUserClaims(u.uid, Object.keys(u.orgs).length ? { orgs: u.orgs } : {});
   await db.collection('users').doc(u.uid).set({ email: u.email, orgs: u.orgs, createdAt: now });
-  // Visite guidee deja vue : sinon elle recouvrirait l'ecran dans toutes les
-  // suites. Elle est testee a part, sur un compte cree pendant le test.
-  await db.collection('users').doc(u.uid).collection('prefs').doc('ui').set({ tourSeen: true, updatedAt: now });
+  // Visite guidee vue et « Premiers pas » termines : sinon ils recouvriraient
+  // l'ecran dans toutes les suites. Testes a part, sur des comptes neufs.
+  await db.collection('users').doc(u.uid).collection('prefs').doc('ui').set({ tourSeen: true, checklistDone: true, updatedAt: now });
 }
 
 console.log(`Emulateurs remplis : ${Object.keys(ORGS).length} restaurants, ${USERS.length} comptes, semaine ${weekId}.`);

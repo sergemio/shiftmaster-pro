@@ -108,6 +108,8 @@ interface SidebarProps {
   /** Nom de la convention appliquee. L'utilisateur doit toujours savoir de
    *  quelle loi on lui parle : sans ca, un seuil affiche n'est pas verifiable. */
   conventionLabel?: string;
+  /** Carte « Premiers pas » : absente une fois terminee ou masquee. */
+  checklist?: { items: { label: string; done: boolean; onClick: () => void }[]; onDismiss: () => void };
   onDeleteWeek: () => void;
   onOpenHistory: () => void;
   /** Absent = icone masquee (pendant un brouillon : l'image montrerait une
@@ -147,6 +149,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   draftExists = false,
   compliance = [],
   conventionLabel = '',
+  checklist,
   onDeleteWeek,
   onOpenHistory,
   onExportSnapshot,
@@ -344,6 +347,44 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
         </div>
+
+      {/* « Premiers pas » (chantier 4, 21/09/2026) : la visite guidee montre OU sont
+          les choses une fois ; cette carte dit, le lendemain encore, ce qu'il reste
+          a faire. Chaque case se coche seule, chaque ligne ouvre l'ecran voulu. */}
+      {checklist && (
+        <div data-testid="checklist" className="flex-none rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-sm font-bold text-slate-800">
+              {t('checklistTitle')}
+              <span className="ml-2 text-xs font-semibold text-indigo-600">
+                {checklist.items.filter(i => i.done).length} / {checklist.items.length}
+              </span>
+            </p>
+            <button type="button" onClick={checklist.onDismiss}
+              className="text-xs font-semibold text-slate-400 hover:text-slate-600 px-1.5 py-1 rounded">
+              {t('checklistHide')}
+            </button>
+          </div>
+          <ul className="flex flex-col">
+            {checklist.items.map(item => (
+              <li key={item.label}>
+                <button type="button" onClick={item.onClick} disabled={item.done}
+                  className="w-full flex items-center gap-2.5 py-1.5 px-1 rounded-lg text-left text-sm enabled:hover:bg-white/80 transition-colors">
+                  <span aria-hidden="true" className={`w-5 h-5 flex-none rounded-full grid place-items-center border-2 ${item.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 bg-white'}`}>
+                    {item.done && (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3.5} d="M5 13l4 4L19 7" /></svg>
+                    )}
+                  </span>
+                  <span className={item.done ? 'text-slate-400 line-through' : 'text-slate-700 font-semibold'}>{item.label}</span>
+                  {!item.done && (
+                    <svg className="w-4 h-4 ml-auto text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------------
           Semaine / Mois. Le contrat, les heures supplementaires et la paie se

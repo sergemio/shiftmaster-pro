@@ -55,7 +55,8 @@ import {
   resetPassword,
   createOrgCall,
   loadUiPrefs,
-  saveTourSeen,
+  saveUiPrefs,
+  UiPrefs,
   subscribeToInvites,
   createInvite,
   deleteInvite,
@@ -1482,35 +1483,73 @@ const App: React.FC = () => {
   // La preselection ne vaut que pour l'ouverture qui suit l'ajout.
   useEffect(() => { if (!isShiftModalOpen) setShiftPresetStaffId(undefined); }, [isShiftModalOpen]);
 
-  // ------------------------------------------------ visite guidee
-  // Une fois par compte, a la premiere ouverture du planning par quelqu'un qui
-  // planifie (un equipier en lecture seule n'a pas ces boutons). « Vue » est
-  // retenu sur le compte (loadUiPrefs) et, pour ne pas relire la base a chaque
-  // ouverture, dans ce navigateur.
+  // ------------------------------------------------ premiere connexion
+  // Visite guidee et carte « Premiers pas » : pour qui planifie (un equipier en
+  // lecture seule n'a pas ces boutons). Ce qui a ete vu ou fait est retenu sur
+  // le COMPTE (users/{uid}/prefs/ui) et recopie dans ce navigateur : une fois
+  // tout termine, plus aucune lecture de la base a l'ouverture.
   const [tourOpen, setTourOpen] = useState(false);
-  const tourChecked = useRef(false);
-  const tourKey = `shiftmaster_tour_seen_${isGuest ? 'guest' : user?.uid || ''}`;
+  const [uiPrefs, setUiPrefs] = useState<UiPrefs | null>(null);
+  const prefsChecked = useRef(false);
+  const prefsKey = `shiftmaster_prefs_${isGuest ? 'guest' : user?.uid || ''}`;
   useEffect(() => {
-    if (tourChecked.current || isReadOnly || !staffLoaded || isLoading) return;
+    if (prefsChecked.current || isReadOnly || !staffLoaded || isLoading) return;
     if (!isGuest && !(connected && user)) return;
-    tourChecked.current = true;
-    try { if (localStorage.getItem(tourKey)) return; } catch { /* stockage bloque : on demande a la base */ }
-    if (isGuest) { setTourOpen(true); return; }
-    loadUiPrefs().then(prefs => {
-      if (!prefs) return;                       // hors ligne : pas sur un doute
-      if (prefs.tourSeen) { try { localStorage.setItem(tourKey, '1'); } catch { /* */ } return; }
-      setTourOpen(true);
+    prefsChecked.current = true;
+    let cached: UiPrefs = {};
+    try { cached = JSON.parse(localStorage.getItem(prefsKey) || '{}') || {}; } catch { /* stockage bloque */ }
+    const apply = (p: UiPrefs) => {
+      setUiPrefs(p);
+      try { localStorage.setItem(prefsKey, JSON.stringify(p)); } catch { /* */ }
+      if (!p.tourSeen) setTourOpen(true);
+    };
+    if (isGuest || (cached.tourSeen && cached.checklistDone)) { apply(cached); return; }
+    loadUiPrefs().then(p => {
+      // Hors ligne : on ne montre ni visite ni carte sur un doute.
+      if (!p) { setUiPrefs({ ...cached, tourSeen: true, checklistDone: true }); return; }
+      apply({ ...cached, ...p });
     });
-  }, [isReadOnly, staffLoaded, isLoading, isGuest, connected, user, tourKey]);
+  }, [isReadOnly, staffLoaded, isLoading, isGuest, connected, user, prefsKey]);
+
+  /** Retient un pas franchi : ici tout de suite, sur le compte en arriere-plan. */
+  const uiPrefsRef = useRef<UiPrefs | null>(null);
+  uiPrefsRef.current = uiPrefs;
+  const markPrefs = useCallback((patch: UiPrefs) => {
+    const prev = uiPrefsRef.current;
+    if (!prev || Object.entries(patch).every(([k, v]) => (prev as any)[k] === v)) return;
+    const next = { ...prev, ...patch };
+    uiPrefsRef.current = next;
+    setUiPrefs(next);
+    try { localStorage.setItem(prefsKey, JSON.stringify(next)); } catch { /* */ }
+    if (!isGuest) saveUiPrefs(patch);
+  }, [prefsKey, isGuest]);
 
   const closeTour = (finished: boolean) => {
     setTourOpen(false);
     setIsMobileSidebarOpen(false);
-    try { localStorage.setItem(tourKey, '1'); } catch { /* */ }
-    if (!isGuest) saveTourSeen();
+    markPrefs({ tourSeen: true });
     // « Ajouter mon équipe » : la visite se termine sur le premier geste.
     if (finished && staffList.length === 0) openStaffFrom('shift');
   };
+
+  // « Premiers pas » : chaque case se coche d'apres ce que l'app voit. Le shift
+  // et les horaires sont retenus une fois faits (la semaine affichee peut etre
+  // vide plus tard, et 9 h - 23 h est aussi un reglage possible).
+  const stepTeam = staffList.length > 0;
+  const stepShift = !!uiPrefs?.firstShift || shifts.length > 0;
+  const stepHours = !!uiPrefs?.hoursSet;
+  useEffect(() => { if (uiPrefs && !uiPrefs.firstShift && shifts.length > 0) markPrefs({ firstShift: true }); },
+    [uiPrefs, shifts.length, markPrefs]);
+  useEffect(() => { if (uiPrefs && !uiPrefs.checklistDone && stepTeam && stepShift && stepHours) markPrefs({ checklistDone: true }); },
+    [uiPrefs, stepTeam, stepShift, stepHours, markPrefs]);
+  const checklist = uiPrefs && !uiPrefs.checklistDone && !isReadOnly ? {
+    items: [
+      { label: t('checklistTeam'), done: stepTeam, onClick: fromSidebar(() => openStaffFrom('shift')) },
+      { label: t('checklistShift'), done: stepShift, onClick: fromSidebar(() => setIsShiftModalOpen(true)) },
+      { label: t('checklistHours'), done: stepHours, onClick: fromSidebar(() => setIsSettingsModalOpen(true)) },
+    ],
+    onDismiss: () => markPrefs({ checklistDone: true }),
+  } : undefined;
 
   // Sur telephone, les boutons sont dans le tiroir : la visite l'ouvre pour les
   // etapes qui les montrent et le referme pour les autres.
@@ -2272,6 +2311,7 @@ const App: React.FC = () => {
         draftExists={draft !== null}
         compliance={complianceList}
         conventionLabel={conventionLabel(convention)}
+        checklist={checklist}
         onDeleteWeek={handleDeleteWeek}
         onOpenHistory={fromSidebar(() => setIsHistoryModalOpen(true))}
         onExportSnapshot={inDraft ? undefined : handleExportSnapshot}
@@ -2361,7 +2401,7 @@ const App: React.FC = () => {
         onRefuseRequest={(req, reply) => decideLeaveRequest(req, 'refused', { reply })}
         language={language}
       />
-      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : updateOperatingHours} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} closures={closures} onClosuresChange={isReadOnly ? undefined : updateClosures} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit}
+      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : (h: OperatingHours) => { updateOperatingHours(h); markPrefs({ hoursSet: true }); }} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} closures={closures} onClosuresChange={isReadOnly ? undefined : updateClosures} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit}
         convention={conventionFor(conventionId).id} onConventionChange={isReadOnly ? undefined : updateConvention}
         onOpenPayroll={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setIsPayrollOpen(true); }}
         onReplayTour={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setTourOpen(true); }} />

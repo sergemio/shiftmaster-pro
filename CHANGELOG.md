@@ -5,6 +5,22 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-21 (nuit, suite) — Chantier 4 : carte « Premiers pas » (branche `saas`, non commite)
+
+Valide par Serge. En haut de la barre laterale, pour un admin : « Ajouter un equipier », « Placer un
+premier shift », « Regler les horaires d'ouverture », avec un compteur « n / 3 ». Chaque case se coche
+seule, chaque ligne ouvre l'ecran voulu, « Masquer » la retire. Une fois les trois faits, la carte
+disparait pour toujours.
+
+- Le shift et les horaires sont retenus une fois faits (`firstShift`, `hoursSet`) : la semaine affichee
+  peut etre vide plus tard, et 9 h - 23 h est aussi un reglage possible.
+- Memes preferences de compte que la visite (`users/{uid}/prefs/ui`, regle elargie a
+  `firstShift`/`hoursSet`/`checklistDone`, toutes booleennes) ; lecture unique, recopiee dans le
+  navigateur : plus aucune lecture a l'ouverture une fois visite et carte terminees.
+- Fichiers : `Sidebar.tsx` (carte), `App.tsx` (preferences communes visite + carte), `firebaseService.ts`
+  (`UiPrefs`, `saveUiPrefs`), `firestore.rules`, `seed-emulator.mjs` (carte terminee pour les comptes de
+  demo), `checklist_test.py` (nouvelle suite, 9 controles).
+
 ## 2026-09-21 (nuit) — Premiere connexion : chantiers 1 a 3 (branche `saas`, non commite, non deploye)
 
 Retour de Serge : un restaurateur qui decouvre l'app ne sait pas par ou commencer. Trois chantiers,

@@ -232,8 +232,11 @@ service cloud.firestore {
     match /users/{uid}/prefs/{docId} {
       allow read: if isSignedIn() && request.auth.uid == uid;
       allow write: if isSignedIn() && request.auth.uid == uid && docId == 'ui'
-        && request.resource.data.keys().hasOnly(['tourSeen', 'updatedAt'])
-        && request.resource.data.tourSeen is bool;
+        && request.resource.data.keys().hasOnly(['tourSeen', 'firstShift', 'hoursSet', 'checklistDone', 'updatedAt'])
+        && request.resource.data.get('tourSeen', false) is bool
+        && request.resource.data.get('firstShift', false) is bool
+        && request.resource.data.get('hoursSet', false) is bool
+        && request.resource.data.get('checklistDone', false) is bool;
     }
 
     match /orgs/{orgId} {
