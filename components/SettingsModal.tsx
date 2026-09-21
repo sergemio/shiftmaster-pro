@@ -39,6 +39,8 @@ interface SettingsModalProps {
   onConventionChange?: (id: string) => void;
   /** Ouvre l'export des elements variables de paie. Absent = pas admin. */
   onOpenPayroll?: () => void;
+  /** Relance la visite guidee (absent pour qui ne planifie pas). */
+  onReplayTour?: () => void;
 }
 
 /**
@@ -129,6 +131,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   leaveUnit = 'ouvrables',
   onLeaveUnitChange,
   onOpenPayroll,
+  onReplayTour,
   convention = '1501',
   onConventionChange,
 }) => {
@@ -359,6 +362,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               )}
               <ExportDataButton language={language as Language} />
+              {onReplayTour && (
+                <button type="button" onClick={onReplayTour}
+                  className="w-full py-3 px-6 bg-white text-slate-600 border border-slate-200 rounded-2xl font-semibold hover:bg-slate-50 transition-all duration-200 active:scale-95 text-sm">
+                  {t('tourReplay')}
+                </button>
+              )}
             </div>
           </section>
         </div>

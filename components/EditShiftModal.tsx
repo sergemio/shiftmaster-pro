@@ -78,7 +78,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
     e.preventDefault();
     if (isReadOnly) return;
     if (endTime <= startTime) {
-      alert("End time must be after start time");
+      alert(t('endBeforeStart'));
       return;
     }
     if (employment.errors.length > 0) return;
@@ -130,7 +130,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
   return (
     <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
-        <div className="flex-none p-6 md:p-8 pb-4 flex justify-between items-start border-b border-slate-50">
+        <div className="flex-none p-6 md:p-8 pb-3 md:pb-3 flex justify-between items-start border-b border-slate-50">
           <div>
             <h2 className="text-xl md:text-2xl font-bold text-slate-800">{isReadOnly ? 'View Shift' : 'Edit Shift'}</h2>
             <p className="text-xs md:text-sm text-slate-400 font-medium">{isReadOnly ? 'Details' : 'Detailed configuration'}</p>
@@ -140,7 +140,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 md:p-8 pt-6 space-y-4 md:space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 md:p-8 pt-4 md:pt-4 space-y-4 md:space-y-6">
           {!isConfirmingDelete ? (
             <>
               <div>
@@ -260,6 +260,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                   {[...employment.notes, ...warnings].map((w, i) => (
                     <p key={i} className="text-xs font-semibold text-amber-800 leading-snug">⚠ {w}</p>
                   ))}
+                  {warnings.length > 0 && <p className="text-xs text-amber-700/80 leading-snug pt-0.5">{t('ruleInformative')}</p>}
                 </div>
               )}
 

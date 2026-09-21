@@ -5,6 +5,74 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-21 (nuit) — Premiere connexion : chantiers 1 a 3 (branche `saas`, non commite, non deploye)
+
+Retour de Serge : un restaurateur qui decouvre l'app ne sait pas par ou commencer. Trois chantiers,
+chacun valide par lui avant d'etre code.
+
+- **Langue** : l'app demarre en francais, quelle que soit la langue du navigateur (`App.tsx`).
+- **Chantier 1, barre laterale** (maquette `maquettes/sidebar-ordre-boutons.html`, variante C choisie
+  avec « Shift » en premier) : grille de 4 boutons nommes — Shift, Equipe, Absences, Extras — et
+  « Vider la semaine » sorti de la grille, en texte rouge sous un trait (`Sidebar.tsx`).
+- **Chantier 2, equipe vide** : message « Votre equipe est vide » au centre du planning, et a la place
+  du formulaire dans « Shift » et « Absences » ; « Ajouter un equipier » ouvre l'equipe (formulaire deja
+  deplie), puis rouvre le formulaire de shift sur la personne ajoutee (`EmptyTeamNotice.tsx`, `App.tsx`,
+  `ShiftModal.tsx`, `AbsenceModal.tsx`, `StaffModal.tsx`). Si l'equipe existe mais que personne n'est en
+  poste cette semaine, le message le dit et renvoie aux dates d'entree et de sortie.
+- **Marges** : l'espace vide sous le titre des formulaires « Creer / Modifier un shift » venait de
+  `md:p-8` qui ecrasait `pb-4`/`pt-4` (64 px au lieu de 32) — corrige.
+- **Alertes de duree du travail reecrites** en phrases completes : nom de l'equipier selectionne, jour
+  et date, source exacte (Code du travail pour les repos et les jours d'affilee ; convention choisie pour
+  la duree maximale d'une journee), mention « a titre informatif » (`violationText.ts`, traductions).
+  Badge des cartes « Regle » -> « A verifier ». Alerte « End time… » codee en anglais -> traduite.
+- **Le createur du restaurant est admin, pas equipier** (decision de Serge) : l'equipe demarre vide
+  (`functions/index.js`, createOrg — **a redeployer avec l'app**, sinon les testeurs retrouvent un menu
+  vide sans explication). La fenetre Equipe lui dit « Vous gerez ce restaurant » et propose « M'ajouter
+  comme equipier » (nom et email pre-remplis). Ses droits viennent de `users/{uid}.orgs`, inchanges.
+- **Chantier 3, visite guidee** (`GuidedTour.tsx`, meme mecanique que PayVerif) : 6 etapes a la premiere
+  connexion d'un admin — bienvenue, Equipe, Shift, semaine, Absences, Parametres. Derniere etape
+  « Ajouter mon equipe » quand l'equipe est vide. « Vue » retenue sur le COMPTE
+  (`users/{uid}/prefs/ui`, nouvelle regle Firestore : la personne n'ecrit que `tourSeen`/`updatedAt`) et
+  dans le navigateur (0 lecture de plus une fois vue). Relancable depuis Parametres. Sur telephone, la
+  visite ouvre et ferme le tiroir.
+- **Tests** : `tour_test.py` (nouvelle suite, PC + telephone), `signup_test.py` adapte ; les comptes de
+  demonstration ont la visite deja vue (`seed-emulator.mjs`).
+
+## 2026-09-21 (soir) — Projet Firebase du SaaS : `saas-planning-resto`, forfait Blaze (branche `saas`, non commite)
+
+Decision de Serge : un projet NEUF pour le produit, sur son compte personnel, nom d'atelier neutre
+(« ShiftMaster » est deja pris par un concurrent). La base de Sezam reste sur son projet et sur le
+forfait gratuit ; Sezam sera transfere plus tard comme premier restaurant, non payant, qui sert de
+verification quotidienne en conditions reelles.
+
+- Projet `saas-planning-resto` (affiche « Planning SaaS »), compte Google personnel de Serge, cree en
+  ligne de commande. Forfait Blaze active par Serge sur « My Billing Account » ; budget d'alerte 5 €/mois
+  deja present sur ce compte de facturation (a verifier : couvre-t-il ce projet ?).
+- API activees : Firestore, authentification, fonctions, Cloud Build, Artifact Registry, Cloud Run,
+  Eventarc. Base Firestore creee en `europe-west1`. Connexion email + mot de passe activee.
+- Application web « Planning SaaS Web » ; `firebase-applet-config.json` et `.firebaserc` pointent
+  desormais vers ce projet sur la branche `saas`.
+- Regles Firestore publiees. Fonctions publiees (createOrg, acceptInvite, setMemberRole, removeMember,
+  deleteOrg, region europe-west1) ; politique de nettoyage des images activee (evite une petite facture
+  de stockage qui grossit avec le temps).
+- **Verifie en vrai** : inscription d'un compte, assistant « Creez votre restaurant », creation du
+  restaurant par la fonction serveur, ouverture du planning a son nom — 4 controles, 0 erreur.
+  Donnees de test laissees dans le projet : 2 comptes `test-planning-…@example.com`, 1 restaurant
+  « Resto Test 1790004134 » (suppression a valider par Serge).
+- **Application publiee** sur https://saas-planning-resto.web.app (hebergement Firebase, `firebase.json` :
+  dossier `dist`, toutes les adresses renvoient a l'app, fichiers versionnes mis en cache un an). Construite
+  avec `VITE_BASE=/` — sous Git Bash il faut `MSYS_NO_PATHCONV=1`, sinon « / » devient
+  « C:/Program Files/Git/ » et la page reste blanche (vecu au premier envoi).
+- Bouton « bac a sable developpeur » : visible seulement sur l'ordinateur de developpement (ou avec
+  `?sandbox`), plus jamais sur une adresse publique.
+- Telephone : la fleche « semaine suivante » passait sous l'engrenage. Fleches plus etroites et fleche
+  vers le bas masquee sous 640 px ; mesure a 360, 390 et 414 px, plus aucun chevauchement.
+- Verifie sur l'adresse publique, en taille telephone : inscription, creation du restaurant, planning,
+  pas de defilement horizontal, 0 erreur. Donnees de test : 3 comptes `test-planning-…@example.com`,
+  2 restaurants « Resto Test 1790004134 » et « Resto Mobile 1790004593 ».
+- Au passage : les 0,04 € de septembre sur ce compte de facturation viennent de l'API Gemini du projet
+  « Agent Project », pas de ShiftMaster.
+
 ## 2026-09-21 (suite) — Les tests navigateur ne dependent plus de la date du jour
 
 **Panne silencieuse.** Les suites ecrivaient « 2026-09-14 » en dur. Le 20/09 le calendrier a avance

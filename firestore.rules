@@ -226,6 +226,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Preferences d'interface (visite guidee vue). Separees du profil : le profil
+    // porte les droits (`orgs`) et reste en lecture seule ; ici la personne
+    // n'ecrit que ses reglages d'affichage, deux champs, rien d'autre.
+    match /users/{uid}/prefs/{docId} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if isSignedIn() && request.auth.uid == uid && docId == 'ui'
+        && request.resource.data.keys().hasOnly(['tourSeen', 'updatedAt'])
+        && request.resource.data.tourSeen is bool;
+    }
+
     match /orgs/{orgId} {
       // L'equipe a besoin du nom, des reglages et du statut (pour afficher
       // « essai termine »). Les identifiants Stripe sont ailleurs (private/).

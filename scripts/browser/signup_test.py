@@ -48,13 +48,27 @@ with sync_playwright() as pw:
     create.click(); p.wait_for_timeout(6000)
     body = p.locator("body").inner_text()
     check("Restaurant cree : le planning s'ouvre, nom dans l'en-tete", "Chez Nina" in body and onb.count() == 0, body[:200])
+    # La visite guidee s'ouvre sur un compte neuf (testee en detail dans tour_test) : on la passe.
+    tour = p.get_by_test_id("tour")
+    check("La visite guidee s'ouvre a la premiere connexion", tour.count() == 1)
+    if tour.count():
+        tour.get_by_role("button", name="Passer").click(); p.wait_for_timeout(400)
     p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
     check("La convention choisie est enregistree (HCR)",
           p.get_by_role("radio", name="Hôtels, cafés, restaurants (HCR) — IDCC 1979").get_attribute("aria-checked") == "true")
     p.keyboard.press("Escape"); p.wait_for_timeout(300)
+    # Le createur est admin, pas equipier (decision du 21/09/2026) : equipe vide,
+    # message au centre du planning, et une ligne « Vous gerez ce restaurant ».
+    empty = p.get_by_test_id("empty-team")
+    check("Equipe vide a la creation : le planning dit « Votre équipe est vide »",
+          empty.count() >= 1 and "Votre équipe est vide" in empty.first.inner_text())
     p.get_by_role("button", name="Gérer l'équipe").first.click(); p.wait_for_timeout(700)
-    team = p.locator("body").inner_text()
-    check("La fondatrice est dans l'equipe, admin", "Nina Test" in team and "ADMIN" in team.upper(), team[:300])
+    me = p.get_by_test_id("self-admin")
+    check("La fondatrice est presentee comme admin, sans fiche d'equipier",
+          me.count() == 1 and EMAIL.lower() in me.inner_text(), me.inner_text() if me.count() else "")
+    me.get_by_role("button", name="M'ajouter comme équipier").click(); p.wait_for_timeout(300)
+    check("« M'ajouter comme équipier » pre-remplit son nom",
+          p.locator("#new-staff-name").input_value() == "Nina Test", p.locator("#new-staff-name").input_value())
     p.context.close()
 
     # --- 3. connexion : mauvais mot de passe, puis le bon ------------------------------------

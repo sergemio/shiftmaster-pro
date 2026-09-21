@@ -166,6 +166,35 @@ export const loadMemberships = async (force = false): Promise<{ orgs: Record<str
   return { orgs, support: claims.support === true };
 };
 
+/**
+ * Preferences d'interface d'un compte (`users/{uid}/prefs/ui`), aujourd'hui :
+ * la visite guidee deja vue. Rangees sur le COMPTE et non dans le navigateur,
+ * sinon la visite revient sur le telephone apres le PC. Une lecture par
+ * appareil au plus : l'app retient localement qu'elle a ete vue.
+ */
+export const loadUiPrefs = async (): Promise<{ tourSeen?: boolean } | null> => {
+  const u = auth.currentUser;
+  if (!u) return null;
+  try {
+    const { fs, db } = await firestore();
+    const snap = await fs.getDoc(fs.doc(db, 'users', u.uid, 'prefs', 'ui'));
+    return snap.exists() ? (snap.data() as { tourSeen?: boolean }) : {};
+  } catch {
+    return null; // hors ligne : on ne relance pas la visite sur un doute
+  }
+};
+
+export const saveTourSeen = async (): Promise<void> => {
+  const u = auth.currentUser;
+  if (!u) return;
+  try {
+    const { fs, db } = await firestore();
+    await fs.setDoc(fs.doc(db, 'users', u.uid, 'prefs', 'ui'), { tourSeen: true, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch {
+    // Sans reseau, la visite reviendra sur un autre appareil : genant, pas grave.
+  }
+};
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

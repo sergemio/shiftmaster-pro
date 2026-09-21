@@ -1,7 +1,7 @@
 import { Language, Shift, Staff } from '../types';
-import { Violation } from './laborRules';
+import { Convention, Violation } from './laborRules';
 import { getTranslation } from './translations';
-import { formatTime } from './helpers';
+import { formatTime, formatShortDate } from './helpers';
 import { DAYS_EN, DAYS_FR } from '../constants';
 
 /**
@@ -13,7 +13,15 @@ import { DAYS_EN, DAYS_FR } from '../constants';
  *    est 11 h. » Jamais « infraction L3131-1 » : celui qui fait le planning ne
  *    connait pas les articles, et n'a pas a les apprendre pour s'en servir.
  *
- * 2. On nomme l'autre shift. « Elle n'aurait que 9 h de repos » n'est pas
+ * 2. On nomme la personne et l'autre shift. « Le plus long repos de la semaine
+ *    accorde a Serge n'est que de 30,5 heures » se lit seul, sans avoir a
+ *    regarder quel equipier est selectionne (retour de Serge, 21/09/2026).
+ *
+ * 3. On cite la vraie source. Les repos et les jours d'affilee viennent du Code
+ *    du travail quelle que soit la convention ; seule la duree maximale d'une
+ *    journee vient de la convention choisie dans les reglages.
+ *
+ * 4. On nomme l'autre shift. « Elle n'aurait que 9 h de repos » n'est pas
  *    actionnable tant qu'on ne sait pas APRES QUOI — sinon il faut chercher le
  *    coupable a l'oeil sur le planning.
  *
@@ -25,6 +33,10 @@ export const violationText = (
   language: Language,
   /** Pour retrouver l'autre shift cite dans le message. */
   shiftsById: Map<string, { shift: Shift; date: string }>,
+  /** Le prenom a mettre dans la phrase. */
+  who: string,
+  /** Pour citer la convention quand c'est elle qui fixe le seuil. */
+  convention: Convention,
 ): string => {
   const t = getTranslation(language);
   // La virgule decimale est francaise ; l'anglais garde le point. Sans ca on
@@ -33,7 +45,7 @@ export const violationText = (
     Number.isInteger(n) ? String(n) : String(n).replace('.', language === 'fr' ? ',' : '.');
 
   const fill = (key: string, extra: Record<string, string> = {}) =>
-    Object.entries({ actual: num(v.actual), required: num(v.required), ...extra })
+    Object.entries({ actual: num(v.actual), required: num(v.required), who, ...extra })
       .reduce((str, [k, val]) => str.replaceAll(`{${k}}`, val), t(key));
 
   switch (v.rule) {
@@ -52,7 +64,13 @@ export const violationText = (
       return fill('ruleDailyRest', { other: label });
     }
     case 'weeklyRest': return fill('ruleWeeklyRest');
-    case 'maxDaily': return fill('ruleMaxDaily');
+    case 'maxDaily': return fill('ruleMaxDaily', {
+      // « le mardi 22 sept 26 » : « ce jour-la » obligeait a chercher lequel.
+      day: `${(language === 'fr' ? DAYS_FR : DAYS_EN)[(new Date(v.date + 'T00:00:00Z').getUTCDay() + 6) % 7][language === 'fr' ? 'toLowerCase' : 'toString']()} ${formatShortDate(v.date, language)}`,
+      source: convention.idcc
+        ? t('ruleSourceConvention').replace('{label}', convention.label).replace('{idcc}', convention.idcc)
+        : t('ruleSourceLaw'),
+    });
     case 'maxConsecutiveDays': return fill('ruleMaxConsecutive');
   }
 };

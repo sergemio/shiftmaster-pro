@@ -28,6 +28,9 @@ interface StaffModalProps {
   onCancelInvite?: (token: string) => void;
   inviteUrl?: (token: string) => string;
   orgName?: string;
+  /** L'admin connecte, quand il n'a pas de fiche d'equipier : on le lui dit, et on
+   *  lui propose de s'ajouter (nom et email pre-remplis). */
+  selfAdmin?: { name: string; email: string };
 }
 
 const StaffModal: React.FC<StaffModalProps> = ({
@@ -50,6 +53,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
   onCancelInvite,
   inviteUrl,
   orgName = '',
+  selfAdmin,
 }) => {
   if (!isOpen) return null;
 
@@ -61,7 +65,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
   const [newJobTitle, setNewJobTitle] = useState('');
   const [newStartDate, setNewStartDate] = useState('');
   const [newEndDate, setNewEndDate] = useState('');
-  const [isAddingNew, setIsAddingNew] = useState(false);
+  // Equipe vide : on arrive ici pour ajouter quelqu'un, le formulaire est deja ouvert.
+  const [isAddingNew, setIsAddingNew] = useState(staffList.length === 0);
   const [newGuestEmail, setNewGuestEmail] = useState('');
   const [isAddingGuest, setIsAddingGuest] = useState(false);
 
@@ -259,6 +264,27 @@ const StaffModal: React.FC<StaffModalProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-white">
+          {/* Le createur du restaurant est admin sans etre equipier : sans cette
+              ligne, il ouvrirait « Equipe » et ne s'y trouverait nulle part. */}
+          {selfAdmin && (
+            <div data-testid="self-admin" className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 flex flex-col gap-2">
+              <p className="text-sm font-bold text-slate-800">{t('smYouAdminTitle')}</p>
+              <p className="text-xs text-slate-600 leading-snug">{t('smYouAdminBody').replace('{email}', selfAdmin.email)}</p>
+              <button
+                  type="button"
+                  onClick={() => {
+                    setNewName(selfAdmin.name);
+                    setNewEmail(selfAdmin.email);
+                    setNewRole('admin');
+                    setIsAddingNew(true);
+                    setEditingId(null);
+                  }}
+                  className="self-start h-9 px-3 rounded-lg bg-white border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-50 transition-colors"
+                >
+                  {t('smAddMyself')}
+                </button>
+            </div>
+          )}
           <h3 className="text-xs md:text-xs font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
             <span>{t('smCurrentTeam').replace('{n}', String(orderedStaff.filter(s => !isFormerStaff(s)).length))}</span>
           </h3>

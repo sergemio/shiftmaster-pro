@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Staff, AbsencePeriod, LeaveKind, LeaveUnit, Language, LeaveBalance, LeaveRequest } from '../types';
+import EmptyTeamNotice from './EmptyTeamNotice';
 import { getTranslation } from '../utils/translations';
 import {
   addDaysIso, periodDays, weekIdOfIso, isoDayIndex, countLeaveDays, absenceHoursByDate, spreadAbsenceHours,
@@ -22,6 +23,10 @@ interface AbsenceModalProps {
   isOpen: boolean;
   onClose: () => void;
   staff: Staff[];
+  /** Personne dans l'equipe (et non « personne en poste cette semaine »). */
+  teamEmpty?: boolean;
+  /** Mene a « Gerer l'equipe » quand il n'y a personne a declarer absent. */
+  onAddStaff?: () => void;
   /** Feries fermes par le restaurant : sortis du decompte des conges. */
   closedHolidays: string[];
   /** Periodes connues (admins : toutes). */
@@ -162,6 +167,7 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
   isOpen, onClose, staff, closedHolidays,
   periods, editingPeriodId, weekMonday, defaultStart, leaveUnit, leaveBalances = {}, loadPlanned,
   onSaveChanges, onDeletePeriod, requests = [], onAcceptRequest, onRefuseRequest, language = 'en',
+  teamEmpty = false, onAddStaff,
 }) => {
   const t = getTranslation(language as Language);
   // Decimales a la francaise dans le champ : « 9,5 », pas « 9.5 ».
@@ -467,6 +473,10 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
           )}
 
           {/* ---------------- saisie d'une periode ---------------- */}
+          {/* Personne a declarer absent : le formulaire serait un menu vide. */}
+          {staff.length === 0 && !editing && onAddStaff ? (
+            <EmptyTeamNotice language={language} teamEmpty={teamEmpty} purpose="absence" onAddStaff={onAddStaff} />
+          ) : (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <label className={label} htmlFor="abs-who">{t('whoIsOff')}</label>
@@ -630,6 +640,7 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
               )
             )}
           </div>
+          )}
 
           {/* ---------------- absences en cours et a venir ---------------- */}
           <div className="flex flex-col gap-2 border-t pt-5">

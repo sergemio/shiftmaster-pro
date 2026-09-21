@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Staff, Language, Extra } from '../types';
+import EmptyTeamNotice from './EmptyTeamNotice';
 import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
@@ -28,15 +29,22 @@ interface ShiftModalProps {
   /** Periode d'emploi : `errors` interdit le shift, `notes` le marque hors contrat. */
   onEmployment?: (staffId: string, dayIndexes: number[]) => { errors: string[]; notes: string[] };
   /** Heures d'ouverture reglees : les menus d'heures n'offrent que cette plage. */
+  /** Equipier a preselectionner (celui qu'on vient d'ajouter depuis ce formulaire). */
+  initialStaffId?: string;
+  /** Personne dans l'equipe (et non « personne en poste cette semaine »). */
+  teamEmpty?: boolean;
+  /** Mene a « Gerer l'equipe » quand il n'y a personne a placer. */
+  onAddStaff?: () => void;
   hours?: OperatingHours;
 }
 
-const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, onAddExtra, extras = [], language = 'en', onCheck, onEmployment, hours = DEFAULT_OPERATING_HOURS }) => {
+const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, onAddExtra, extras = [], language = 'en', onCheck, onEmployment, hours = DEFAULT_OPERATING_HOURS, initialStaffId, teamEmpty = false, onAddStaff }) => {
   if (!isOpen) return null;
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
   const t = getTranslation(language as Language);
 
-  const [selectedStaff, setSelectedStaff] = useState(staff[0]?.id || '');
+  const [selectedStaff, setSelectedStaff] = useState(
+    (initialStaffId && staff.some(s => s.id === initialStaffId) ? initialStaffId : staff[0]?.id) || '');
   /** Pour qui : quelqu'un de l'equipe, ou un extra. */
   const [mode, setMode] = useState<'staff' | 'extra'>('staff');
   const [extraName, setExtraName] = useState('');
@@ -44,6 +52,8 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
   const [retained, setRetained] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
   const isExtra = mode === 'extra' && !!onAddExtra;
+  /** Personne a placer : formulaire remplace par un message qui mene a l'equipe. */
+  const noOne = staff.length === 0 && !!onAddStaff;
   // Les extras deja connus, le plus recemment venu en tete.
   const vivier = useMemo(
     () => extras.filter(e => e.retained).sort((a, b) => (b.lastMission || '').localeCompare(a.lastMission || '')),
@@ -83,7 +93,7 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (endTime <= startTime) {
-      alert("End time must be after start time");
+      alert(t('endBeforeStart'));
       return;
     }
     if (selectedDays.length === 0) {
@@ -102,14 +112,14 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
-        <div className="flex-none p-6 md:p-8 pb-4 flex justify-between items-start">
+        <div className="flex-none p-6 md:p-8 pb-3 md:pb-3 flex justify-between items-start">
           <h2 className="text-xl md:text-2xl font-bold text-slate-800">{t('createShift')}</h2>
           <button onClick={onClose} className="text-slate-300 hover:text-slate-500 transition-colors p-1">
             <svg className="w-6 h-6 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 md:p-8 pt-4 space-y-4 md:space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 md:p-8 pt-2 md:pt-2 space-y-4 md:space-y-6">
           {/* Equipe ou extra. Le reste de la fenetre est identique : un extra a
               un horaire et des jours comme tout le monde. */}
           {onAddExtra && (
@@ -138,6 +148,9 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
             </div>
           )}
 
+          {!isExtra && noOne ? (
+            <EmptyTeamNotice language={language} teamEmpty={teamEmpty} purpose="shift" onAddStaff={() => onAddStaff?.()} />
+          ) : (<>
           {!isExtra ? (
             <div>
               <label className="block text-sm font-bold text-slate-600 mb-2">{t('selectStaff')}</label>
@@ -264,6 +277,7 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
               {[...employment.notes, ...warnings].map((w, i) => (
                 <p key={i} className="text-xs font-semibold text-amber-800 leading-snug">⚠ {w}</p>
               ))}
+              {warnings.length > 0 && <p className="text-xs text-amber-700/80 leading-snug pt-0.5">{t('ruleInformative')}</p>}
             </div>
           )}
 
@@ -283,6 +297,7 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
               {t('addShift')}
             </button>
           </div>
+          </>)}
         </form>
       </div>
     </div>

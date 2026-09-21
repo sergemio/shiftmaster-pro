@@ -8,6 +8,8 @@ import { violationText, violationWho } from './utils/violationText';
 import Calendar from './components/Calendar';
 import Sidebar from './components/Sidebar';
 import ShiftModal from './components/ShiftModal';
+import EmptyTeamNotice from './components/EmptyTeamNotice';
+import GuidedTour, { TourStep } from './components/GuidedTour';
 import SelectionBar from './components/SelectionBar';
 import StaffModal from './components/StaffModal';
 import ExtrasModal from './components/ExtrasModal';
@@ -52,6 +54,8 @@ import {
   signUpWithEmail,
   resetPassword,
   createOrgCall,
+  loadUiPrefs,
+  saveTourSeen,
   subscribeToInvites,
   createInvite,
   deleteInvite,
@@ -135,7 +139,10 @@ const FloatingBackground: React.FC = () => {
 
 // Bac a sable : sans objet pour les employes, donc masque en ligne (GitHub Pages).
 // Reste visible en local (localhost, IP du reseau pour la tablette) et en ligne avec `?sandbox`.
-const SHOW_SANDBOX = !location.hostname.endsWith('github.io') || new URLSearchParams(location.search).has('sandbox');
+// Bac a sable (donnees dans le navigateur, sans compte) : poste de developpement
+// seulement, ou sur demande explicite (?sandbox). Une adresse publique — Pages,
+// hebergement Firebase — ne le montre jamais a un restaurateur qui decouvre l'app.
+const SHOW_SANDBOX = ['localhost', '127.0.0.1'].includes(location.hostname) || new URLSearchParams(location.search).has('sandbox');
 
 // Couleur de la pastille et texte de son infobulle, par etat (voir `syncStatus`).
 const STATUS_DOT: Record<SyncStatus, { color: string; hint: string }> = {
@@ -149,10 +156,10 @@ const STATUS_DOT: Record<SyncStatus, { color: string; hint: string }> = {
 
 const App: React.FC = () => {
   const [language, setLanguage] = useState<Language>(() => {
-    // Premiere visite (un employe qui ouvre son invitation) : la langue du
-    // navigateur, pas l'anglais d'office.
-    return (localStorage.getItem('shiftmaster_lang') as Language)
-      || ((navigator.language || '').toLowerCase().startsWith('fr') ? 'fr' : 'en');
+    // Premiere visite : francais d'office, quelle que soit la langue du
+    // navigateur (decision de Serge le 21/09/2026 : produit pour la France).
+    // Le choix fait ensuite dans l'app reste memorise.
+    return (localStorage.getItem('shiftmaster_lang') as Language) || 'fr';
   });
   const [viewType, setViewType] = useState<ViewType>(() => {
     return (localStorage.getItem('shiftmaster_view') as ViewType) || 'day';
@@ -1003,18 +1010,18 @@ const App: React.FC = () => {
     const out: Record<string, string[]> = {};
     for (const v of violations) {
       if (!v.shiftId) continue;
-      (out[v.shiftId] ||= []).push(violationText(v, language, shiftIndex));
+      (out[v.shiftId] ||= []).push(violationText(v, language, shiftIndex, violationWho(v, displayStaff), convention));
     }
     return out;
-  }, [violations, language, shiftIndex]);
+  }, [violations, language, shiftIndex, displayStaff, convention]);
 
   /** Le recapitulatif de la semaine : qui, quoi. */
   const complianceList = useMemo(
     () => violations.map(v => ({
       who: violationWho(v, displayStaff),
-      text: violationText(v, language, shiftIndex),
+      text: violationText(v, language, shiftIndex, violationWho(v, displayStaff), convention),
     })),
-    [violations, staffList, language, shiftIndex],
+    [violations, staffList, displayStaff, language, shiftIndex, convention],
   );
 
   /**
@@ -1068,7 +1075,7 @@ const App: React.FC = () => {
       // Seulement la personne concernee : on ne va pas signaler le probleme
       // d'un collegue au moment ou l'on saisit le shift de quelqu'un d'autre.
       .filter(v => v.staffId === staffId)
-      .map(v => violationText(v, language, index));
+      .map(v => violationText(v, language, index, violationWho(v, staffList), convention));
   }, [shifts, neighbourWeeks, currentWeek, staffList, convention, language]);
 
   /**
@@ -1448,6 +1455,77 @@ const App: React.FC = () => {
     open();
   };
 
+  // ------------------------------------------------ equipe vide -> equipe -> retour
+  // Quelqu'un qui clique « Shift » ou « Absences » sans equipier est envoye dans
+  // « Gerer l'equipe ». Une fois la personne ajoutee et la fenetre fermee, on
+  // le ramene la ou il allait : le formulaire de shift s'ouvre sur cette
+  // personne, il n'a pas a refaire le chemin.
+  const resumeAfterStaffRef = useRef<'shift' | 'absence' | null>(null);
+  const lastAddedStaffRef = useRef<string | null>(null);
+  const [shiftPresetStaffId, setShiftPresetStaffId] = useState<string | undefined>(undefined);
+  const openStaffFrom = (resume: 'shift' | 'absence' | null) => {
+    resumeAfterStaffRef.current = resume;
+    lastAddedStaffRef.current = null;
+    setIsShiftModalOpen(false);
+    setIsAbsenceModalOpen(false);
+    setIsStaffModalOpen(true);
+  };
+  const closeStaffModal = () => {
+    setIsStaffModalOpen(false);
+    const resume = resumeAfterStaffRef.current, added = lastAddedStaffRef.current;
+    resumeAfterStaffRef.current = null;
+    lastAddedStaffRef.current = null;
+    if (!resume || !added) return;
+    if (resume === 'shift') { setShiftPresetStaffId(added); setIsShiftModalOpen(true); }
+    else setIsAbsenceModalOpen(true);
+  };
+  // La preselection ne vaut que pour l'ouverture qui suit l'ajout.
+  useEffect(() => { if (!isShiftModalOpen) setShiftPresetStaffId(undefined); }, [isShiftModalOpen]);
+
+  // ------------------------------------------------ visite guidee
+  // Une fois par compte, a la premiere ouverture du planning par quelqu'un qui
+  // planifie (un equipier en lecture seule n'a pas ces boutons). « Vue » est
+  // retenu sur le compte (loadUiPrefs) et, pour ne pas relire la base a chaque
+  // ouverture, dans ce navigateur.
+  const [tourOpen, setTourOpen] = useState(false);
+  const tourChecked = useRef(false);
+  const tourKey = `shiftmaster_tour_seen_${isGuest ? 'guest' : user?.uid || ''}`;
+  useEffect(() => {
+    if (tourChecked.current || isReadOnly || !staffLoaded || isLoading) return;
+    if (!isGuest && !(connected && user)) return;
+    tourChecked.current = true;
+    try { if (localStorage.getItem(tourKey)) return; } catch { /* stockage bloque : on demande a la base */ }
+    if (isGuest) { setTourOpen(true); return; }
+    loadUiPrefs().then(prefs => {
+      if (!prefs) return;                       // hors ligne : pas sur un doute
+      if (prefs.tourSeen) { try { localStorage.setItem(tourKey, '1'); } catch { /* */ } return; }
+      setTourOpen(true);
+    });
+  }, [isReadOnly, staffLoaded, isLoading, isGuest, connected, user, tourKey]);
+
+  const closeTour = (finished: boolean) => {
+    setTourOpen(false);
+    setIsMobileSidebarOpen(false);
+    try { localStorage.setItem(tourKey, '1'); } catch { /* */ }
+    if (!isGuest) saveTourSeen();
+    // « Ajouter mon équipe » : la visite se termine sur le premier geste.
+    if (finished && staffList.length === 0) openStaffFrom('shift');
+  };
+
+  // Sur telephone, les boutons sont dans le tiroir : la visite l'ouvre pour les
+  // etapes qui les montrent et le referme pour les autres.
+  const inDrawer = (open: boolean) => () => {
+    if (window.innerWidth < 768) setIsMobileSidebarOpen(open);
+  };
+  const tourSteps: TourStep[] = [
+    { title: t('tourWelcomeTitle'), body: t('tourWelcomeBody'), prepare: inDrawer(false) },
+    { target: '[data-tour="team"]', title: t('tourTeamTitle'), body: t('tourTeamBody'), prepare: inDrawer(true) },
+    { target: '[data-tour="shift"]', title: t('tourShiftTitle'), body: t('tourShiftBody'), prepare: inDrawer(true) },
+    { target: '[data-testid="week-nav"]', title: t('tourWeekTitle'), body: t('tourWeekBody'), prepare: inDrawer(false) },
+    { target: '[data-tour="absences"]', title: t('tourAbsTitle'), body: t('tourAbsBody'), prepare: inDrawer(true) },
+    { target: '[data-tour="settings"]', title: t('tourSettingsTitle'), body: t('tourSettingsBody'), prepare: inDrawer(false) },
+  ];
+
   // ---------------------------------------------------------------- absences
   // Les absences se saisissent par PERIODE (writeAbsenceChanges, plus bas). Le « repos »
   // n'existe plus comme etiquette (18/09/2026) : le repos, c'est l'absence de
@@ -1606,7 +1684,7 @@ const App: React.FC = () => {
         // en modification de l'absence precedente au lieu d'une saisie vierge.
         else if (isAbsenceModalOpen) { setIsAbsenceModalOpen(false); setEditingPeriodId(null); }
         else if (isShiftModalOpen) setIsShiftModalOpen(false);
-        else if (isStaffModalOpen) setIsStaffModalOpen(false);
+        else if (isStaffModalOpen) closeStaffModal();
         else if (isExtrasModalOpen) setIsExtrasModalOpen(false);
         else if (isHistoryModalOpen) setIsHistoryModalOpen(false);
         else if (isSettingsModalOpen) setIsSettingsModalOpen(false);
@@ -2016,7 +2094,7 @@ const App: React.FC = () => {
                 comme cliquable sans survol. */}
             <div className="relative" ref={monthPickerRef}>
               <div className="flex items-stretch h-10 border border-slate-300 rounded-xl bg-white shadow-sm overflow-hidden" data-testid="week-nav">
-                <button onClick={() => changeWeek(-1)} title={t('previousWeek')} aria-label={t('previousWeek')} className="w-9 sm:w-10 grid place-items-center text-slate-700 border-r border-slate-200 hover:bg-slate-100 active:bg-slate-200 transition-colors">
+                <button onClick={() => changeWeek(-1)} title={t('previousWeek')} aria-label={t('previousWeek')} className="w-8 sm:w-10 grid place-items-center text-slate-700 border-r border-slate-200 hover:bg-slate-100 active:bg-slate-200 transition-colors">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M15 18l-6-6 6-6" /></svg>
                 </button>
                 <button
@@ -2024,16 +2102,16 @@ const App: React.FC = () => {
                   aria-haspopup="dialog"
                   aria-expanded={isMonthPickerOpen}
                   title={t('selectMonth')}
-                  className={`flex items-center gap-2 px-2 sm:px-4 text-[15px] font-medium whitespace-nowrap transition-colors ${isMonthPickerOpen ? 'bg-indigo-50 text-indigo-700' : 'text-slate-800 hover:bg-slate-100 active:bg-slate-200'}`}
+                  className={`flex items-center gap-1 sm:gap-2 px-1.5 sm:px-4 text-[15px] font-medium whitespace-nowrap transition-colors ${isMonthPickerOpen ? 'bg-indigo-50 text-indigo-700' : 'text-slate-800 hover:bg-slate-100 active:bg-slate-200'}`}
                 >
                   <svg className={`hidden sm:block w-5 h-5 ${isMonthPickerOpen ? 'text-indigo-500' : 'text-slate-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" strokeWidth={2} /><path strokeLinecap="round" strokeWidth={2} d="M16 3v4M8 3v4M3 10h18" /></svg>
                   <span className="hidden sm:inline">{getWeekRangeCompact(currentWeek, language)}</span>
                   <span className="sm:hidden text-sm">{/* currentWeek = dimanche ; la semaine affichee commence le lundi */}{new Date(currentWeek.getTime() + 864e5).toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { month: 'short', day: 'numeric' })}</span>
-                  <svg className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${isMonthPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className={`hidden sm:block w-4 h-4 text-slate-500 transition-transform duration-200 ${isMonthPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 9l6 6 6-6" />
                   </svg>
                 </button>
-                <button onClick={() => changeWeek(1)} title={t('nextWeek')} aria-label={t('nextWeek')} className="w-9 sm:w-10 grid place-items-center text-slate-700 border-l border-slate-200 hover:bg-slate-100 active:bg-slate-200 transition-colors">
+                <button onClick={() => changeWeek(1)} title={t('nextWeek')} aria-label={t('nextWeek')} className="w-8 sm:w-10 grid place-items-center text-slate-700 border-l border-slate-200 hover:bg-slate-100 active:bg-slate-200 transition-colors">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M9 6l6 6-6 6" /></svg>
                 </button>
               </div>
@@ -2060,6 +2138,7 @@ const App: React.FC = () => {
             ) : null}
             <button
               onClick={() => setIsSettingsModalOpen(true)}
+              data-tour="settings"
               className="w-9 h-9 md:w-9 md:h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
               title={t('settings')}
             >
@@ -2114,6 +2193,16 @@ const App: React.FC = () => {
           </div>
         )}
         <div className="flex-1 overflow-auto relative bg-white hide-scrollbar">
+          {/* Premier ecran d'un restaurant neuf : un planning vide ne dit pas par
+              ou commencer. `staffLoaded` : une equipe pas encore chargee n'est
+              pas une equipe vide, sinon le message clignote a chaque connexion. */}
+          {!isReadOnly && staffLoaded && !isLoading && assignableStaff.length === 0 && shifts.length === 0 && (
+            <div className="absolute inset-0 z-20 grid place-items-center p-4 pointer-events-none">
+              <div className="pointer-events-auto bg-white/95 backdrop-blur-sm border border-slate-200 rounded-3xl shadow-xl px-6 py-6 max-w-sm w-full">
+                <EmptyTeamNotice language={language} teamEmpty={staffList.length === 0} purpose="planning" onAddStaff={() => openStaffFrom('shift')} />
+              </div>
+            </div>
+          )}
           <Calendar
             isDraft={inDraft}
             shifts={shifts}
@@ -2196,13 +2285,13 @@ const App: React.FC = () => {
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
       />
-      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} onAdd={handleAddShift} onAddExtra={addExtraShift} extras={Object.values(extras)} onCheck={previewViolations} onEmployment={employmentCheck} language={language} hours={operatingHours} />
+      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} initialStaffId={shiftPresetStaffId} teamEmpty={staffList.length === 0} onAddStaff={() => openStaffFrom('shift')} onAdd={handleAddShift} onAddExtra={addExtraShift} extras={Object.values(extras)} onCheck={previewViolations} onEmployment={employmentCheck} language={language} hours={operatingHours} />
       <StaffModal 
         isOpen={isStaffModalOpen} 
-        onClose={() => setIsStaffModalOpen(false)} 
+        onClose={closeStaffModal} 
         staffList={staffList} 
         guestEmails={guestEmails}
-        onAdd={(s) => handleUpdateStaffList([...staffList, s])} 
+        onAdd={(s) => { lastAddedStaffRef.current = s.id; handleUpdateStaffList([...staffList, s]); }} 
         onUpdate={(s) => handleUpdateStaffList(staffList.map(item => item.id === s.id ? s : item))}
         onAddGuest={handleAddGuest}
         onRemoveGuest={handleRemoveGuest}
@@ -2217,6 +2306,9 @@ const App: React.FC = () => {
         onCancelInvite={cancelInvite}
         inviteUrl={inviteUrl}
         orgName={org?.name || ''}
+        selfAdmin={connected && isAdmin && !me && user?.email
+          ? { name: user.displayName || user.email.split('@')[0], email: user.email.toLowerCase() }
+          : undefined}
       />
       <ExtrasModal
         isOpen={isExtrasModalOpen}
@@ -2239,11 +2331,17 @@ const App: React.FC = () => {
           language={language}
         />
       )}
+      {tourOpen && (
+        <GuidedTour steps={tourSteps} language={language} onClose={closeTour}
+          finishLabel={staffList.length === 0 ? t('tourStartTeam') : undefined} />
+      )}
       <LogHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} language={language} />
       <AbsenceModal
         isOpen={isAbsenceModalOpen}
         onClose={() => { setIsAbsenceModalOpen(false); setEditingPeriodId(null); }}
         staff={assignableStaff}
+        teamEmpty={staffList.length === 0}
+        onAddStaff={isReadOnly ? undefined : () => openStaffFrom('absence')}
         closedHolidays={closedHolidays}
         periods={Object.values(absencePeriods)}
         editingPeriodId={editingPeriodId}
@@ -2265,7 +2363,8 @@ const App: React.FC = () => {
       />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : updateOperatingHours} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} closures={closures} onClosuresChange={isReadOnly ? undefined : updateClosures} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit}
         convention={conventionFor(conventionId).id} onConventionChange={isReadOnly ? undefined : updateConvention}
-        onOpenPayroll={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setIsPayrollOpen(true); }} />
+        onOpenPayroll={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setIsPayrollOpen(true); }}
+        onReplayTour={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setTourOpen(true); }} />
       <PayrollModal
         isOpen={isPayrollOpen}
         onClose={() => setIsPayrollOpen(false)}

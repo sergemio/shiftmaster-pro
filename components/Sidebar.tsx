@@ -481,56 +481,91 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </Section>
 
-      {/* Boutons d'action ENTRE les heures et les points a verifier : c'est leur
-          place habituelle, Serge l'a prefere a une position sous le titre. */}
+      {/* Bloc d'actions (variante C choisie par Serge le 21/09/2026) : quatre
+          boutons nommes de meme taille, un nouvel utilisateur lit au lieu de
+          deviner des icones. « Shift » en haut a gauche : c'est le geste de tous
+          les jours, le plus pres du planning. « Equipe » a cote : premier geste
+          d'un nouveau restaurant, puis rarement touche. La suppression sort de
+          la grille, sous un trait, en texte rouge : destructive, jamais a cote
+          du bouton principal. */}
       {!isReadOnly && (
-        <div className="flex gap-2 flex-none">
-          {/* « + Shift » : seul le verbe « Add » etait redondant avec l'icone.
-              Ce qui cassait l'alignement n'etait pas le texte mais le `py-4`
-              avec deux lignes ; la hauteur fixe a 56 px regle ca et garde le mot. */}
-          <button 
-            type="button"
-            onClick={onAddClick}
-            title={t('addShift')}
-            aria-label={t('addShift')}
-            className="flex-1 h-11 px-4 bg-[linear-gradient(135deg,#4f46e5,#7c3aed)] text-white rounded-xl font-bold shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2"
-          >
-            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-            <span className="text-base whitespace-nowrap">{t('shiftNoun')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={onAbsenceClick}
-            aria-label={t('absences')}
-            title={pendingRequests > 0 ? `${t('absences')} — ${t('reqBadge').replace('{n}', String(pendingRequests))}` : t('absences')}
-            className="relative w-11 h-11 flex items-center justify-center bg-sky-50 text-sky-600 border border-sky-100 rounded-xl hover:bg-sky-100 transition-all active:scale-90 shadow-sm"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            {pendingRequests > 0 && (
-              <span data-testid="req-badge" aria-hidden="true"
-                className="absolute -top-1.5 -right-1.5 min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-[11px] font-black flex items-center justify-center">
-                {pendingRequests}
-              </span>
-            )}
-          </button>
-          <button 
-            type="button"
-            onClick={() => {
-              if (window.confirm(t('confirmDeleteWeek'))) {
-                onDeleteWeek();
-              }
-            }}
-            title={t('confirmDeleteWeek')}
-            className="w-11 h-11 flex items-center justify-center bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-100 transition-all active:scale-90 shadow-sm"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
+        <div data-testid="sidebar-actions" className="flex flex-col gap-2 flex-none">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={onAddClick}
+              title={t('addShift')}
+              aria-label={t('addShift')}
+              data-tour="shift"
+              className="h-11 px-3 bg-[linear-gradient(135deg,#4f46e5,#7c3aed)] text-white rounded-xl font-bold shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 min-w-0"
+            >
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              <span className="text-sm truncate">{t('shiftNoun')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onManageStaffClick}
+              title={t('manageStaff')}
+              aria-label={t('manageStaff')}
+              data-tour="team"
+              className="h-11 px-3 bg-slate-900 text-slate-100 rounded-xl font-bold border border-slate-800 hover:bg-slate-800 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 shadow-sm min-w-0"
+            >
+              <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              <span className="text-sm truncate">{t('teamShort')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onAbsenceClick}
+              aria-label={t('absences')}
+              data-tour="absences"
+              title={pendingRequests > 0 ? `${t('absences')} — ${t('reqBadge').replace('{n}', String(pendingRequests))}` : t('absences')}
+              className="relative h-11 px-3 bg-sky-50 text-sky-600 border border-sky-100 rounded-xl font-bold hover:bg-sky-100 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm min-w-0"
+            >
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-sm truncate">{t('absences')}</span>
+              {pendingRequests > 0 && (
+                <span data-testid="req-badge" aria-hidden="true"
+                  className="absolute -top-1.5 -right-1.5 min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-[11px] font-black flex items-center justify-center">
+                  {pendingRequests}
+                </span>
+              )}
+            </button>
+            {onManageExtrasClick ? (
+              <button
+                type="button"
+                onClick={onManageExtrasClick}
+                className="h-11 px-3 bg-white text-slate-700 rounded-xl font-bold border border-slate-200 hover:bg-slate-50 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 shadow-sm min-w-0"
+              >
+                <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <span className="text-sm truncate">{t('extrasTitle')}</span>
+              </button>
+            ) : <span />}
+          </div>
+          <div className="border-t border-slate-100 pt-1.5 flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(t('confirmDeleteWeek'))) {
+                  onDeleteWeek();
+                }
+              }}
+              title={t('confirmDeleteWeek')}
+              className="h-8 px-2.5 rounded-lg text-red-500 text-xs font-semibold flex items-center gap-1.5 hover:bg-red-50 hover:text-red-600 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              {t('clearWeek')}
+            </button>
+          </div>
         </div>
       )}
 
@@ -583,7 +618,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
             {compliance.map((c, idx) => (
               <div key={idx} className="text-xs bg-white p-2.5 rounded-xl border border-amber-100">
-                <span className="font-bold text-slate-700 block">{c.who}</span>
                 <span className="text-slate-500 font-medium leading-snug">{c.text}</span>
               </div>
             ))}
@@ -615,37 +649,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       </Section>
 
       <div className="mt-auto flex-none flex items-stretch gap-2">
-        {/* Les deux boutons sur UNE ligne : la barre laterale se dispute la
-            hauteur avec le planning, et une deuxieme ligne de 44 px se paye sur
-            ce qui est reellement consulte. « Gerer l'equipe » garde la largeur
-            et le fond noir — c'est le geste courant ; les extras sont un detour
-            occasionnel, d'ou le bouton court et clair a cote. */}
-        {!isReadOnly && (
-          <button
-            type="button"
-            onClick={onManageStaffClick}
-            className="flex-1 min-w-0 h-11 px-4 bg-slate-900 text-slate-100 rounded-xl font-bold border border-slate-800 hover:bg-slate-800 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 shadow-sm"
-          >
-            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            <span className="text-sm truncate">{t('manageStaff')}</span>
-          </button>
-        )}
-
-        {!isReadOnly && onManageExtrasClick && (
-          <button
-            type="button"
-            onClick={onManageExtrasClick}
-            className="flex-none h-11 px-4 bg-white text-slate-700 rounded-xl font-bold border border-slate-200 hover:bg-slate-50 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 shadow-sm"
-          >
-            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span className="text-sm">{t('extrasTitle')}</span>
-          </button>
-        )}
-
         {isReadOnly && (
           <div className="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
             <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Status</p>

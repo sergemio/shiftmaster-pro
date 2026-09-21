@@ -89,8 +89,12 @@ const syncClaims = async (uid) => {
 
 /**
  * Cree un restaurant pour la personne connectee, qui en devient proprietaire
- * et admin. Essai de 14 jours, sans carte. La fiche equipe contient d'emblee
- * la ligne de la personne, pour qu'elle puisse se planifier elle-meme.
+ * et admin. Essai de 14 jours, sans carte.
+ *
+ * L'equipe demarre VIDE (decision de Serge, 21/09/2026) : le createur est admin,
+ * pas forcement equipier — un patron peut etre absent du planning. Ses droits
+ * viennent de `users/{uid}.orgs`, pas de la liste d'equipe ; s'il travaille en
+ * service, il s'ajoute lui-meme depuis « Gerer l'equipe ».
  */
 export const createOrg = onCall(async (request) => {
   const caller = requireAuth(request);
@@ -116,13 +120,7 @@ export const createOrg = onCall(async (request) => {
       trialEndsAt: Timestamp.fromMillis(Date.now() + TRIAL_DAYS * 24 * 3600 * 1000),
       settings, createdAt: stamp, updatedAt: stamp,
     });
-    tx.set(orgRef.collection('settings').doc('staff'), {
-      list: [{
-        id: newId(), name: user.displayName || (user.email || '').split('@')[0] || 'Moi',
-        email: (user.email || '').toLowerCase(), color: '#6366f1', role: 'admin', uid: caller.uid,
-      }],
-      guests: [],
-    });
+    tx.set(orgRef.collection('settings').doc('staff'), { list: [], guests: [] });
     tx.set(orgRef.collection('settings').doc('rates'), { rates: {}, updatedAt: stamp });
     tx.set(db.doc(`users/${caller.uid}`), {
       email: (user.email || '').toLowerCase(), orgs: { [orgId]: 'admin' }, updatedAt: stamp,
