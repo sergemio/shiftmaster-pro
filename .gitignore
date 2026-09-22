@@ -38,3 +38,4 @@ scripts/fix-emails.js
 
 # Backup run log
 scripts/backup.log
+__pycache__/
