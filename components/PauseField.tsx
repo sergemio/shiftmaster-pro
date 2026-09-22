@@ -2,7 +2,7 @@ import React from 'react';
 import { Language } from '../types';
 import { formatTime, halfHourSteps } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
-import { BREAK_STEP, LATEST_END, defaultBreakStart } from '../utils/worktime';
+import { BREAK_STEP, LATEST_END, AUTO_BREAK_MINUTES, defaultBreakStart } from '../utils/worktime';
 
 /** Durees de pause proposees, en minutes. 20 min = le minimum legal (L3121-16). */
 export const BREAK_CHOICES = [15, 20, 30, 45, 60];
@@ -50,36 +50,59 @@ const PauseField: React.FC<{
     for (let v = Math.ceil(start / BREAK_STEP) * BREAK_STEP; v + minutes / 60 <= end + 1e-9; v += BREAK_STEP) starts.push(v);
   }
   const cls = 'w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all';
+  const on = minutes > 0;
   return (
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <label htmlFor="shift-break-minutes" className="block text-sm font-bold text-slate-600 mb-2">{t('breakLabel')}</label>
-        <select
-          id="shift-break-minutes"
-          value={minutes}
-          disabled={disabled}
-          onChange={(e) => {
-            const m = parseInt(e.target.value, 10);
-            onChange(m > 0 ? { breakMinutes: m, breakStart: defaultBreakStart(start, end, m) } : {});
-          }}
-          className={cls}
-        >
-          <option value={0}>{t('breakNone')}</option>
-          {choices.map(m => <option key={m} value={m}>{m} min</option>)}
-        </select>
-      </div>
-      {minutes > 0 && (
-        <div>
-          <label htmlFor="shift-break-start" className="block text-sm font-bold text-slate-600 mb-2">{t('breakAt')}</label>
-          <select
-            id="shift-break-start"
-            value={value.breakStart}
+    <div className="space-y-3">
+      {/* Interrupteur : sous 6 h la pause est facultative et eteinte ; au-dela, elle
+          s'allume d'office a 20 min (decision du 22/09/2026). Les durees ne
+          s'affichent que si elle est allumee. */}
+      <label className={`flex items-center justify-between gap-3 ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
+        <span className="text-sm font-bold text-slate-600">{t('breakLabel')}</span>
+        <span className="relative inline-flex items-center">
+          <input
+            id="shift-break-toggle"
+            type="checkbox"
+            role="switch"
+            className="sr-only peer"
+            checked={on}
             disabled={disabled}
-            onChange={(e) => onChange({ breakMinutes: minutes, breakStart: parseFloat(e.target.value) })}
-            className={cls}
-          >
-            {starts.map(v => <option key={v} value={v}>{formatTime(v)}</option>)}
-          </select>
+            onChange={(e) => onChange(e.target.checked
+              ? { breakMinutes: AUTO_BREAK_MINUTES, breakStart: defaultBreakStart(start, end, AUTO_BREAK_MINUTES) }
+              : {})}
+          />
+          <span className="w-10 h-6 rounded-full bg-slate-200 peer-checked:bg-indigo-600 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 transition-colors" />
+          <span className="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+        </span>
+      </label>
+      {on && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="shift-break-minutes" className="block text-xs font-bold text-slate-500 mb-1">{t('breakDuration')}</label>
+            <select
+              id="shift-break-minutes"
+              value={minutes}
+              disabled={disabled}
+              onChange={(e) => {
+                const m = parseInt(e.target.value, 10);
+                onChange({ breakMinutes: m, breakStart: defaultBreakStart(start, end, m) });
+              }}
+              className={cls}
+            >
+              {choices.map(m => <option key={m} value={m}>{m} min</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="shift-break-start" className="block text-xs font-bold text-slate-500 mb-1">{t('breakAt')}</label>
+            <select
+              id="shift-break-start"
+              value={value.breakStart}
+              disabled={disabled}
+              onChange={(e) => onChange({ breakMinutes: minutes, breakStart: parseFloat(e.target.value) })}
+              className={cls}
+            >
+              {starts.map(v => <option key={v} value={v}>{formatTime(v)}</option>)}
+            </select>
+          </div>
         </div>
       )}
     </div>

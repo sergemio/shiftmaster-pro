@@ -1,5 +1,7 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { BREAK_CHOICES } from './PauseField';
 import { Shift, Staff, DragType, Language } from '../types';
 import { formatTime, formatShortDate, formatMoney, OrphanReason } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
@@ -12,6 +14,8 @@ interface ShiftCardProps {
   style: React.CSSProperties;
   onDragStart: (e: React.MouseEvent, type: DragType) => void;
   onEdit: () => void;
+  /** Nouvelle duree de pause choisie au double-clic sur la pause (0 = la retirer). */
+  onBreakMinutes?: (minutes: number) => void;
   isReadOnly?: boolean;
   renderStartTime?: number;
   renderEndTime?: number;
@@ -49,6 +53,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   style, 
   onDragStart, 
   onEdit, 
+  onBreakMinutes,
   isReadOnly = false,
   renderStartTime,
   renderEndTime,
@@ -105,6 +110,9 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   const shown = clampBreak({ ...shift, startTime, endTime, ...(renderBreakStart !== undefined ? { breakStart: renderBreakStart } : {}) });
   // La duree affichee est le temps de TRAVAIL : la pause n'en fait pas partie.
   const duration = shiftWorkHours(shown);
+  // Menu des durees, ouvert au double-clic sur la pause, a l'endroit du clic.
+  // Rendu hors de la carte : elle coupe ce qui depasse.
+  const [breakMenu, setBreakMenu] = useState<{ x: number; y: number } | null>(null);
   const pause = typeof shown.breakStart === 'number' && shown.breakMinutes
     ? { top: ((shown.breakStart - startTime) / (endTime - startTime)) * 100, height: (shown.breakMinutes / 60 / (endTime - startTime)) * 100 }
     : null;
@@ -344,11 +352,51 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             if (isReadOnly || selectionMode || window.innerWidth < 768) return;
             onDragStart(e, 'move-break');
           }}
+          onDoubleClick={(e) => {
+            // Double-clic sur la pause : on change sa duree, sans ouvrir la fiche.
+            e.stopPropagation();
+            if (isReadOnly || selectionMode || !onBreakMinutes) return;
+            setBreakMenu({ x: e.clientX, y: e.clientY });
+          }}
         >
           <span className="text-[10px] font-bold text-slate-600 leading-none whitespace-nowrap pointer-events-none">
             {t('breakLabel')} {shown.breakMinutes} min
           </span>
         </div>
+      )}
+
+      {breakMenu && onBreakMinutes && createPortal(
+        <div className="fixed inset-0 z-[200]" onMouseDown={() => setBreakMenu(null)}>
+          <div
+            role="menu"
+            aria-label={t('breakLabel')}
+            data-testid="break-menu"
+            className="fixed bg-white rounded-xl shadow-xl border border-slate-200 py-1 min-w-[120px]"
+            style={{ left: Math.min(breakMenu.x, window.innerWidth - 140), top: Math.min(breakMenu.y, window.innerHeight - 240) }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {BREAK_CHOICES.filter(m => m / 60 < endTime - startTime).map(m => (
+              <button
+                key={m}
+                type="button"
+                role="menuitem"
+                onClick={() => { onBreakMinutes(m); setBreakMenu(null); }}
+                className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 ${m === shown.breakMinutes ? 'font-bold text-indigo-600' : 'text-slate-700'}`}
+              >
+                {m} min
+              </button>
+            ))}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { onBreakMinutes(0); setBreakMenu(null); }}
+              className="block w-full text-left px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50 border-t border-slate-100"
+            >
+              {t('breakNone')}
+            </button>
+          </div>
+        </div>,
+        document.body,
       )}
 
       {!isReadOnly && !selectionMode && (

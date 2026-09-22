@@ -269,6 +269,19 @@ check('V24 octobre : 12 h de repos reelles, rien', dst('2026-10-24', '2026-10-25
 check('V24 mars : 10 h de repos reelles, alerte', dst('2026-03-28', '2026-03-29'), ['dailyRest 10']);
 
 // --- Affichage des durees (22/09/2026) : « 7.3H » se lisait 7 h 30 pour 7 h 15 ----
+// --- Pause posee d'office sur un nouveau shift (decision du 22/09/2026) ----------
+check('Pause d office : 6 h pile -> aucune', W.autoBreak(11.5, 17.5), {});
+check('Pause d office : 8 h (10 h - 18 h) -> 20 min au milieu', W.autoBreak(10, 18), { breakMinutes: 20, breakStart: W.defaultBreakStart(10, 18, 20) });
+check('Pause d office : 6 h 30 -> 20 min', W.autoBreak(9, 15.5).breakMinutes, 20);
+
+// Allonger un shift au-dela de 6 h : pause d'office au franchissement seulement.
+const S = (a, b, p = {}) => ({ staffId: 'o', dayIndex: 0, startTime: a, endTime: b, ...p });
+check('Allonge de 6 h a 8 h sans pause -> 20 min', W.withAutoBreak(S(10, 16), S(10, 18)).breakMinutes, 20);
+check('Allonge de 5 h a 6 h pile -> rien', W.withAutoBreak(S(10, 15), S(10, 16)).breakMinutes, undefined);
+check('Deja 8 h sans pause (retiree expres), allonge a 9 h -> reste sans', W.withAutoBreak(S(10, 18), S(10, 19)).breakMinutes, undefined);
+check('Allonge avec une pause de 45 min deja la -> gardee', W.withAutoBreak(S(10, 16), S(10, 18, { breakStart: 13, breakMinutes: 45 })).breakMinutes, 45);
+check('Shift de 8 h avec la pause d office : 7 h 40 travaillees', W.shiftWorkHours(W.withAutoBreak(S(10, 16), S(10, 18))), 7 + 40 / 60);
+
 check('Affichage : 7,25 h -> « 7 h 15 »', W.formatDuration(7.25), '7 h 15');
 check('Affichage : 7,5 h -> « 7 h 30 »', W.formatDuration(7.5), '7 h 30');
 check('Affichage : 35 h -> « 35 h »', W.formatDuration(35), '35 h');

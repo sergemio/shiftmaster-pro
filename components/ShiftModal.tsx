@@ -4,7 +4,7 @@ import { Staff, Language, Extra } from '../types';
 import EmptyTeamNotice from './EmptyTeamNotice';
 import { formatTime, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
 import PauseField, { PauseValue, pauseFields, shiftStartOptions, shiftEndOptions, endLabel } from './PauseField';
-import { clampBreak } from '../utils/worktime';
+import { clampBreak, autoBreak } from '../utils/worktime';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
 
@@ -69,7 +69,11 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
   const defaultStart = Math.min(Math.max(11.5, hours.start), hours.end - 1);
   const [startTime, setStartTime] = useState(defaultStart);
   const [endTime, setEndTime] = useState(Math.min(Math.max(17.5, defaultStart + 0.5), hours.end));
-  const [pauseRaw, setPause] = useState<PauseValue>({});
+  // Tant que le manager n'a pas touche a la pause, elle suit l'horaire : 20 min
+  // au milieu du shift s'il depasse 6 h, rien sinon (decision du 22/09/2026).
+  const [pauseChosen, setPauseChosen] = useState<PauseValue | null>(null);
+  const pauseRaw = pauseChosen ?? autoBreak(startTime, endTime);
+  const setPause = (v: PauseValue) => setPauseChosen(v);
   // La pause toujours ramenee dans le shift, meme si l'horaire vient de changer.
   const pause = pauseFields(clampBreak({ staffId: '', dayIndex: 0, startTime, endTime, ...pauseRaw }));
 

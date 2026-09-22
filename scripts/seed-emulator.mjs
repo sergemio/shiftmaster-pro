@@ -72,7 +72,8 @@ const ORGS = {
     doc: { name: 'Chez Lea', ownerUid: 'uid-lea', status: 'trialing', trialEndsAt: Timestamp.fromMillis(Date.now() - DAY) },
     staff: [{ id: 'l1', name: 'Lea', email: 'lea@test.fr', color: '#a855f7', role: 'admin', contractHours: 0 }],
     rates: {},
-    shifts: [{ id: 'x1', staffId: 'l1', dayIndex: 5, startTime: 10, endTime: 18 }],
+    // Pause de 20 min d'office au-dela de 6 h (standard du 22/09/2026).
+    shifts: [{ id: 'x1', staffId: 'l1', dayIndex: 5, startTime: 10, endTime: 18, breakStart: 13.75, breakMinutes: 20 }],
   },
 };
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Staff, Shift, Language } from '../types';
 import { formatTime, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
 import PauseField, { PauseValue, pauseFields, shiftStartOptions, shiftEndOptions, endLabel } from './PauseField';
-import { clampBreak } from '../utils/worktime';
+import { clampBreak, withAutoBreak } from '../utils/worktime';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
 
@@ -35,7 +35,9 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
   const [staffId, setStaffId] = useState(shift.staffId);
   const [startTime, setStartTime] = useState(shift.startTime);
   const [endTime, setEndTime] = useState(shift.endTime);
-  const [pauseRaw, setPause] = useState<PauseValue>(pauseFields(shift));
+  // null = pause pas touchee : celle du shift, ou 20 min d'office si l'horaire
+  // franchit les 6 h (voir withAutoBreak).
+  const [pauseChosen, setPause] = useState<PauseValue | null>(null);
   const [coverageBy, setCoverageBy] = useState(shift.coverageBy || '');
   const [notes, setNotes] = useState(shift.notes || '');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -48,7 +50,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
       setStaffId(shift.staffId);
       setStartTime(shift.startTime);
       setEndTime(shift.endTime);
-      setPause(pauseFields(shift));
+      setPause(null);
       setCoverageBy(shift.coverageBy || '');
       setNotes(shift.notes || '');
       setIsConfirmingDelete(false);
@@ -56,6 +58,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
     }
   }, [shift]);
 
+  const pauseRaw = pauseChosen ?? pauseFields(withAutoBreak(shift, { staffId: '', dayIndex: 0, startTime, endTime, ...pauseFields(shift) }));
   // La pause toujours ramenee dans le shift, meme si l'horaire vient de changer.
   const pause = pauseFields(clampBreak({ staffId: '', dayIndex: 0, startTime, endTime, ...pauseRaw }));
 

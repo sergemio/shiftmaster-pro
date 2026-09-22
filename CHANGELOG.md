@@ -5,6 +5,24 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-22 (soir, 3) — Pause : interrupteur, 20 min d'office au-dela de 6 h, duree au double-clic (en ligne)
+
+- **Nouveau shift de plus de 6 h** : pause de 20 min posee d'office au milieu (minimum legal, L3121-16),
+  tant que le manager ne la change pas dans la fenetre. 6 h pile : rien. Raison : 24 alertes de pause
+  sur 29 dans la semaine test, faute de pause saisie. Les shifts existants ne sont pas touches.
+- **Double-clic sur la pause** (planning) : menu des durees 15 / 20 / 30 / 45 / 60 min ou « Pas de pause »,
+  sans ouvrir la fiche du shift.
+- **Interrupteur « Pause »** dans les fiches (creation et modification) : eteint sous 6 h, les durees
+  n'apparaissent que s'il est allume ; allume d'office a 20 min quand le shift franchit 6 h (fiche ou
+  etirement sur le planning). Un shift deja long dont la pause a ete retiree la garde retiree.
+- Donnees : `scripts/migrate-auto-break.mjs` (essai a blanc par defaut, `--apply` pour ecrire ; refuse
+  toute base autre que le SaaS ou l'emulateur). Base SaaS : 2 shifts sur 4 concernes. Emulateur : le shift
+  de 8 h de « Chez Lea » recoit sa pause ; le jeu de verite garde ses shifts sans pause (cas « pause
+  retiree par le manager », ce que ses scenarios verifient).
+- Tests : 8 controles dans `test-verite.mjs`, 15 dans `pause_test.py` ; suite navigateur 359 controles au vert.
+- Fichiers : `utils/worktime.ts`, `components/PauseField.tsx`, `ShiftModal.tsx`, `EditShiftModal.tsx`,
+  `ShiftCard.tsx`, `Calendar.tsx`, `utils/translations.ts`, `scripts/seed-emulator.mjs`.
+
 ## 2026-09-22 (soir, 2) — Affichage des heures, boutons en francais, libelles de paie (en ligne)
 
 - **Heures** : « 7.3H » (lu 7 h 30 pour 7 h 15) devient « 7 h 15 » sur les cartes, la barre laterale,

@@ -258,3 +258,28 @@ export const formatHoursRef = (hours: number, language = 'fr'): string => {
   const s = Number.isInteger(r) ? String(r) : r.toFixed(1);
   return language === 'fr' ? `${s.replace('.', ',')} h` : `${s}h`;
 };
+
+/**
+ * Pause posee d'office sur un NOUVEAU shift de plus de 6 h : 20 min, le minimum
+ * legal (L3121-16), au milieu du shift. Le manager la deplace ou en change la
+ * duree (decision de Serge du 22/09/2026 : l'alerte de pause faisait 24 alertes
+ * sur 29 dans la semaine test, faute de pause saisie).
+ */
+export const AUTO_BREAK_AFTER_HOURS = 6;
+export const AUTO_BREAK_MINUTES = 20;
+export const autoBreak = (start: number, end: number): { breakStart?: number; breakMinutes?: number } =>
+  end - start > AUTO_BREAK_AFTER_HOURS
+    ? { breakMinutes: AUTO_BREAK_MINUTES, breakStart: defaultBreakStart(start, end, AUTO_BREAK_MINUTES) }
+    : {};
+
+/**
+ * Un shift qu'on allonge au-dela de 6 h, sans pause, en recoit une de 20 min.
+ * Seulement au FRANCHISSEMENT du seuil : un shift deja long dont le manager a
+ * retire la pause la garde retiree (on ne la remet pas en silence).
+ */
+export const withAutoBreak = <S extends TimedShift>(before: { startTime: number; endTime: number }, after: S): S =>
+  !after.breakMinutes
+  && before.endTime - before.startTime <= AUTO_BREAK_AFTER_HOURS
+  && after.endTime - after.startTime > AUTO_BREAK_AFTER_HOURS
+    ? { ...after, ...autoBreak(after.startTime, after.endTime) }
+    : after;

@@ -6,7 +6,7 @@ import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import MyWeekView from './MyWeekView';
 import { getTranslation } from '../utils/translations';
-import { datedWeek, workCost, shiftWorkCost, clampBreak, BREAK_STEP } from '../utils/worktime';
+import { datedWeek, workCost, shiftWorkCost, clampBreak, withAutoBreak, BREAK_STEP } from '../utils/worktime';
 import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, formatMoney, staffingPerSlot, formatTime, getWeekRangeLong, getIsoWeekNumber, AbsenceDeduction, visibleAbsenceKind } from '../utils/helpers';
 
 // Header stamped on top of the grid in the PNG export only: the restaurant's
@@ -380,12 +380,12 @@ const Calendar: React.FC<CalendarProps> = ({
       } else if (dragState.dragType === 'resize-top') {
         const finalStart = Math.max(startHour, Math.min(shift.endTime - 0.5, dragState.originalStart + snappedDelta));
         if (finalStart !== dragState.originalStart) {
-          onUpdateShift(clampBreak({ ...shift, startTime: finalStart }));
+          onUpdateShift(clampBreak(withAutoBreak(shift, { ...shift, startTime: finalStart })));
         }
       } else if (dragState.dragType === 'resize-bottom') {
         const finalEnd = Math.max(shift.startTime + 0.5, Math.min(endHour, dragState.originalEnd + snappedDelta));
         if (finalEnd !== dragState.originalEnd) {
-          onUpdateShift(clampBreak({ ...shift, endTime: finalEnd }));
+          onUpdateShift(clampBreak(withAutoBreak(shift, { ...shift, endTime: finalEnd })));
         }
       } else if (dragState.dragType === 'move-break') {
         const next = breakAfterDrag(shift, dragState.currentY - dragState.initialY);
@@ -800,6 +800,11 @@ const Calendar: React.FC<CalendarProps> = ({
                   selectionMode={selectedShiftIds.length > 0}
                   onToggleSelect={onToggleSelect ? () => onToggleSelect(shift.id) : undefined}
                   onEdit={() => !isReadOnly && onEditShift(shift.id)}
+                  onBreakMinutes={isReadOnly ? undefined : (m) => {
+                    // 0 = plus de pause : on retire les deux champs, comme la fiche.
+                    const { breakStart: _b, breakMinutes: _m, ...base } = shift;
+                    onUpdateShift(m > 0 ? clampBreak({ ...base, breakStart: shift.breakStart, breakMinutes: m }) : base);
+                  }}
                   renderStartTime={isDraggingThis ? previewStartTime : undefined}
                   renderEndTime={isDraggingThis ? previewEndTime : undefined}
                   renderBreakStart={isDraggingThis ? previewBreak : undefined}
