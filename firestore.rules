@@ -93,8 +93,16 @@ service cloud.firestore {
              && shift.dayIndex >= 0 && shift.dayIndex <= 6
              && shift.startTime is number
              && shift.endTime is number
-             && shift.startTime >= 0 && shift.endTime <= 24
-             && shift.endTime > shift.startTime;
+             // Jusqu'a 30 : 6 h du matin le lendemain (decision du 22/09/2026).
+             && shift.startTime >= 0 && shift.endTime <= 30
+             && shift.endTime > shift.startTime
+             // Pause : les deux champs ensemble, dans le shift.
+             && (!('breakMinutes' in shift) || (
+                  shift.breakMinutes is int && shift.breakMinutes > 0 && shift.breakMinutes <= 180
+                  && shift.breakStart is number
+                  && shift.breakStart >= shift.startTime
+                  && shift.breakStart + shift.breakMinutes / 60.0 <= shift.endTime
+                ));
     }
 
     function isValidAbsence(a) {

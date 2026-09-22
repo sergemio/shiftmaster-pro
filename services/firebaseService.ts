@@ -1,5 +1,6 @@
 import { Shift, Staff, LogEntry, Absence, AbsencePeriod, LeaveBalance, LeaveRequest, WeekData, DraftData, EMPTY_WEEK, Org, OrgRole, OrgSettings, Extra, Invite } from '../types';
 import { applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange } from '../utils/helpers';
+import { lazySubscribeWith } from './lazySubscribe';
 
 // Use the Official Google Firebase ESM CDN to ensure total compatibility
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -101,28 +102,9 @@ const firestore = () => (firestorePromise ??= import('firebase/firestore')
     throw e;
   }));
 
-/**
- * Abonnement Firestore depuis un appelant synchrone.
- *
- * React attend une fonction de desabonnement TOUT DE SUITE, alors que le SDK
- * n'est pas encore charge. On rend donc un desabonnement qui couvre les deux cas :
- * si l'effet est demonte avant l'arrivee du module, `cancelled` empeche l'ecoute
- * de s'ouvrir dans le vide — sans lui, un changement rapide de semaine laissait
- * derriere lui des ecoutes que plus personne ne fermait.
- */
-const lazySubscribe = (open: (ctx: { fs: FirestoreModule; db: any }) => () => void) => {
-  let stop: (() => void) | null = null;
-  let cancelled = false;
-  firestore().then(ctx => {
-    if (cancelled) return;
-    stop = open(ctx);
-  });
-  return () => {
-    cancelled = true;
-    stop?.();
-    stop = null;
-  };
-};
+/** Abonnement Firestore depuis un appelant synchrone : voir services/lazySubscribe.ts. */
+const lazySubscribe = (open: (ctx: { fs: FirestoreModule; db: any }) => () => void) =>
+  lazySubscribeWith(firestore, open);
 
 export const auth = getAuth(app);
 if (USE_EMULATORS) connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });

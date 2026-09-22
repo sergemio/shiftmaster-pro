@@ -1,0 +1,4 @@
+#!/bin/sh
+# Calculs (heures, paie, cout, alertes) : aucun commit si un test unitaire echoue.
+# Active par : git config core.hooksPath .githooks
+node scripts/run-unit.mjs || { echo "Commit refuse : un test de calcul echoue (npm test)."; exit 1; }

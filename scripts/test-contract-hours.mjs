@@ -1,12 +1,7 @@
 // Test de contractHoursOn : la regle des avenants, sans navigateur.
-const contractHoursOn = (staff, isoDate) => {
-  const applicable = (staff.contractChanges || [])
-    .filter(c => c.from <= isoDate)
-    .sort((a, b) => a.from.localeCompare(b.from));
-  if (applicable.length > 0) return applicable[applicable.length - 1].weeklyHours;
-  return staff.contractHours ?? staff.targetHours ?? 0;
-};
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI code (utils/helpers.ts), plus aucune copie : voir load-ts.mjs.
+const { contractHoursOn } = await loadTs('utils/helpers.ts');
 let ko = 0;
 const check = (label, got, want) => {
   const ok = got === want;

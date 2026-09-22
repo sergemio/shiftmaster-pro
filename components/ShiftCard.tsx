@@ -3,6 +3,7 @@ import React, { useRef } from 'react';
 import { Shift, Staff, DragType, Language } from '../types';
 import { formatTime, formatShortDate, formatMoney, OrphanReason } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
+import { clampBreak, shiftWorkHours } from '../utils/worktime';
 
 interface ShiftCardProps {
   shift: Shift;
@@ -14,6 +15,8 @@ interface ShiftCardProps {
   isReadOnly?: boolean;
   renderStartTime?: number;
   renderEndTime?: number;
+  /** Debut de pause pendant un glisser (apercu). */
+  renderBreakStart?: number;
   language?: Language;
   /** Pourquoi le shift sort de la periode d'emploi, ou null s'il est normal. */
   orphanReason?: OrphanReason;
@@ -49,6 +52,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   isReadOnly = false,
   renderStartTime,
   renderEndTime,
+  renderBreakStart,
   language = 'en',
   orphanReason = null,
   hasOverlap = false,
@@ -97,7 +101,13 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
 
   const startTime = renderStartTime ?? shift.startTime;
   const endTime = renderEndTime ?? shift.endTime;
-  const duration = endTime - startTime;
+  // Le shift tel qu'affiche (pendant un glisser, l'apercu), pause ramenee dedans.
+  const shown = clampBreak({ ...shift, startTime, endTime, ...(renderBreakStart !== undefined ? { breakStart: renderBreakStart } : {}) });
+  // La duree affichee est le temps de TRAVAIL : la pause n'en fait pas partie.
+  const duration = shiftWorkHours(shown);
+  const pause = typeof shown.breakStart === 'number' && shown.breakMinutes
+    ? { top: ((shown.breakStart - startTime) / (endTime - startTime)) * 100, height: (shown.breakMinutes / 60 / (endTime - startTime)) * 100 }
+    : null;
 
   return (
     <div 
@@ -314,6 +324,32 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
           </div>
         )}
       </div>
+
+      {pause && (
+        /* La pause : hachures grises sur toute la largeur, la ou elle tombe. Le
+           manager la fait glisser a la souris (au quart d'heure) ; sur telephone,
+           elle se regle dans la fiche du shift. */
+        <div
+          data-testid="shift-break"
+          title={`${t('breakLabel')} ${formatTime(shown.breakStart!)} · ${shown.breakMinutes} min`}
+          className={`absolute left-0 right-0 z-40 border-y border-slate-400/50 flex items-center justify-center overflow-hidden ${isReadOnly || selectionMode ? '' : 'cursor-ns-resize'}`}
+          style={{
+            top: `${pause.top}%`,
+            height: `${pause.height}%`,
+            backgroundColor: 'rgba(241,245,249,0.85)',
+            backgroundImage: 'repeating-linear-gradient(-45deg, rgba(100,116,139,0.18) 0 4px, transparent 4px 8px)',
+          }}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            if (isReadOnly || selectionMode || window.innerWidth < 768) return;
+            onDragStart(e, 'move-break');
+          }}
+        >
+          <span className="text-[10px] font-bold text-slate-600 leading-none whitespace-nowrap pointer-events-none">
+            {t('breakLabel')} {shown.breakMinutes} min
+          </span>
+        </div>
+      )}
 
       {!isReadOnly && !selectionMode && (
         <div 

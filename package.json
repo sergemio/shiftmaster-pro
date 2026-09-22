@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
+    "test": "node scripts/run-unit.mjs",
     "dev:emu": "vite --mode emulator --port 3100 --strictPort",
     "emu": "node scripts/emulators.mjs start",
     "emu:seed": "node scripts/seed-emulator.mjs",

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Staff, Shift, Language } from '../types';
-import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
+import { formatTime, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
+import PauseField, { PauseValue, pauseFields, shiftStartOptions, shiftEndOptions, endLabel } from './PauseField';
+import { clampBreak } from '../utils/worktime';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
 
@@ -17,12 +19,13 @@ interface EditShiftModalProps {
   onDelete: (id: string) => void;
   /** Ce que ce shift enfreindrait une fois modifie. `excludeShiftId` retire la
    *  version actuelle du calcul, sinon elle se comparerait a elle-meme. */
-  onCheck?: (staffId: string, dayIndexes: number[], start: number, end: number, excludeShiftId?: string) => string[];
+  onCheck?: (staffId: string, dayIndexes: number[], start: number, end: number, excludeShiftId?: string, pause?: PauseValue) => string[];
   /** Periode d'emploi : `errors` interdit le shift, `notes` le marque hors contrat. */
   onEmployment?: (staffId: string, dayIndexes: number[]) => { errors: string[]; notes: string[] };
   isReadOnly?: boolean;
   language: string;
-  /** Heures d'ouverture reglees : les menus d'heures n'offrent que cette plage. */
+  /** Heures d'ouverture reglees. Les menus d'heures offrent toute la journee
+   *  (decision du 22/09/2026) : ce reglage ne sert plus qu'a la grille. */
   hours?: OperatingHours;
 }
 
@@ -32,6 +35,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
   const [staffId, setStaffId] = useState(shift.staffId);
   const [startTime, setStartTime] = useState(shift.startTime);
   const [endTime, setEndTime] = useState(shift.endTime);
+  const [pauseRaw, setPause] = useState<PauseValue>(pauseFields(shift));
   const [coverageBy, setCoverageBy] = useState(shift.coverageBy || '');
   const [notes, setNotes] = useState(shift.notes || '');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -44,6 +48,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
       setStaffId(shift.staffId);
       setStartTime(shift.startTime);
       setEndTime(shift.endTime);
+      setPause(pauseFields(shift));
       setCoverageBy(shift.coverageBy || '');
       setNotes(shift.notes || '');
       setIsConfirmingDelete(false);
@@ -51,19 +56,14 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
     }
   }, [shift]);
 
-  // La plage reglee, elargie aux heures actuelles du shift s'il en deborde :
-  // sinon le menu ne pourrait pas afficher sa propre valeur.
-  const lastHour = Math.max(hours.end, shift.endTime);
-  const timeOptions = useMemo(
-    () => halfHourSteps(Math.min(hours.start, shift.startTime), lastHour).map(v => ({ value: v, label: formatTime(v) })),
-    [hours.start, shift.startTime, lastHour],
-  );
+  // La pause toujours ramenee dans le shift, meme si l'horaire vient de changer.
+  const pause = pauseFields(clampBreak({ staffId: '', dayIndex: 0, startTime, endTime, ...pauseRaw }));
 
   // Les jours verifies : celui du shift, plus ceux ou on s'appreste a le
   // recopier — une repetition sur cinq jours peut creer cinq problemes.
   const warnings = useMemo(
-    () => onCheck?.(staffId, [shift.dayIndex, ...repeatOn], startTime, endTime, shift.id) || [],
-    [onCheck, staffId, shift.dayIndex, shift.id, repeatOn, startTime, endTime],
+    () => onCheck?.(staffId, [shift.dayIndex, ...repeatOn], startTime, endTime, shift.id, pause) || [],
+    [onCheck, staffId, shift.dayIndex, shift.id, repeatOn, startTime, endTime, pause.breakStart, pause.breakMinutes],
   );
 
   // Periode d'emploi, verifiee sur les jours de COPIE, et sur le jour du shift
@@ -90,11 +90,16 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
     const isUnchanged = staffId === shift.staffId &&
                         startTime === shift.startTime &&
                         endTime === shift.endTime &&
+                        pause.breakStart === shift.breakStart &&
+                        (pause.breakMinutes || 0) === (shift.breakMinutes || 0) &&
                         (sanitizedCoverage || '') === (shift.coverageBy || '') &&
                         (sanitizedNotes || '') === (shift.notes || '');
 
+    // La pause remplace l'ancienne, ou disparait : jamais de champ `undefined`.
+    const { breakStart: _b, breakMinutes: _m, ...base } = shift;
     const edited: Shift = {
-      ...shift,
+      ...base,
+      ...pause,
       staffId,
       startTime,
       endTime,
@@ -166,7 +171,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-600 mb-2">Start Time</label>
+                  <label className="block text-sm font-bold text-slate-600 mb-2">{t('startTime')}</label>
                   <div className="relative">
                     <select 
                       disabled={isReadOnly}
@@ -174,14 +179,14 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                       onChange={(e) => setStartTime(parseFloat(e.target.value))}
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all disabled:opacity-80"
                     >
-                      {timeOptions.filter(o => o.value < lastHour).map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      {shiftStartOptions().map(v => (
+                        <option key={v} value={v}>{formatTime(v)}</option>
                       ))}
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-600 mb-2">End Time</label>
+                  <label className="block text-sm font-bold text-slate-600 mb-2">{t('endTime')}</label>
                   <div className="relative">
                     <select 
                       disabled={isReadOnly}
@@ -189,13 +194,15 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                       onChange={(e) => setEndTime(parseFloat(e.target.value))}
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all disabled:opacity-80"
                     >
-                      {timeOptions.filter(o => o.value > startTime).map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      {shiftEndOptions(startTime).map(v => (
+                        <option key={v} value={v}>{endLabel(v, (language || 'en') as Language)}</option>
                       ))}
                     </select>
                   </div>
                 </div>
               </div>
+
+              <PauseField start={startTime} end={endTime} value={pause} onChange={setPause} language={(language || 'en') as Language} disabled={isReadOnly} />
 
               <div>
                 <label className="block text-sm font-bold text-slate-600 mb-2">Coverage (Heures Sup)</label>

@@ -7,43 +7,9 @@
  * Paques officielles 2024 (31/03), 2025 (20/04), 2026 (05/04), 2027 (28/03),
  * 2038 (25/04, la plus tardive possible).
  */
-const addDaysIso = (isoDate, days) => {
-  const d = new Date(isoDate + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-};
-const easterSunday = (year) => {
-  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
-  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
-  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
-  const m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const month = Math.floor((h + l - 7 * m + 114) / 31);
-  const day = ((h + l - 7 * m + 114) % 31) + 1;
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-};
-const frenchPublicHolidays = (year) => {
-  const easter = easterSunday(year);
-  const fixed = (mmdd) => `${year}-${mmdd}`;
-  return [
-    { key: 'jan1', date: fixed('01-01') }, { key: 'easterMonday', date: addDaysIso(easter, 1) },
-    { key: 'may1', date: fixed('05-01') }, { key: 'may8', date: fixed('05-08') },
-    { key: 'ascension', date: addDaysIso(easter, 39) }, { key: 'whitMonday', date: addDaysIso(easter, 50) },
-    { key: 'jul14', date: fixed('07-14') }, { key: 'aug15', date: fixed('08-15') },
-    { key: 'nov1', date: fixed('11-01') }, { key: 'nov11', date: fixed('11-11') }, { key: 'dec25', date: fixed('12-25') },
-  ].sort((x, y) => x.date.localeCompare(y.date));
-};
-const holidaysBetween = (start, end) => {
-  if (!start || !end || end < start) return [];
-  const out = [];
-  for (let y = Number(start.slice(0, 4)); y <= Number(end.slice(0, 4)); y++) {
-    for (const h of frenchPublicHolidays(y)) if (h.date >= start && h.date <= end) out.push(h);
-  }
-  return out;
-};
-const closedHolidayDates = (start, end, closed = []) =>
-  holidaysBetween(start, end).filter(h => closed.includes(h.key)).map(h => h.date);
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI code (utils/helpers.ts), plus aucune copie : voir load-ts.mjs.
+const { addDaysIso, easterSunday, frenchPublicHolidays, holidaysBetween, closedHolidayDates } = await loadTs('utils/helpers.ts');
 let failed = 0, n = 0;
 const check = (label, ok, extra = '') => {
   n++; if (!ok) failed++;

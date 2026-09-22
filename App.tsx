@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, Language, Absence, AbsencePeriod, WeekData, DraftData, EMPTY_WEEK, ViewType, Org, OrgRole, Extra, WeekHoliday, LeaveBalance, LeaveUnit, LeaveRequest, RequestableLeaveKind, LaborConvention, Invite, Closure } from './types';
-import { getWeekStart, getWeekRangeString, getWeekRangeCompact, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, totalCost, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind, costRates, leaveBalanceSummary, countLeaveDays, closedHolidayDates, todayIso } from './utils/helpers';
+import { getWeekStart, getWeekRangeString, getWeekRangeCompact, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind, costRates, leaveBalanceSummary, countLeaveDays, closedHolidayDates, todayIso } from './utils/helpers';
 import { INITIAL_STAFF } from './constants';
+import { PauseValue, pauseFields } from './components/PauseField';
+import { datedWeek, hoursByWorker, hoursByWorkerDate, workCost, workerOf, DatedWork } from './utils/worktime';
 import { DEFAULT_CONVENTION, conventionFor, conventionLabel, findViolations, DatedShift, Violation } from './utils/laborRules';
 import { violationText, violationWho } from './utils/violationText';
 import Calendar from './components/Calendar';
@@ -262,9 +264,10 @@ const App: React.FC = () => {
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('week');
   const [monthHours, setMonthHours] = useState<Record<string, number> | null>(null);
   const [monthLoading, setMonthLoading] = useState(false);
-  // Les shifts du mois eux-memes, pour en tirer le cout sans relire la base
-  // quand un taux change.
-  const [monthShifts, setMonthShifts] = useState<Shift[] | null>(null);
+  // Les shifts du mois eux-memes, DATES (un mois contient plusieurs lundis),
+  // pour en tirer le cout sans relire la base quand un taux change.
+  const [monthWork, setMonthWork] = useState<DatedWork<Shift>[] | null>(null);
+  const monthShifts = useMemo(() => monthWork ? monthWork.map(w => w.shift) : null, [monthWork]);
   /** Semaines du mois lues au serveur, hors semaine affichee (voir plus bas). */
   const [monthOtherWeeks, setMonthOtherWeeks] = useState<{ month: string; weeks: Record<string, WeekData> } | null>(null);
   // Les jours d'absence du mois, lus dans les memes semaines : l'attendu du
@@ -835,7 +838,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (statsPeriod !== 'month' && effectiveViewType !== 'me') {
       setMonthHours(null);
-      setMonthShifts(null);
+      setMonthWork(null);
       setMonthOtherWeeks(null);
       setMonthAbsenceDays(null);
       return;
@@ -884,8 +887,7 @@ const App: React.FC = () => {
     if (!monthOtherWeeks || (statsPeriod !== 'month' && effectiveViewType !== 'me')) return;
     const { month, weeks } = monthOtherWeeks;
     const all: Record<string, WeekData> = { ...weeks, [weekId]: officialWeek };
-    const totals: Record<string, number> = {};
-    const inMonth: Shift[] = [];
+    const inMonth: DatedWork<Shift>[] = [];
     const absenceDays: { staffId: string; iso: string; kind: string; hours?: number; half?: 'am' | 'pm' }[] = [];
     for (const [wid, data] of Object.entries(all)) {
       const weekStart = new Date(wid + 'T00:00:00Z');
@@ -893,16 +895,12 @@ const App: React.FC = () => {
         const iso = getShiftIsoDate(weekStart, a.dayIndex);
         if (iso.slice(0, 7) === month) absenceDays.push({ staffId: a.staffId, iso, kind: a.kind, hours: a.hours, half: a.half });
       }
-      for (const sh of data.shifts) {
-        if (getShiftIsoDate(weekStart, sh.dayIndex).slice(0, 7) !== month) continue;
-        inMonth.push(sh);
-        // Un shift couvert par quelqu'un d'autre compte pour celui qui le fait.
-        const who = sh.coverageBy || sh.staffId;
-        totals[who] = (totals[who] || 0) + (sh.endTime - sh.startTime);
-      }
+      inMonth.push(...datedWeek(wid, data.shifts).filter(w => w.date.slice(0, 7) === month));
     }
-    setMonthHours(totals);
-    setMonthShifts(inMonth);
+    // Heures du module de temps de travail : remplacant credite, chevauchement
+    // compte une fois, pause retiree.
+    setMonthHours(hoursByWorker(inMonth));
+    setMonthWork(inMonth);
     setMonthAbsenceDays(absenceDays);
   }, [monthOtherWeeks, officialWeek, weekId, statsPeriod, effectiveViewType]);
 
@@ -974,10 +972,12 @@ const App: React.FC = () => {
       for (const sh of list) {
         flat.push({
           id: sh.id,
-          staffId: sh.coverageBy || sh.staffId,
+          staffId: workerOf(sh),
           date: getShiftIsoDate(weekStart, sh.dayIndex),
           start: sh.startTime,
           end: sh.endTime,
+          breakStart: sh.breakStart,
+          breakMinutes: sh.breakMinutes,
         });
       }
     };
@@ -1043,6 +1043,8 @@ const App: React.FC = () => {
     start: number,
     end: number,
     excludeShiftId?: string,
+    /** La pause du shift compose : elle n'est pas du temps de travail. */
+    pause: { breakStart?: number; breakMinutes?: number } = {},
   ): string[] => {
     if (!staffId || end <= start || dayIndexes.length === 0) return [];
     if (staffList.find(s => s.id === staffId)?.isPool) return [];
@@ -1053,7 +1055,7 @@ const App: React.FC = () => {
       for (const sh of list) {
         if (sh.id === excludeShiftId) continue;
         const date = getShiftIsoDate(weekStart, sh.dayIndex);
-        flat.push({ id: sh.id, staffId: sh.coverageBy || sh.staffId, date, start: sh.startTime, end: sh.endTime });
+        flat.push({ id: sh.id, staffId: workerOf(sh), date, start: sh.startTime, end: sh.endTime, breakStart: sh.breakStart, breakMinutes: sh.breakMinutes });
         index.set(sh.id, { shift: sh, date });
       }
     };
@@ -1062,9 +1064,9 @@ const App: React.FC = () => {
       add(new Date(wid + 'T00:00:00Z'), data.shifts || []);
     }
     for (const dayIndex of dayIndexes) {
-      const candidate: Shift = { id: `preview-${dayIndex}`, staffId, dayIndex, startTime: start, endTime: end };
+      const candidate: Shift = { id: `preview-${dayIndex}`, staffId, dayIndex, startTime: start, endTime: end, ...pause };
       const date = getShiftIsoDate(currentWeek, dayIndex);
-      flat.push({ id: candidate.id, staffId, date, start, end });
+      flat.push({ id: candidate.id, staffId, date, start, end, ...pause });
       index.set(candidate.id, { shift: candidate, date });
     }
 
@@ -1232,14 +1234,14 @@ const App: React.FC = () => {
    * commit : une seule ecriture Firestore, et surtout une seule etape d'annulation
    * — cinq etapes a annuler une par une pour un geste unique serait un piege.
    */
-  const handleAddShift = useCallback((staffId: string, dayIndexes: number[], startTime: number, endTime: number) => {
+  const handleAddShift = useCallback((staffId: string, dayIndexes: number[], startTime: number, endTime: number, pause: PauseValue = {}) => {
     if (isReadOnly || dayIndexes.length === 0) return;
     // La fenetre bloque deja l'envoi ; on refuse aussi ici pour que la regle
     // tienne quel que soit le chemin qui cree un shift.
     const { errors } = employmentCheck(staffId, dayIndexes);
     if (errors.length > 0) { setSaveError(errors[0]); return; }
     const created: Shift[] = dayIndexes.map(dayIndex => ({
-      id: Math.random().toString(36).substr(2, 9), staffId, dayIndex, startTime, endTime,
+      id: Math.random().toString(36).substr(2, 9), staffId, dayIndex, startTime, endTime, ...pauseFields(pause),
     }));
     handleUpdateShifts([...shifts, ...created]);
     const target = staffList.find(s => s.id === staffId) || null;
@@ -1259,7 +1261,7 @@ const App: React.FC = () => {
    */
   const addExtraShift = useCallback((
     who: { extraId?: string; firstName: string; retained: boolean },
-    dayIndexes: number[], startTime: number, endTime: number,
+    dayIndexes: number[], startTime: number, endTime: number, pause: PauseValue = {},
   ) => {
     if (isReadOnly || dayIndexes.length === 0) return;
     const id = who.extraId || 'x' + Math.random().toString(36).slice(2, 10);
@@ -1282,7 +1284,7 @@ const App: React.FC = () => {
       saveExtra(fiche);
     }
     const created: Shift[] = dayIndexes.map(dayIndex => ({
-      id: Math.random().toString(36).substr(2, 9), staffId: id, dayIndex, startTime, endTime, extraName: name,
+      id: Math.random().toString(36).substr(2, 9), staffId: id, dayIndex, startTime, endTime, extraName: name, ...pauseFields(pause),
       ...(fiche.filledAt ? {} : { extraPending: true }),
     }));
     handleUpdateShifts([...shifts, ...created]);
@@ -1592,19 +1594,20 @@ const App: React.FC = () => {
       loaded = await loadWeeks(others);
     }
     if (wids.includes(weekId)) loaded[weekId] = { shifts };
-    const byDate: Record<string, number> = {};
     const plannedWeekIds: string[] = [];
+    const mine: DatedWork<Shift>[] = [];
     let shiftsDuring = 0;
     for (const [w, week] of Object.entries(loaded)) {
       // Ses heures : ses shifts non repris, plus ceux qu'elle reprend pour un collegue.
-      const mine = week.shifts.filter(sh => (sh.coverageBy ? sh.coverageBy === staffId : sh.staffId === staffId));
-      if (mine.length > 0) plannedWeekIds.push(w);
-      for (const sh of mine) {
-        const date = addDaysIso(w, sh.dayIndex + 1);
-        byDate[date] = (byDate[date] || 0) + (sh.endTime - sh.startTime);
-        if (dayset.has(date) && sh.staffId === staffId && !sh.coverageBy) shiftsDuring++;
-      }
+      const own = datedWeek(w, week.shifts).filter(x => workerOf(x.shift) === staffId);
+      if (own.length > 0) plannedWeekIds.push(w);
+      mine.push(...own);
+      shiftsDuring += own.filter(x => dayset.has(x.date) && !x.shift.coverageBy).length;
     }
+    // Heures par jour du module de temps de travail (pause retiree, chevauchement
+    // compte une fois) : ce que l'absence fait perdre.
+    const byDate: Record<string, number> = Object.fromEntries(
+      hoursByWorkerDate(mine).get(staffId) || []);
     return { byDate, plannedWeekIds, shiftsDuring };
   }, [weekId, shifts, isGuest, connected]);
 
@@ -2300,8 +2303,8 @@ const App: React.FC = () => {
         weekAbsence={weekAbsence}
         monthAbsence={monthAbsence}
         cost={Object.keys(shiftRates).length === 0 ? null
-          : statsPeriod === 'month' ? (monthShifts && !monthLoading ? totalCost(monthShifts, shiftRates) : null)
-          : totalCost(shifts, shiftRates)}
+          : statsPeriod === 'month' ? (monthWork && !monthLoading ? workCost(monthWork, shiftRates) : null)
+          : workCost(datedWeek(weekId, shifts), shiftRates)}
         monthLabel={new Date(getShiftIsoDate(currentWeek, 3) + 'T12:00:00Z').toLocaleDateString(
           language === 'fr' ? 'fr-FR' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
         onManageStaffClick={fromSidebar(() => setIsStaffModalOpen(true))}

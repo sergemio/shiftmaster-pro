@@ -3,7 +3,8 @@ import React, { useMemo } from 'react';
 import { Shift, Staff, Language } from '../types';
 import { DAYS_EN, DAYS_FR } from '../constants';
 import { getTranslation } from '../utils/translations';
-import { formatTime, isStaffActiveInWeek, contractHoursOn, getShiftIsoDate } from '../utils/helpers';
+import { formatTime, isStaffActiveInWeek, contractHoursOn, getShiftIsoDate, toWeekId } from '../utils/helpers';
+import { datedWeek, hoursByWorker, shiftWorkHours, workerOf } from '../utils/worktime';
 
 interface EmployeeViewProps {
   shifts: Shift[];
@@ -24,10 +25,12 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
   const localizedDays = language === 'fr' ? DAYS_FR : DAYS_EN;
 
   const staffWithShifts = useMemo(() => {
+    // Heures du module de temps de travail. Un shift repris va dans la ligne de
+    // celui qui le fait : c'est lui qui travaille, et ses heures lui sont comptees.
+    const hours = hoursByWorker(datedWeek(toWeekId(currentWeek), shifts));
     return staff.map(s => {
-      const staffShifts = shifts.filter(sh => sh.staffId === s.id);
-      const totalHours = staffShifts.reduce((acc, sh) => acc + (sh.endTime - sh.startTime), 0);
-      return { ...s, shifts: staffShifts, totalHours };
+      const staffShifts = shifts.filter(sh => workerOf(sh) === s.id);
+      return { ...s, shifts: staffShifts, totalHours: hours[s.id] || 0 };
     })
     // Option A: hide rows where the employee is not active this week AND has no shifts
     .filter(m => m.totalHours > 0 || isStaffActiveInWeek(m, currentWeek))
@@ -108,7 +111,7 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
                               {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
                             </span>
                             <span className="text-xs font-medium text-slate-500 uppercase tracking-tight">
-                              {(shift.endTime - shift.startTime).toFixed(1)}h
+                              {shiftWorkHours(shift).toFixed(1)}h
                             </span>
                           </div>
                           {shift.notes && (

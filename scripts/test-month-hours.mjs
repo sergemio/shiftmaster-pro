@@ -1,19 +1,7 @@
 // Regle du contrat MENSUEL, sans navigateur.
-const contractHoursOn = (st, iso) => {
-  const a = (st.contractChanges || []).filter(c => c.from <= iso).sort((x, y) => x.from.localeCompare(y.from));
-  return a.length ? a[a.length - 1].weeklyHours : (st.contractHours ?? st.targetHours ?? 0);
-};
-const daysInMonth = (iso) => { const [y, m] = iso.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).getUTCDate(); };
-const monthlyContractHours = (st, iso) => {
-  const [y, m] = iso.split('-').map(Number);
-  const n = daysInMonth(iso);
-  let t = 0;
-  for (let d = 1; d <= n; d++) {
-    t += contractHoursOn(st, `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`) * 52 / 12 / n;
-  }
-  return t;
-};
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI code (utils/helpers.ts), plus aucune copie : voir load-ts.mjs.
+const { contractHoursOn, daysInMonth, monthlyContractHours } = await loadTs('utils/helpers.ts');
 let ko = 0;
 const near = (label, got, want, tol = 0.05) => {
   const ok = Math.abs(got - want) <= tol;

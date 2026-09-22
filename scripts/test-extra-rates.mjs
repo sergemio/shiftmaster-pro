@@ -14,7 +14,12 @@ import { fileURLToPath, pathToFileURL } from 'url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(mkdtempSync(join(tmpdir(), 'rates-')), 'helpers.mjs');
 buildSync({ entryPoints: [join(root, 'utils/helpers.ts')], bundle: true, format: 'esm', platform: 'node', outfile: out, logLevel: 'error' });
-const { costRates, totalCost, EXTRA_DEFAULT_RATE_KEY } = await import(pathToFileURL(out).href);
+const { costRates, EXTRA_DEFAULT_RATE_KEY } = await import(pathToFileURL(out).href);
+// Le cout d'un ensemble de shifts : utils/worktime.ts (shifts dates).
+const wout = join(mkdtempSync(join(tmpdir(), 'rates-')), 'worktime.mjs');
+buildSync({ entryPoints: [join(root, 'utils/worktime.ts')], bundle: true, format: 'esm', platform: 'node', outfile: wout, logLevel: 'error' });
+const { workCost, datedWeek } = await import(pathToFileURL(wout).href);
+const totalCost = (list, rates) => workCost(datedWeek('2026-09-20', list.map(x => ({ dayIndex: 0, ...x }))), rates);
 
 let fails = 0;
 const check = (label, ok, extra = '') => {

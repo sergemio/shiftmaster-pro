@@ -1,5 +1,6 @@
 import { Staff, Shift, AbsencePeriod, LeaveKind } from '../types';
 import { addDaysIso, contractHoursOn, daysInMonth, monthlyContractHours } from './helpers';
+import { datedWeek, minutesByWorkerDate, minutesToHours, workerOf } from './worktime';
 
 // =============================================================================
 // ELEMENTS VARIABLES DE PAIE — ce que l'employeur transmet chaque mois
@@ -118,28 +119,32 @@ export const payrollVariables = (
     return !!s && !s.isPool && !s.isExtra;
   };
 
-  // Heures par personne et par jour, sur toutes les semaines chargees.
-  const hoursByPersonDate = new Map<string, Map<string, number>>();
+  // Heures par personne et par jour, sur toutes les semaines chargees : le
+  // module de temps de travail (union des plages, pause retiree, remplacant
+  // credite). Additionner les durees ici comptait deux fois un chevauchement et
+  // fabriquait des heures supplementaires (audit du 22/09/2026).
+  const work = Object.entries(shiftsByWeek).flatMap(([weekId, shifts]) => datedWeek(weekId, shifts || []));
+  const minutes = minutesByWorkerDate(work);
+  // En MINUTES jusqu'au bout : les sommes restent exactes, la conversion en
+  // heures se fait une fois, a la fin.
+  const minutesByPersonDate = new Map<string, Map<string, number>>();
   const extraRows = new Map<string, PayrollExtraLine>();
-  for (const [weekId, shifts] of Object.entries(shiftsByWeek)) {
-    for (const sh of shifts || []) {
-      const iso = addDaysIso(weekId, sh.dayIndex + 1);
-      const h = sh.endTime - sh.startTime;
-      // Un shift couvert compte pour celui qui le fait.
-      const who = sh.coverageBy || sh.staffId;
-      if (sh.extraName || !isContracted(who)) {
-        if (!inMonth(iso)) continue;
-        const name = extraNames[who] || byId.get(who)?.name || sh.extraName || who;
-        const row = extraRows.get(who) || { staffId: who, name, days: [], hours: 0 };
-        if (!row.days.includes(iso)) row.days.push(iso);
-        row.hours += h;
-        extraRows.set(who, row);
-        continue;
-      }
-      const m = hoursByPersonDate.get(who) || new Map<string, number>();
-      m.set(iso, (m.get(iso) || 0) + h);
-      hoursByPersonDate.set(who, m);
+  // Un extra : la personne n'a pas de contrat, ou le shift porte un prenom d'extra.
+  const extraWorkers = new Set(work.filter(w => w.shift.extraName || !isContracted(workerOf(w.shift))).map(w => workerOf(w.shift)));
+  const extraLabel = new Map(work.filter(w => w.shift.extraName).map(w => [workerOf(w.shift), w.shift.extraName as string]));
+  for (const [who, byDate] of minutes) {
+    if (extraWorkers.has(who)) {
+      const days = [...byDate].filter(([iso, m]) => inMonth(iso) && m > 0);
+      if (days.length === 0) continue;
+      const name = extraNames[who] || byId.get(who)?.name || extraLabel.get(who) || who;
+      extraRows.set(who, {
+        staffId: who, name,
+        days: days.map(([iso]) => iso),
+        hours: minutesToHours(days.reduce((n, [, m]) => n + m, 0)),
+      });
+      continue;
     }
+    minutesByPersonDate.set(who, byDate);
   }
 
   const lines: PayrollLine[] = [];
@@ -147,10 +152,11 @@ export const payrollVariables = (
     if (s.isPool || s.isExtra) continue;
     if (s.startDate && s.startDate > last) continue;
     if (s.endDate && s.endDate < first) continue;
-    const hours = hoursByPersonDate.get(s.id) || new Map<string, number>();
+    const mins = minutesByPersonDate.get(s.id) || new Map<string, number>();
 
-    let worked = 0;
-    for (const [iso, h] of hours) if (inMonth(iso)) worked += h;
+    let workedMin = 0;
+    for (const [iso, m] of mins) if (inMonth(iso)) workedMin += m;
+    const worked = minutesToHours(workedMin);
 
     const absences: PayrollAbsence[] = periods
       .filter(p => p.staffId === s.id && p.start <= last && p.end >= first)
@@ -183,8 +189,9 @@ export const payrollVariables = (
       if (!inMonth(sunday)) continue;
       const contract = contractHoursOn(s, monday);
       if (contract <= 0) continue;
-      let w = 0;
-      for (let i = 0; i < 7; i++) w += hours.get(addDaysIso(monday, i)) || 0;
+      let wMin = 0;
+      for (let i = 0; i < 7; i++) wMin += mins.get(addDaysIso(monday, i)) || 0;
+      const w = minutesToHours(wMin);
       const extra = w - contract;
       if (extra < 0.01) continue;
       const partTime = contract < LEGAL_WEEKLY_HOURS;

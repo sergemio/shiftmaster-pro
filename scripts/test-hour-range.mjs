@@ -4,28 +4,9 @@
 // dans utils/helpers.ts, recopie ici faute de pouvoir importer un .ts sans etape
 // de compilation — meme convention que les autres tests.
 
-const DEFAULT_OPERATING_HOURS = { start: 8, end: 24 };
-
-const normalizeOperatingHours = (start, end) => {
-  const ok = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 24 && Number.isInteger(v * 2);
-  return ok(start) && ok(end) && end - start >= 1 ? { start, end } : DEFAULT_OPERATING_HOURS;
-};
-
-const gridHourRange = (hours, shifts) => {
-  let start = Math.floor(hours.start), end = Math.ceil(hours.end);
-  for (const s of shifts) {
-    start = Math.min(start, Math.floor(s.startTime));
-    end = Math.max(end, Math.ceil(s.endTime));
-  }
-  return { start: Math.max(0, start), end: Math.min(24, end) };
-};
-
-const halfHourSteps = (from, to) => {
-  const out = [];
-  for (let v = Math.ceil(from * 2) / 2; v <= to; v += 0.5) out.push(v);
-  return out;
-};
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI code (utils/helpers.ts), plus aucune copie : voir load-ts.mjs.
+const { DEFAULT_OPERATING_HOURS, normalizeOperatingHours, gridHourRange, halfHourSteps } = await loadTs('utils/helpers.ts');
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const cases = [
   ['reglage 9 h -> 23 h 30 garde tel quel', normalizeOperatingHours(9, 23.5), { start: 9, end: 23.5 }],

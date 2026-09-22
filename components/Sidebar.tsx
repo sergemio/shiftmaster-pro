@@ -10,7 +10,8 @@ const ABSENCE_LABELS: Record<string, string> = {
   absent: 'absenceAbsent',
 };
 import { getTranslation } from '../utils/translations';
-import { isStaffActiveInWeek, contractHoursOn, monthlyContractHours, getShiftIsoDate, formatMoney, AbsenceDeduction, expectedNote, visibleAbsenceKind } from '../utils/helpers';
+import { isStaffActiveInWeek, contractHoursOn, monthlyContractHours, getShiftIsoDate, formatMoney, AbsenceDeduction, expectedNote, visibleAbsenceKind, toWeekId } from '../utils/helpers';
+import { datedWeek, hoursByWorker, shiftWorkHours, expectedHours, roundTenth } from '../utils/worktime';
 
 /**
  * Bloc repliable de la colonne de droite (version A de la maquette du 13/09/2026,
@@ -166,24 +167,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
   const t = getTranslation(language as Language);
 
-  const getStats = () => {
-    const worked: Record<string, number> = {};
-    const extra: Record<string, number> = {};
-    const leave: Record<string, number> = {};
-    
-    shifts.forEach(s => {
-      const duration = s.endTime - s.startTime;
-      if (s.coverageBy) {
-        leave[s.staffId] = (leave[s.staffId] || 0) + duration;
-        extra[s.coverageBy] = (extra[s.coverageBy] || 0) + duration;
-      } else {
-        worked[s.staffId] = (worked[s.staffId] || 0) + duration;
-      }
-    });
-    return { worked, extra, leave };
-  };
-
-  const { worked, extra } = getStats();
+  // Heures de la semaine : le module de temps de travail (remplacant credite,
+  // chevauchement compte une fois, pause retiree). Jamais une somme locale.
+  const worked = hoursByWorker(datedWeek(toWeekId(currentWeek), shifts));
+  // Dont les remplacements : la part indigo de la barre.
+  const covering = hoursByWorker(datedWeek(toWeekId(currentWeek), shifts.filter(s => s.coverageBy)));
 
   const getDateForDay = (weekStart: Date, dayIndex: number) => {
     const d = new Date(weekStart);
@@ -195,7 +183,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const coverageEvents = shifts.filter(s => s.coverageBy).map(s => ({
     from: staff.find(st => st.id === s.staffId)?.name || 'Unknown',
     to: staff.find(st => st.id === s.coverageBy)?.name || 'Unknown',
-    hours: s.endTime - s.startTime,
+    hours: shiftWorkHours(s),
     dateInfo: getDateForDay(currentWeek, s.dayIndex)
   }));
 
@@ -212,12 +200,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     // Option A: active during the week OR has any shift this week (orphan still pulls them in)
     const hasHours = period === 'month'
       ? (monthHours?.[p.id] ?? 0) > 0
-      : (worked[p.id] || 0) + (extra[p.id] || 0) > 0;
+      : (worked[p.id] || 0) > 0;
     return hasHours || isStaffActiveInWeek(p, currentWeek);
   }).sort((a, b) => {
     const tot = (x: Staff) => period === 'month'
       ? (monthHours?.[x.id] ?? 0)
-      : (worked[x.id] || 0) + (extra[x.id] || 0);
+      : (worked[x.id] || 0);
     const aTotal = tot(a);
     const bTotal = tot(b);
     return bTotal - aTotal; // desc
@@ -225,20 +213,18 @@ const Sidebar: React.FC<SidebarProps> = ({
     // Heures du contrat A LA PERIODE AFFICHEE, jamais celles d'aujourd'hui :
     // un avenant signe en octobre ne doit pas reecrire le mois de septembre.
     const contractHours = isMonth
-      ? Math.round(monthlyContractHours(person, getShiftIsoDate(currentWeek, 3)))
+      ? roundTenth(monthlyContractHours(person, getShiftIsoDate(currentWeek, 3)))
       : contractHoursOn(person, getShiftIsoDate(currentWeek, 0));
     // En mois, les heures viennent des semaines chargees a la demande, et
     // la reference est le contrat mensuel (52/12), pas l'hebdomadaire.
-    const workedHours = isMonth ? (monthHours?.[person.id] ?? 0) : (worked[person.id] || 0);
-    const extraHours = isMonth ? 0 : (extra[person.id] || 0);
-    const totalWorked = workedHours + extraHours;
+    const totalWorked = isMonth ? (monthHours?.[person.id] ?? 0) : (worked[person.id] || 0);
+    const extraHours = isMonth ? 0 : Math.min(totalWorked, covering[person.id] || 0);
+    const workedHours = totalWorked - extraHours;
     // L'attendu, c'est le contrat MOINS les heures d'absence de la periode : une
     // personne en conge n'est pas « en dessous de son contrat ». C'est a cet
     // attendu que la barre, l'ecart et le resume se comparent.
     const deduction = person.isExtra ? undefined : (isMonth ? monthAbsence?.[person.id] : weekAbsence[person.id]);
-    const expected = deduction && deduction.hours > 0
-      ? Math.max(0, Math.round((contractHours - deduction.hours) * 10) / 10)
-      : contractHours;
+    const expected = expectedHours(contractHours, deduction?.hours);
 
     // Un 0.0 ressemble a un oubli de planification. Quand la personne est
     // notee absente, on affiche le motif A LA PLACE de la barre vide : la

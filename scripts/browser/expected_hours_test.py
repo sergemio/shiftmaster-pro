@@ -3,7 +3,7 @@ import re
 
 Jeu de demo : semaine du lundi 14/09/2026. Omar (35 h) a deux shifts : lun 11h30-16h
 (4,5 h) et mar 18h-23h (5 h). La semaine du 21/09 n'est pas planifiee.
-Mois : 35 h x 52 / 12 = 151,67 h, affiche 152 h. Dates calculees a partir
+Mois : 35 h x 52 / 12 = 151,67 h, affiche 151,7 h (une decimale, decision du 22/09/2026 ; 152 h avant). Dates calculees a partir
 d'aujourd'hui (voir `dates.py`).
 """
 import tempfile
@@ -13,7 +13,7 @@ from dates import MON, iso, fr
 
 # La semaine de l'arret maladie : une semaine voisine NON planifiee dont le
 # mercredi ET le jeudi tombent dans le mois de la semaine en cours. Sinon l'arret
-# serait coupe par un changement de mois et l'attendu ne serait plus 152 - 4,5 - 14.
+# serait coupe par un changement de mois et l'attendu ne serait plus 151,7 - 4,5 - 14.
 DECALAGE = next(
     (d for d in (7, -7, 14, -14)
      if (MON + timedelta(days=d + 2)).month == MON.month
@@ -88,10 +88,10 @@ with sync_playwright() as pw:
     # --- 3. vue mois --------------------------------------------------------------
     p.get_by_role("button", name="Mois", exact=True).click(); p.wait_for_timeout(3000)
     txt = row(p, "Omar").inner_text()
-    check("Mois : attendu 152 - 4,5 - 14 = 133,5 h", "/ 133.5h" in txt, txt)
+    check("Mois : attendu 151,7 - 4,5 - 14 = 133,2 h", "/ 133.2h" in txt, txt)
     check("Mois : motifs melanges -> « absence », 3 jours, le motif reste prive",
-          "133,5 h attendues (3 j d'absence)" in notes(p), notes(p))
-    check("Mois : l ecart se calcule sur l attendu reduit (5 - 133,5 = -128,5)", "128.5" in txt, txt)
+          "133,2 h attendues (3 j d'absence)" in notes(p), notes(p))
+    check("Mois : l ecart se calcule sur l attendu reduit (5 - 133,2 = -128,2)", "128.2" in txt, txt)
     p.screenshot(path=DIR + r"\lot3_month.png")
     p.get_by_role("button", name="Semaine", exact=True).click(); p.wait_for_timeout(800)
 
@@ -114,13 +114,13 @@ with sync_playwright() as pw:
     check("Omar (planning, barre laterale) voit son attendu : 30,5 h (1 j de congé)", "30,5 h attendues (1 j de congé)" in n2, n2)
     p2.get_by_role("button", name="Mois", exact=True).click(); p2.wait_for_timeout(3000)
     n2 = notes(p2)
-    check("Omar (barre laterale, mois) voit 133,5 h attendues", any("133,5 h attendues" in x for x in n2), n2)
+    check("Omar (barre laterale, mois) voit 133,2 h attendues", any("133,2 h attendues" in x for x in n2), n2)
     p2.get_by_role("button", name="Paramètres", exact=True).first.click(); p2.wait_for_timeout(500)
     p2.get_by_role("button", name="Ma semaine").first.click(); p2.wait_for_timeout(600)
     p2.keyboard.press("Escape"); p2.wait_for_timeout(3000)
     n2 = [x for x in notes(p2)]
     check("« Ma semaine » : attendu de la semaine 30,5 h", "30,5 h attendues (1 j de congé)" in n2, n2)
-    check("« Ma semaine » : attendu du mois 133,5 h", "133,5 h attendues (3 j d'absence)" in n2, n2)
+    check("« Ma semaine » : attendu du mois 133,2 h", "133,2 h attendues (3 j d'absence)" in n2, n2)
     p2.screenshot(path=DIR + r"\lot3_myweek.png")
     check("Employe : aucune erreur JavaScript", not err2, err2[:1])
     b.close()

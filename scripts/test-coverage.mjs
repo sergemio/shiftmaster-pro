@@ -1,16 +1,7 @@
 // Effectif par tranche de 30 minutes, sans navigateur.
-const staffingPerSlot = (shifts, dayIndex, startHour, endHour, slotMinutes = 30) => {
-  const step = slotMinutes / 60;
-  const day = shifts.filter(s => s.dayIndex === dayIndex);
-  const out = [];
-  for (let i = 0; i < Math.round((endHour - startHour) / step); i++) {
-    const t = startHour + i * step;
-    const present = new Set();
-    for (const s of day) if (s.startTime < t + step && s.endTime > t) present.add(s.coverageBy || s.staffId);
-    out.push(present.size);
-  }
-  return out;
-};
+import { loadTs } from './load-ts.mjs';
+// Le VRAI code (utils/helpers.ts), plus aucune copie : voir load-ts.mjs.
+const { staffingPerSlot } = await loadTs('utils/helpers.ts');
 let ko = 0;
 const check = (label, got, want) => {
   const ok = JSON.stringify(got) === JSON.stringify(want);

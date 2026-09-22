@@ -17,6 +17,8 @@
  * du decoupage en semaines.
  */
 
+import { mergeSpans, minutesToHours, spanMinutes, workSpans } from './worktime';
+
 export type RuleId = 'dailyRest' | 'weeklyRest' | 'maxDaily' | 'maxConsecutiveDays';
 
 /** Un shift a plat, avec sa date reelle. Le moteur ne manipule que ca. */
@@ -25,9 +27,13 @@ export interface DatedShift {
   staffId: string;
   /** ISO yyyy-mm-dd */
   date: string;
-  /** Heures decimales depuis minuit : 18,5 = 18 h 30. */
+  /** Heures decimales depuis minuit : 18,5 = 18 h 30. Fin jusqu'a 30 (6 h le
+   *  lendemain) : le shift reste rattache a `date`. */
   start: number;
   end: number;
+  /** Pause (debut en heures, duree en minutes) : pas du temps de travail. */
+  breakStart?: number;
+  breakMinutes?: number;
 }
 
 export interface Convention {
@@ -167,15 +173,13 @@ export const violationsForStaff = (
   }
   for (const [date, list] of byDate) {
     if (!inWindow(date)) continue;
-    // Plages REUNIES, pas additionnees : deux shifts qui se chevauchent (10 h 30 -
-    // 16 h 30 et 11 h 30 - 17 h 30) font 7 h de presence, pas 12 h (retour de
-    // Serge, 22/09/2026 : l'alerte annoncait 12 h pour un planning a 6 h).
-    let total = 0, reach = -Infinity;
-    for (const s of [...list].sort((a, b) => a.start - b.start)) {
-      const from = Math.max(s.start, reach);
-      if (s.end > from) total += s.end - from;
-      reach = Math.max(reach, s.end);
-    }
+    // Le temps de travail du module unique (utils/worktime.ts) : plages reunies,
+    // pause retiree. Deux shifts qui se chevauchent (10 h 30 - 16 h 30 et
+    // 11 h 30 - 17 h 30) font 7 h, pas 12 h (retour de Serge, 22/09/2026).
+    const total = minutesToHours(spanMinutes(mergeSpans(list.flatMap(s => workSpans({
+      staffId: s.staffId, dayIndex: 0, startTime: s.start, endTime: s.end,
+      breakStart: s.breakStart, breakMinutes: s.breakMinutes,
+    })))));
     if (total > convention.maxDailyHours) {
       out.push({
         rule: 'maxDaily',

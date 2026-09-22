@@ -2,7 +2,9 @@
 import React, { useState, useMemo } from 'react';
 import { Staff, Language, Extra } from '../types';
 import EmptyTeamNotice from './EmptyTeamNotice';
-import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
+import { formatTime, DEFAULT_OPERATING_HOURS, OperatingHours } from '../utils/helpers';
+import PauseField, { PauseValue, pauseFields, shiftStartOptions, shiftEndOptions, endLabel } from './PauseField';
+import { clampBreak } from '../utils/worktime';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
 
@@ -10,7 +12,7 @@ interface ShiftModalProps {
   isOpen: boolean;
   onClose: () => void;
   staff: Staff[];
-  onAdd: (staffId: string, dayIndexes: number[], startTime: number, endTime: number) => void;
+  onAdd: (staffId: string, dayIndexes: number[], startTime: number, endTime: number, pause?: PauseValue) => void;
   /**
    * Meme geste, mais pour un extra : une personne qui vient a la mission, sans
    * contrat. `extraId` renseigne = quelqu'un du vivier ; sinon c'est une
@@ -19,13 +21,13 @@ interface ShiftModalProps {
    */
   onAddExtra?: (
     who: { extraId?: string; firstName: string; retained: boolean },
-    dayIndexes: number[], startTime: number, endTime: number,
+    dayIndexes: number[], startTime: number, endTime: number, pause?: PauseValue,
   ) => void;
   /** Le vivier, pour reprendre quelqu'un sans retaper son nom. Admins seulement. */
   extras?: Extra[];
   language?: Language;
   /** Ce que ce shift enfreindrait, calcule a chaque changement. */
-  onCheck?: (staffId: string, dayIndexes: number[], start: number, end: number) => string[];
+  onCheck?: (staffId: string, dayIndexes: number[], start: number, end: number, excludeShiftId?: string, pause?: PauseValue) => string[];
   /** Periode d'emploi : `errors` interdit le shift, `notes` le marque hors contrat. */
   onEmployment?: (staffId: string, dayIndexes: number[]) => { errors: string[]; notes: string[] };
   /** Heures d'ouverture reglees : les menus d'heures n'offrent que cette plage. */
@@ -63,23 +65,21 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
   // en cinq ouvertures de cette fenetre.
   const [selectedDays, setSelectedDays] = useState<number[]>([0]);
   // 11 h 30 - 17 h 30 par defaut, ramene dans les heures d'ouverture si elles
-  // ne le contiennent pas : un menu ne peut pas afficher une valeur absente.
+  // ne le contiennent pas. Les menus, eux, offrent toute la journee.
   const defaultStart = Math.min(Math.max(11.5, hours.start), hours.end - 1);
   const [startTime, setStartTime] = useState(defaultStart);
   const [endTime, setEndTime] = useState(Math.min(Math.max(17.5, defaultStart + 0.5), hours.end));
-
-  const timeOptions = useMemo(
-    () => halfHourSteps(hours.start, hours.end).map(v => ({ value: v, label: formatTime(v) })),
-    [hours.start, hours.end],
-  );
+  const [pauseRaw, setPause] = useState<PauseValue>({});
+  // La pause toujours ramenee dans le shift, meme si l'horaire vient de changer.
+  const pause = pauseFields(clampBreak({ staffId: '', dayIndex: 0, startTime, endTime, ...pauseRaw }));
 
   // Recalcule a chaque frappe : c'est ce qui fait disparaitre l'avertissement
   // quand on recule l'heure, et c'est la que la regle s'apprend.
   // Un extra pas encore identifie n'a ni contrat ni historique : les regles de
   // duree du travail et la periode d'emploi ne veulent rien dire pour lui.
   const warnings = useMemo(
-    () => (isExtra ? [] : onCheck?.(selectedStaff, selectedDays, startTime, endTime) || []),
-    [isExtra, onCheck, selectedStaff, selectedDays, startTime, endTime],
+    () => (isExtra ? [] : onCheck?.(selectedStaff, selectedDays, startTime, endTime, undefined, pause) || []),
+    [isExtra, onCheck, selectedStaff, selectedDays, startTime, endTime, pause.breakStart, pause.breakMinutes],
   );
 
   // Rouge et bloquant, contrairement aux regles de duree du travail (ambre,
@@ -102,9 +102,9 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
     }
     if (employment.errors.length > 0) return;
     if (isExtra) {
-      onAddExtra!({ extraId, firstName: extraName.trim(), retained }, selectedDays, startTime, endTime);
+      onAddExtra!({ extraId, firstName: extraName.trim(), retained }, selectedDays, startTime, endTime, pause);
     } else {
-      onAdd(selectedStaff, selectedDays, startTime, endTime);
+      onAdd(selectedStaff, selectedDays, startTime, endTime, pause);
     }
     onClose();
   };
@@ -242,8 +242,8 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
                   onChange={(e) => setStartTime(parseFloat(e.target.value))}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all"
                 >
-                  {timeOptions.filter(o => o.value < hours.end).map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  {shiftStartOptions().map(v => (
+                    <option key={v} value={v}>{formatTime(v)}</option>
                   ))}
                 </select>
               </div>
@@ -256,13 +256,15 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
                   onChange={(e) => setEndTime(parseFloat(e.target.value))}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all"
                 >
-                  {timeOptions.filter(o => o.value > startTime).map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  {shiftEndOptions(startTime).map(v => (
+                    <option key={v} value={v}>{endLabel(v, language as Language)}</option>
                   ))}
                 </select>
               </div>
             </div>
           </div>
+
+          <PauseField start={startTime} end={endTime} value={pause} onChange={setPause} language={language as Language} />
 
           {employment.errors.length > 0 && (
             <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2.5 space-y-1">

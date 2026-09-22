@@ -5,6 +5,34 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-22 (apres-midi) — Chantier 1 de l'audit des calculs : un seul calcul du temps de travail (non commite)
+
+Audit complet dans `docs/audit-calculs.md` (decisions de Serge en tete). « Combien d'heures a travaille
+cette personne » avait **huit** definitions ; une seule comptait une fois deux shifts qui se chevauchent.
+
+- **Module unique `utils/worktime.ts`** : presence par personne et par jour = union des plages, pause
+  retiree, remplacant credite, en minutes entieres (exact). Paie (`payroll.ts`), cout (semaine, mois,
+  jour, carte), barre laterale, vue employe, Ma semaine, heures perdues d'une absence et duree maximale
+  du jour dans les alertes le lisent tous. Plus aucune soustraction d'horaires ailleurs.
+  `shiftCost` / `totalCost` supprimes de `helpers.ts`.
+- **Pause** (nouveau) : duree (15, 20, 30, 45, 60 min) et heure de debut dans les deux formulaires de
+  shift ; bande hachuree dans la carte, glissable a la souris au quart d'heure ; suit le shift quand on le
+  deplace, reste dedans quand on le raccourcit. Deduite des heures, de la paie et du cout.
+- **Fin apres minuit** : un shift peut finir jusqu'a 6 h du lendemain (« 01:00 (lendemain) »), rattache
+  au jour de debut ; la grille se prolonge sous minuit. Regles Firestore : `endTime <= 30`, pause
+  validee dans le shift.
+- **Heures d'ouverture** : ne limitent plus les menus d'heures (toute la journee) ; elles ne servent
+  qu'a la grille.
+- **Contrat mensuel** a une decimale a l'ecran (151,7 h, plus 152 h) ; paie inchangee a deux decimales.
+- **Vue employe** : un shift repris s'affiche dans la ligne de celui qui le fait (ses heures y etaient
+  deja comptees ailleurs). Formulaire de modification : « Start Time / End Time » traduits.
+- **Tests** : `scripts/test-verite.mjs`, 16 plannings a reponse calculee a la main (49 controles) ; il
+  echoue bien si l'on reintroduit l'ancienne addition (8 rouges). Les 13 tests qui recopiaient leur
+  formule importent desormais le vrai code (`scripts/load-ts.mjs`) ; `lazySubscribe` sorti dans
+  `services/lazySubscribe.ts` pour etre testable. `npm test` lance les 17 fichiers ; crochet
+  `.githooks/pre-commit` (active par `git config core.hooksPath .githooks`) refuse un commit si un
+  calcul change de resultat. `test-rules.mjs` : 8 cas (fin a 1 h / 6 h, pause dans / hors du shift).
+
 ## 2026-09-22 — Deux correctifs : heures chevauchantes, heures d'absence vides
 
 - **Duree du travail** (commit a23a5e6, en ligne) : Serge voyait « 12 heures travaillees » pour un lundi
@@ -13,7 +41,7 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
   plus tardive (l'ancien calcul ratait un repos de 9 h) ; alertes du formulaire au conditionnel « Avec ce
   shift, … travaillerait ». `test-labor-rules-overlap.mjs` importe le vrai moteur (8 cas, l'ancien code en
   ratait 5).
-- **Absences** (non commite) : apres un enregistrement, le formulaire repart sur les dates par defaut
+- **Absences** (commit 5f75015, en ligne) : apres un enregistrement, le formulaire repart sur les dates par defaut
   (aujourd'hui). Une deuxieme absence sur ces MEMES dates ne recalculait rien : heures vides,
   « Enregistrer » grise. Revele par `overlap_edge_test`, qui echouait uniquement le mardi (son mardi de
   test tombait sur aujourd'hui). Correctif : un compteur de remises a zero force le rechargement du

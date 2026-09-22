@@ -10,20 +10,9 @@
 // Meme code que `lazySubscribe` dans services/firebaseService.ts, recopie ici
 // faute de pouvoir importer un .ts sans etape de compilation.
 
-const lazySubscribe = (loadModule, open) => {
-  let stop = null;
-  let cancelled = false;
-  loadModule().then(ctx => {
-    if (cancelled) return;
-    stop = open(ctx);
-  });
-  return () => {
-    cancelled = true;
-    stop?.();
-    stop = null;
-  };
-};
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI code (services/lazySubscribe.ts) : voir load-ts.mjs.
+const { lazySubscribeWith: lazySubscribe } = await loadTs('services/lazySubscribe.ts');
 let ko = 0;
 const check = (label, got, want) => {
   const ok = JSON.stringify(got) === JSON.stringify(want);

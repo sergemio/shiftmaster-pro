@@ -2,6 +2,9 @@
 import { Language, Staff, Shift, Absence, AbsencePeriod } from '../types';
 
 export const formatTime = (hours: number): string => {
+  // Apres minuit (shift qui finit a 1 h, stocke 25) : on lit l'heure de la
+  // pendule. 24 reste « 24:00 », la fin de journee que tout le monde connait.
+  if (hours > 24) hours -= 24;
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
@@ -170,29 +173,8 @@ export const isStaffActiveInWeek = (staff: Staff, weekStart: Date): boolean => {
   return true;
 };
 
-/**
- * Cout d'un shift, en euros, pour l'employeur.
- *
- * Le taux stocke est le cout CHARGE (salaire brut + charges patronales) : c'est
- * ce que le restaurant decaisse, et c'est le seul chiffre sur lequel on peut
- * decider. Un brut afficherait vingt-cinq a quarante pour cent de moins que la
- * realite, ce qui serait pire que pas de chiffre du tout.
- *
- * `coverageBy` prime sur `staffId` : un shift repris par un collegue coute le
- * taux de CELUI QUI LE FAIT, comme les heures lui sont deja comptees.
- *
- * Renvoie `null` — et non zero — quand le taux est inconnu. La difference
- * compte : zero se totalise silencieusement et fait passer un cout ignore pour
- * un cout nul, alors que `null` permet de dire « incomplet ».
- */
-export const shiftCost = (
-  shift: { staffId: string; coverageBy?: string | null; startTime: number; endTime: number },
-  rates: Record<string, number>,
-): number | null => {
-  const rate = rates[shift.coverageBy || shift.staffId];
-  if (!Number.isFinite(rate) || rate <= 0) return null;
-  return (shift.endTime - shift.startTime) * rate;
-};
+// Cout d'un shift et d'un ensemble de shifts : `shiftWorkCost` et `workCost`
+// dans utils/worktime.ts.
 
 /**
  * Cle du taux par defaut des extras dans `settings/rates` (meme document, meme
@@ -220,23 +202,6 @@ export const costRates = (
     else if (Number.isFinite(fallback) && fallback > 0 && !(id in rates)) out[id] = fallback;
   }
   return out;
-};
-
-/**
- * Total d'une liste de shifts, avec le nombre de ceux qu'on n'a pas pu chiffrer.
- * Le second nombre est ce qui permet a l'interface d'annoncer un total partiel
- * au lieu de le presenter comme complet.
- */
-export const totalCost = (
-  shifts: { staffId: string; coverageBy?: string | null; startTime: number; endTime: number }[],
-  rates: Record<string, number>,
-): { total: number; missing: number } => {
-  let total = 0, missing = 0;
-  for (const s of shifts) {
-    const c = shiftCost(s, rates);
-    if (c === null) missing++; else total += c;
-  }
-  return { total: Math.round(total * 100) / 100, missing };
 };
 
 /**
@@ -271,7 +236,9 @@ export const gridHourRange = (
     start = Math.min(start, Math.floor(s.startTime));
     end = Math.max(end, Math.ceil(s.endTime));
   }
-  return { start: Math.max(0, start), end: Math.min(24, end) };
+  // Jusqu'a 30 : un shift qui finit a 1 h du matin se dessine sous minuit, dans
+  // la colonne du jour ou il commence.
+  return { start: Math.max(0, start), end: Math.min(30, end) };
 };
 
 /** Heures proposees dans un menu, par demi-heure, de `from` a `to` inclus. */

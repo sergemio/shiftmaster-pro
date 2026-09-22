@@ -3,15 +3,9 @@
 // Meme code que `syncStatus` dans utils/helpers.ts, recopie ici faute de pouvoir
 // importer un .ts sans etape de compilation — meme convention que les autres tests.
 
-const syncStatus = (s) => {
-  if (s.sandbox) return 'sandbox';
-  if (s.writeFailed) return 'error';
-  if (!s.online) return 'offline';
-  if (s.loading || !s.serverConfirmed) return 'syncing';
-  if (s.justSaved) return 'saved';
-  return 'live';
-};
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI code (utils/helpers.ts), plus aucune copie : voir load-ts.mjs.
+const { syncStatus } = await loadTs('utils/helpers.ts');
 const base = { sandbox: false, writeFailed: false, online: true, loading: false, serverConfirmed: true, justSaved: false };
 
 const cases = [

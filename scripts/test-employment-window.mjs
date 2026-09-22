@@ -6,39 +6,9 @@
 // Meme code que utils/helpers.ts, recopie ici faute de pouvoir importer un .ts
 // sans etape de compilation — meme convention que les autres tests du depot.
 
-const POST_CONTRACT_GRACE_DAYS = 21;
-
-const getShiftIsoDate = (weekStart, dayIndex) => {
-  const d = new Date(weekStart);
-  d.setUTCDate(d.getUTCDate() + dayIndex + 1);
-  return d.toISOString().slice(0, 10);
-};
-const addDaysIso = (iso, days) => {
-  const d = new Date(iso + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-};
-const getOrphanReason = (staff, iso) => {
-  if (staff.startDate && iso < staff.startDate) return { kind: 'before-start', date: staff.startDate };
-  if (staff.endDate && iso > staff.endDate) return { kind: 'after-end', date: staff.endDate };
-  return null;
-};
-const lastAssignableDate = staff => (staff.endDate ? addDaysIso(staff.endDate, POST_CONTRACT_GRACE_DAYS) : null);
-const getAssignmentBlock = (staff, iso) => {
-  if (staff.startDate && iso < staff.startDate) return { kind: 'before-start', date: staff.startDate };
-  const last = lastAssignableDate(staff);
-  if (last && iso > last) return { kind: 'after-grace', date: staff.endDate };
-  return null;
-};
-const isStaffAssignableInWeek = (staff, weekStart) => {
-  const monday = getShiftIsoDate(weekStart, 0);
-  const sunday = getShiftIsoDate(weekStart, 6);
-  if (staff.startDate && staff.startDate > sunday) return false;
-  const last = lastAssignableDate(staff);
-  if (last && last < monday) return false;
-  return true;
-};
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI code (utils/helpers.ts), plus aucune copie : voir load-ts.mjs.
+const { POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, addDaysIso, getOrphanReason, lastAssignableDate, getAssignmentBlock, isStaffAssignableInWeek } = await loadTs('utils/helpers.ts');
 // ---------------------------------------------------------------------------
 let ko = 0;
 const check = (label, got, want) => {

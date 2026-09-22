@@ -3,21 +3,11 @@
 // Meme code que utils/helpers.ts, recopie ici faute de pouvoir importer un .ts
 // sans etape de compilation — meme convention que les autres tests du depot.
 
-const shiftCost = (shift, rates) => {
-  const rate = rates[shift.coverageBy || shift.staffId];
-  if (!Number.isFinite(rate) || rate <= 0) return null;
-  return (shift.endTime - shift.startTime) * rate;
-};
-
-const totalCost = (shifts, rates) => {
-  let total = 0, missing = 0;
-  for (const s of shifts) {
-    const c = shiftCost(s, rates);
-    if (c === null) missing++; else total += c;
-  }
-  return { total: Math.round(total * 100) / 100, missing };
-};
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI calcul (utils/worktime.ts) : voir load-ts.mjs. Le cout d'un ensemble
+// passe par des shifts dates (un jour par shift, sauf mention).
+const { shiftWorkCost: shiftCost, workCost, datedWeek } = await loadTs('utils/worktime.ts');
+const totalCost = (shifts, rates) => workCost(datedWeek('2026-09-20', shifts), rates);
 // ---------------------------------------------------------------------------
 let ko = 0;
 const check = (label, got, want) => {
@@ -26,7 +16,7 @@ const check = (label, got, want) => {
   console.log(`${ok ? 'OK  ' : 'ECHEC'} ${label.padEnd(60)} ${JSON.stringify(got)}`);
   if (!ok) console.log(`${''.padEnd(66)} attendu ${JSON.stringify(want)}`);
 };
-const S = (staffId, startTime, endTime, coverageBy = null) => ({ staffId, startTime, endTime, coverageBy });
+const S = (staffId, startTime, endTime, coverageBy = null, dayIndex = 0) => ({ staffId, startTime, endTime, coverageBy, dayIndex });
 const RATES = { sinar: 18, sepand: 16.5, parthavi: 15 };
 
 check('6 h a 18 EUR', shiftCost(S('sinar', 11, 17), RATES), 108);
@@ -60,8 +50,17 @@ check('liste vide', totalCost([], RATES), { total: 0, missing: 0 });
 
 // Arrondi : 16,5 x 3,5 = 57,75 ; trois fois = 173,25 et non 173,25000000000003
 check('pas de bavure de virgule flottante',
-  totalCost([S('sepand', 12, 15.5), S('sepand', 12, 15.5), S('sepand', 12, 15.5)], RATES),
+  totalCost([S('sepand', 12, 15.5, null, 0), S('sepand', 12, 15.5, null, 1), S('sepand', 12, 15.5, null, 2)], RATES),
   { total: 173.25, missing: 0 });
+
+// Le meme service saisi trois fois le meme jour : presence de 3 h 30, payee une
+// fois (decision de Serge du 22/09/2026 : un chevauchement compte une fois).
+check('doublon le meme jour : paye une fois',
+  totalCost([S('sepand', 12, 15.5), S('sepand', 12, 15.5), S('sepand', 12, 15.5)], RATES),
+  { total: 57.75, missing: 0 });
+
+// Pause : 11-17 avec 30 min de pause = 5 h 30 ; 5,5 x 18 = 99.
+check('pause retiree du cout', shiftCost({ ...S('sinar', 11, 17), breakStart: 14, breakMinutes: 30 }, RATES), 99);
 
 console.log(ko === 0 ? '\nTOUT PASSE' : `\n${ko} ECHEC(S)`);
 process.exit(ko === 0 ? 0 : 1);

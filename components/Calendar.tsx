@@ -6,7 +6,8 @@ import ShiftCard from './ShiftCard';
 import EmployeeView from './EmployeeView';
 import MyWeekView from './MyWeekView';
 import { getTranslation } from '../utils/translations';
-import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, shiftCost, totalCost, formatMoney, staffingPerSlot, formatTime, getWeekRangeLong, getIsoWeekNumber, AbsenceDeduction, visibleAbsenceKind } from '../utils/helpers';
+import { datedWeek, workCost, shiftWorkCost, clampBreak, BREAK_STEP } from '../utils/worktime';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, formatMoney, staffingPerSlot, formatTime, getWeekRangeLong, getIsoWeekNumber, AbsenceDeduction, visibleAbsenceKind } from '../utils/helpers';
 
 // Header stamped on top of the grid in the PNG export only: the restaurant's
 // name, never a hardcoded brand (every client exports its own schedule).
@@ -328,6 +329,14 @@ const Calendar: React.FC<CalendarProps> = ({
     return layoutShifts.sort((a, b) => (a.dayIndex - b.dayIndex) || (a.startTime - b.startTime));
   }, [shifts]);
 
+  /** Ou tombe la pause apres un glisser de `dy` pixels : au quart d'heure,
+   *  toujours dans le shift. */
+  const breakAfterDrag = (shift: Shift, dy: number): number | undefined => {
+    if (typeof shift.breakStart !== 'number' || !shift.breakMinutes) return shift.breakStart;
+    const delta = Math.round(dy / hourHeight / BREAK_STEP) * BREAK_STEP;
+    return clampBreak({ ...shift, breakStart: shift.breakStart + delta }).breakStart;
+  };
+
   const getDayFromX = (x: number, containerWidth: number) => {
     const dayWidth = (containerWidth - 60) / 7;
     return Math.max(0, Math.min(6, Math.floor((x - 60) / dayWidth)));
@@ -359,23 +368,28 @@ const Calendar: React.FC<CalendarProps> = ({
         const finalEnd = Math.min(endHour, finalStart + duration);
 
         if (finalDay !== dragState.originalDay || finalStart !== dragState.originalStart) {
-          onUpdateShift({
+          // La pause suit le shift : meme decalage.
+          onUpdateShift(clampBreak({
             ...shift,
             dayIndex: finalDay,
             startTime: finalStart,
-            endTime: finalEnd
-          });
+            endTime: finalEnd,
+            ...(typeof shift.breakStart === 'number' ? { breakStart: shift.breakStart + (finalStart - shift.startTime) } : {}),
+          }));
         }
       } else if (dragState.dragType === 'resize-top') {
         const finalStart = Math.max(startHour, Math.min(shift.endTime - 0.5, dragState.originalStart + snappedDelta));
         if (finalStart !== dragState.originalStart) {
-          onUpdateShift({ ...shift, startTime: finalStart });
+          onUpdateShift(clampBreak({ ...shift, startTime: finalStart }));
         }
       } else if (dragState.dragType === 'resize-bottom') {
         const finalEnd = Math.max(shift.startTime + 0.5, Math.min(endHour, dragState.originalEnd + snappedDelta));
         if (finalEnd !== dragState.originalEnd) {
-          onUpdateShift({ ...shift, endTime: finalEnd });
+          onUpdateShift(clampBreak({ ...shift, endTime: finalEnd }));
         }
+      } else if (dragState.dragType === 'move-break') {
+        const next = breakAfterDrag(shift, dragState.currentY - dragState.initialY);
+        if (next !== shift.breakStart) onUpdateShift({ ...shift, breakStart: next });
       }
     }
     setDragState(null);
@@ -658,7 +672,7 @@ const Calendar: React.FC<CalendarProps> = ({
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{t('costShort')}</span>
             </div>
             {localizedDays.map((_, i) => {
-              const day = totalCost(shifts.filter(s => s.dayIndex === i), rates);
+              const day = workCost(datedWeek(weekId, shifts.filter(s => s.dayIndex === i)), rates);
               return (
                 <div
                   key={i}
@@ -679,7 +693,7 @@ const Calendar: React.FC<CalendarProps> = ({
         <div className="w-[54px] md:w-[60px] flex-shrink-0 bg-white z-10">
           {Array.from({ length: totalHours + 1 }).map((_, i) => (
             <div key={i} className="border-b text-xs text-gray-400 text-right pr-1 md:pr-2 pt-1 flex flex-col justify-start bg-white" style={{ height: i === totalHours ? END_LABEL_ROW : hourHeight }}>
-              {String(startHour + i).padStart(2, '0')}:00
+              {formatTime(startHour + i)}
             </div>
           ))}
         </div>
@@ -722,6 +736,7 @@ const Calendar: React.FC<CalendarProps> = ({
 
             let previewStartTime = shift.startTime;
             let previewEndTime = shift.endTime;
+            let previewBreak = shift.breakStart;
 
             if (isDraggingThis && dragState) {
                const timeDelta = (dragState.currentY - dragState.initialY) / hourHeight;
@@ -732,6 +747,7 @@ const Calendar: React.FC<CalendarProps> = ({
                  const tempStart = Math.max(startHour, Math.min(endHour - (shift.endTime - shift.startTime), shift.startTime + snappedDelta));
                  previewStartTime = tempStart;
                  previewEndTime = tempStart + (shift.endTime - shift.startTime);
+                 if (typeof shift.breakStart === 'number') previewBreak = shift.breakStart + (tempStart - shift.startTime);
                  
                  if (rect) {
                    const tempDay = getDayFromX(dragState.currentX, rect.width);
@@ -748,6 +764,8 @@ const Calendar: React.FC<CalendarProps> = ({
                  const tempEnd = Math.max(shift.startTime + 0.5, Math.min(endHour, shift.endTime + snappedDelta));
                  previewEndTime = tempEnd;
                  height = (tempEnd - shift.startTime) * hourHeight;
+               } else if (dragState.dragType === 'move-break') {
+                 previewBreak = breakAfterDrag(shift, dragState.currentY - dragState.initialY);
                }
             }
 
@@ -775,7 +793,7 @@ const Calendar: React.FC<CalendarProps> = ({
                   hasOverlap={overlappingIds.has(shift.id)}
                   absenceConflict={!shift.coverageBy && absentKeys.has(`${shift.staffId}|${shift.dayIndex}`)}
                   ruleWarnings={ruleWarnings[shift.id]}
-                  cost={isExporting ? undefined : shiftCost(shift, rates) ?? undefined}
+                  cost={isExporting ? undefined : shiftWorkCost(shift, rates) ?? undefined}
                   isDraft={isDraft}
                   isReadOnly={isReadOnly}
                   isSelected={selectedShiftIds.includes(shift.id)}
@@ -784,6 +802,7 @@ const Calendar: React.FC<CalendarProps> = ({
                   onEdit={() => !isReadOnly && onEditShift(shift.id)}
                   renderStartTime={isDraggingThis ? previewStartTime : undefined}
                   renderEndTime={isDraggingThis ? previewEndTime : undefined}
+                  renderBreakStart={isDraggingThis ? previewBreak : undefined}
                   language={language}
                   style={{
                     width: '100%',

@@ -3,8 +3,9 @@ import { Shift, Staff, Absence, Language, WeekHoliday } from '../types';
 import { getTranslation } from '../utils/translations';
 import {
   formatTime, getShiftIsoDate, formatShortDate, contractHoursOn, monthlyContractHours,
-  AbsenceDeduction, expectedNote,
+  AbsenceDeduction, expectedNote, toWeekId,
 } from '../utils/helpers';
+import { datedWeek, hoursByWorker, shiftWorkHours, expectedHours, roundTenth } from '../utils/worktime';
 
 interface MyWeekViewProps {
   shifts: Shift[];
@@ -79,13 +80,11 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
     return null;
   }, [byDay, nowHour]);
 
-  const weekHours = byDay.reduce(
-    (sum, d) => sum + d.shifts.reduce((a, s) => a + (s.endTime - s.startTime), 0), 0);
+  // Heures du module de temps de travail : les memes que la barre latérale.
+  const weekHours = hoursByWorker(datedWeek(toWeekId(currentWeek), shifts))[me.id] || 0;
   // Attendu = contrat moins les heures d'absence : en conge, on n'est pas en retard.
-  const reduce = (contract: number, d?: AbsenceDeduction) =>
-    d && d.hours > 0 ? Math.max(0, Math.round((contract - d.hours) * 10) / 10) : contract;
-  const weekContract = reduce(contractHoursOn(me, getShiftIsoDate(currentWeek, 0)), weekAbsence);
-  const monthContract = reduce(Math.round(monthlyContractHours(me, getShiftIsoDate(currentWeek, 3))), monthAbsence);
+  const weekContract = expectedHours(contractHoursOn(me, getShiftIsoDate(currentWeek, 0)), weekAbsence?.hours);
+  const monthContract = expectedHours(roundTenth(monthlyContractHours(me, getShiftIsoDate(currentWeek, 3))), monthAbsence?.hours);
   const noteOf = (expected: number, d?: AbsenceDeduction) =>
     d && d.hours > 0 ? expectedNote(t, expected, d, language) : null;
   const weekNote = noteOf(weekContract, weekAbsence);
@@ -178,7 +177,7 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
                     {formatTime(s.startTime)} – {formatTime(s.endTime)}
                   </span>
                   <span className="text-xs font-bold text-slate-500">
-                    {(s.endTime - s.startTime).toFixed(1)}h
+                    {shiftWorkHours(s).toFixed(1)}h
                   </span>
                   {s.coverageBy === me.id && (
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">

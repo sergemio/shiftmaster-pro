@@ -273,6 +273,16 @@ await check('Marc NE LIT PAS le journal Sezam',              assertFails(getDoc(
 console.log('\n--- validation du planning (inchangee) ---');
 await check('Jour 9 refuse',                assertFails(setDoc(doc(SERGE, W('sezam')), { updatedAt: 'x', shifts: [{ id: 'a', staffId: '3', dayIndex: 9, startTime: 11, endTime: 17 }] })));
 await check('Fin avant debut refusee',      assertFails(setDoc(doc(SERGE, W('sezam')), { updatedAt: 'x', shifts: [{ id: 'a', staffId: '3', dayIndex: 2, startTime: 17, endTime: 11 }] })));
+// Decision du 22/09/2026 : fin jusqu'a 6 h le lendemain (30), pause dans le shift.
+const one = (sh) => setDoc(doc(SERGE, W('sezam')), { updatedAt: 'x', shifts: [{ id: 'a', staffId: '3', dayIndex: 2, ...sh }] });
+await check('Fin a 1 h du matin (25) acceptee',       assertSucceeds(one({ startTime: 18, endTime: 25 })));
+await check('Fin a 6 h du matin (30) acceptee',       assertSucceeds(one({ startTime: 22, endTime: 30 })));
+await check('Fin apres 6 h du matin refusee',         assertFails(one({ startTime: 22, endTime: 30.5 })));
+await check('Pause de 30 min dans le shift acceptee', assertSucceeds(one({ startTime: 10, endTime: 18, breakStart: 14, breakMinutes: 30 })));
+await check('Pause qui deborde du shift refusee',     assertFails(one({ startTime: 10, endTime: 18, breakStart: 17.75, breakMinutes: 30 })));
+await check('Pause avant le debut refusee',           assertFails(one({ startTime: 10, endTime: 18, breakStart: 9.5, breakMinutes: 30 })));
+await check('Pause sans heure de debut refusee',      assertFails(one({ startTime: 10, endTime: 18, breakMinutes: 30 })));
+await check('Pause de 0 min refusee',                 assertFails(one({ startTime: 10, endTime: 18, breakStart: 14, breakMinutes: 0 })));
 await check('Semaine avec absences ok',     assertSucceeds(setDoc(doc(SERGE, W('sezam')), { ...VALID_WEEK, absences: [{ id: 'x1', staffId: '3', dayIndex: 2, kind: 'conge' }], holidays: [6] })));
 await check('Motif d absence inconnu refuse', assertFails(setDoc(doc(SERGE, W('sezam')), { ...VALID_WEEK, absences: [{ id: 'x', staffId: '3', dayIndex: 2, kind: 'vacances' }] })));
 await check('Plus de 7 feries refuse',      assertFails(setDoc(doc(SERGE, W('sezam')), { ...VALID_WEEK, holidays: [0,1,2,3,4,5,6,7] })));

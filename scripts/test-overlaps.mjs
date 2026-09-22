@@ -1,25 +1,7 @@
 // Detection des chevauchements pour une meme personne, sans navigateur.
-const findOverlappingShiftIds = (shifts) => {
-  const clashing = new Set();
-  const by = new Map();
-  for (const s of shifts) {
-    const k = `${s.staffId}#${s.dayIndex}`;
-    by.has(k) ? by.get(k).push(s) : by.set(k, [s]);
-  }
-  for (const list of by.values()) {
-    if (list.length < 2) continue;
-    const sorted = [...list].sort((a, b) => a.startTime - b.startTime);
-    for (let i = 1; i < sorted.length; i++) {
-      const prevEnd = Math.max(...sorted.slice(0, i).map(x => x.endTime));
-      if (sorted[i].startTime < prevEnd) {
-        clashing.add(sorted[i].id);
-        for (const e of sorted.slice(0, i)) if (e.endTime > sorted[i].startTime) clashing.add(e.id);
-      }
-    }
-  }
-  return clashing;
-};
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI code (utils/helpers.ts), plus aucune copie : voir load-ts.mjs.
+const { findOverlappingShiftIds } = await loadTs('utils/helpers.ts');
 let ko = 0;
 const check = (label, got, want) => {
   const g = [...got].sort().join(','), w = want.sort().join(',');

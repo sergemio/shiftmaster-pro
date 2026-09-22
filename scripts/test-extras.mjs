@@ -6,36 +6,9 @@
  * Code recopie de `utils/helpers.ts` (convention du depot : les tests ne
  * compilent pas le TypeScript, ils rejouent la meme logique).
  */
-const EXTRA_COLOR = '#94a3b8';
-
-const extraStaffRows = (shifts, extras = {}) => {
-  const rows = new Map();
-  for (const s of shifts) {
-    if (!s.extraName || rows.has(s.staffId)) continue;
-    const known = extras[s.staffId];
-    const identified = !!known?.filledAt;
-    rows.set(s.staffId, {
-      id: s.staffId,
-      name: known?.firstName || s.extraName,
-      email: '',
-      color: EXTRA_COLOR,
-      role: 'staff',
-      isExtra: true,
-      isPool: !identified,
-    });
-  }
-  return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name));
-};
-
-const nextExtraName = (shifts) => {
-  let max = 0;
-  for (const s of shifts) {
-    const m = /^Extra (\d+)$/.exec((s.extraName || '').trim());
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return `Extra ${max + 1}`;
-};
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI code (utils/helpers.ts), plus aucune copie : voir load-ts.mjs.
+const { EXTRA_COLOR, extraStaffRows, nextExtraName } = await loadTs('utils/helpers.ts');
 let failed = 0, n = 0;
 const check = (label, ok, extra = '') => {
   n++; if (!ok) failed++;

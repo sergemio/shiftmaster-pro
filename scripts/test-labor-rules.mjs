@@ -3,97 +3,10 @@
 // Meme code que utils/laborRules.ts, recopie ici faute de pouvoir importer un
 // .ts sans etape de compilation — meme convention que les autres tests du depot.
 
-const at = (date, hour) => {
-  const [y, m, d] = date.split('-').map(Number);
-  return Date.UTC(y, m - 1, d) / 3600000 + hour;
-};
-const addDays = (date, n) => {
-  const [y, m, d] = date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-};
-const round2 = n => Math.round(n * 100) / 100;
-
-const violationsForStaff = (shifts, c, window) => {
-  const out = [];
-  const inWindow = date => !window || (date >= window.from && date <= window.to);
-  const sorted = [...shifts].sort((a, b) => at(a.date, a.start) - at(b.date, b.start));
-  if (sorted.length === 0) return out;
-
-  const byDate = new Map();
-  for (const s of sorted) {
-    const list = byDate.get(s.date) || [];
-    list.push(s);
-    byDate.set(s.date, list);
-  }
-  for (const [date, list] of byDate) {
-    if (!inWindow(date)) continue;
-    const total = list.reduce((sum, s) => sum + (s.end - s.start), 0);
-    if (total > c.maxDailyHours) {
-      out.push({ rule: 'maxDaily', staffId: list[0].staffId, shiftId: list[list.length - 1].id,
-                 date, actual: round2(total), required: c.maxDailyHours });
-    }
-  }
-
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1], cur = sorted[i];
-    if (cur.date === prev.date) continue;
-    const gap = at(cur.date, cur.start) - at(prev.date, prev.end);
-    if (gap < c.dailyRestHours && inWindow(cur.date)) {
-      out.push({ rule: 'dailyRest', staffId: cur.staffId, shiftId: cur.id, otherShiftId: prev.id,
-                 date: cur.date, actual: round2(gap), required: c.dailyRestHours });
-    }
-  }
-
-  const dates = [...byDate.keys()].sort();
-  let runStart = 0;
-  for (let i = 0; i <= dates.length; i++) {
-    // `i > 0` d'abord : sans lui, le premier tour lit dates[-1] et plante.
-    const broken = i === dates.length || (i > 0 && dates[i] !== addDays(dates[i - 1], 1));
-    if (broken && i > runStart) {
-      const run = dates.slice(runStart, i);
-      if (run.length > c.maxConsecutiveDays) {
-        const firstTooMany = run[c.maxConsecutiveDays];
-        if (inWindow(firstTooMany)) {
-          out.push({ rule: 'maxConsecutiveDays', staffId: sorted[0].staffId,
-                     shiftId: byDate.get(firstTooMany)[0].id, date: firstTooMany,
-                     actual: run.length, required: c.maxConsecutiveDays });
-        }
-      }
-      runStart = i;
-    }
-  }
-
-  if (window) {
-    const gaps = [];
-    for (let i = 1; i < sorted.length; i++) {
-      gaps.push(at(sorted[i].date, sorted[i].start) - at(sorted[i - 1].date, sorted[i - 1].end));
-    }
-    const first = sorted[0], last = sorted[sorted.length - 1];
-    gaps.push(at(first.date, first.start) - at(window.from, 0));
-    gaps.push(at(addDays(window.to, 1), 0) - at(last.date, last.end));
-    const longest = Math.max(...gaps);
-    if (longest < c.weeklyRestHours) {
-      out.push({ rule: 'weeklyRest', staffId: first.staffId, date: window.from,
-                 actual: round2(longest), required: c.weeklyRestHours });
-    }
-  }
-  return out;
-};
-
-const findViolations = (shifts, c, window, pooledStaffIds = []) => {
-  const pooled = new Set(pooledStaffIds);
-  const byStaff = new Map();
-  for (const s of shifts) {
-    if (pooled.has(s.staffId)) continue;
-    const list = byStaff.get(s.staffId) || [];
-    list.push(s);
-    byStaff.set(s.staffId, list);
-  }
-  const out = [];
-  for (const list of byStaff.values()) out.push(...violationsForStaff(list, c, window));
-  return out.sort((a, b) => a.date.localeCompare(b.date) || a.rule.localeCompare(b.rule));
-};
-
+import { loadTs } from './load-ts.mjs';
+// Le VRAI moteur (utils/laborRules.ts), plus aucune copie : voir load-ts.mjs.
+const { violationsForStaff, findViolations } = await loadTs('utils/laborRules.ts');
+const { addDaysIso: addDays } = await loadTs('utils/helpers.ts');
 // ---------------------------------------------------------------------------
 const RAPIDE = { dailyRestHours: 11, weeklyRestHours: 35, maxDailyHours: 10, maxConsecutiveDays: 6 };
 // Lundi 31 aout 2026 -> dimanche 6 septembre 2026.

@@ -174,7 +174,14 @@ export interface Shift {
   staffId: string;
   dayIndex: number; // 0 (Mon) to 6 (Sun)
   startTime: number; // Decimal hours (e.g., 9.5 = 09:30)
+  /** Jusqu'a 30 (6 h du matin le lendemain) : le shift reste rattache au jour
+   *  ou il commence (decision du 22/09/2026). */
   endTime: number;
+  /** Debut de la pause, heures decimales, dans le shift. La pause n'est pas du
+   *  temps de travail : elle est retiree des heures, de la paie et du cout. */
+  breakStart?: number;
+  /** Duree de la pause en minutes. Absente ou 0 = pas de pause. */
+  breakMinutes?: number;
   coverageBy?: string; // staffId of someone covering
   notes?: string;
   /**
@@ -360,7 +367,7 @@ export interface DraftData extends WeekData {
   baseUpdatedAt: string | null;
 }
 
-export type DragType = 'move' | 'resize-top' | 'resize-bottom';
+export type DragType = 'move' | 'resize-top' | 'resize-bottom' | 'move-break';
 
 export interface DragState {
   shiftId: string;
