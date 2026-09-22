@@ -17,6 +17,7 @@ Méthode : lecture du code (`utils/`, `App.tsx`, `components/`), 12 scénarios e
 5 bis. Un shift peut contenir une **pause** (début + durée), glissable par le manager ; la pause est **déduite** des heures travaillées, de la paie et du coût.
 6. Contrat mensuel : **une décimale à l'écran**, deux décimales dans l'export de paie.
 7. Jeu de vérité : réponses calculées par Claude, contre-vérifiées par des agents indépendants, relues et validées par Serge.
+8. Moyenne de 44 h sur 12 semaines (46 h en HCR) : **non codée**, jugée trop rare (Serge, 22/09/2026). Amplitude journalière : non codée, aucune source officielle trouvée.
 
 ---
 

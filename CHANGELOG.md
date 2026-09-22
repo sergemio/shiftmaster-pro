@@ -5,7 +5,18 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
-## 2026-09-22 (fin d'apres-midi) — Chantier 2 de l'audit : alertes de duree du travail
+## 2026-09-22 (soir) — Relecture du jeu de verite dans l'app : un bug de pause (non commite)
+
+- Restaurant « Jeu de verite » dans l'emulateur (`scripts/seed-verite.mjs`, compte verite@test.fr) : un
+  employe par scenario. Relu a l'ecran : 23 scenarios sur 24 conformes du premier coup.
+- **Bug** : changer SEULEMENT la pause (glisser sur le planning, ou duree/heure dans la fiche) etait perdu,
+  `updateShift` comparant l'ancien et le nouveau shift sans la pause. Corrige (`App.tsx`) ;
+  `scripts/browser/pause_test.py` (7 controles) echoue sans la correction (4 rouges).
+- Constats laisses a decider : boutons anglais dans la fiche de modification, heures en decimales a point
+  (« 7.3H »), alerte de pause tres frequente (24 sur 29 alertes de la semaine test), libelles mineurs de
+  l'export de paie. Feuille remplie : `P/output/shiftmaster-jeu-de-verite.html`.
+
+## 2026-09-22 (fin d'apres-midi) — Chantier 2 de l'audit : alertes de duree du travail (commit 283423d, en ligne)
 
 - **Repos hebdomadaire** : une semaine voisine vide ou non planifiee compte comme du repos (decision de
   Serge) ; fini la fausse alerte « 33 h » pour lundi-samedi, dimanche libre. Un repos ne couvre la

@@ -1334,7 +1334,12 @@ const App: React.FC = () => {
                           original.endTime === updatedShift.endTime &&
                           original.dayIndex === updatedShift.dayIndex &&
                           (original.coverageBy || '') === (updatedShift.coverageBy || '') &&
-                          (original.notes || '') === (updatedShift.notes || '');
+                          (original.notes || '') === (updatedShift.notes || '') &&
+                          // La pause aussi : sans elle, la glisser ou la changer
+                          // seule dans la fiche etait jugee « sans changement » et
+                          // perdue (constate au relu du jeu de verite, 22/09/2026).
+                          original.breakStart === updatedShift.breakStart &&
+                          (original.breakMinutes || 0) === (updatedShift.breakMinutes || 0);
       if (isUnchanged) return;
       // Seulement quand le shift change de jour ou de personne (glisser vers un
       // autre jour, reassignation). Retoucher l'horaire d'un vieux shift deja
