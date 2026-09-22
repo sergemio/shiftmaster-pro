@@ -131,7 +131,9 @@ const StaffModal: React.FC<StaffModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName.trim() || !newEmail.trim()) {
+    // L'email est facultatif (recette du 22/09/2026) : un plongeur sans adresse
+    // doit pouvoir etre planifie ; il ne sert qu'a inviter la personne dans l'app.
+    if (!newName.trim()) {
       alert(t('smNameEmailRequired'));
       return;
     }
@@ -737,7 +739,6 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider" htmlFor="new-staff-email">{t('smEmailShort')}</label>
                     <input 
                       id="new-staff-email"
-                      required
                       type="email" 
                       value={newEmail}
                       onChange={(e) => setNewEmail(e.target.value)}

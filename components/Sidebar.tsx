@@ -79,6 +79,9 @@ const Section: React.FC<{
 interface SidebarProps {
   shifts: Shift[];
   staff: Staff[];
+  /** Equipier connecte (pas admin) : il ne voit que SES heures, pas le contrat
+   *  ni le compteur de ses collegues (recette du 22/09/2026). */
+  onlyStaffId?: string | null;
   currentWeek: Date;
   onAddClick: () => void;
   onAbsenceClick: () => void;
@@ -130,6 +133,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ 
   shifts, 
   staff, 
+  onlyStaffId,
   currentWeek, 
   onAddClick,
   onAbsenceClick,
@@ -196,7 +200,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const toggleSection = (id: SectionId) => setOpenSection(cur => (cur === id ? null : id));
 
   const isMonth = period === 'month';
-  const rows = [...staff].filter(p => {
+  const rows = [...staff].filter(p => !onlyStaffId || p.id === onlyStaffId).filter(p => {
     // Option A: active during the week OR has any shift this week (orphan still pulls them in)
     const hasHours = period === 'month'
       ? (monthHours?.[p.id] ?? 0) > 0
@@ -417,7 +421,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         >
           <span className="font-semibold text-slate-500">{isMonth ? t('costMonthLabel') : t('costWeekLabel')}</span>
           <span className="font-bold text-slate-700 tabular-nums whitespace-nowrap">
-            {cost.missing > 0 ? '≥ ' : ''}{formatMoney(Math.round(cost.total), language as Language)}
+            {cost.missing > 0 && cost.total === 0 ? '—'
+              : `${cost.missing > 0 ? '≥ ' : ''}${formatMoney(Math.round(cost.total), language as Language)}`}
           </span>
         </div>
       )}

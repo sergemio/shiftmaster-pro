@@ -66,8 +66,10 @@ with sync_playwright() as pw:
     team = [x for x in p2.get_by_test_id("absence-band").all_inner_texts() if "Omar" in x]
     print("   vue equipe:", team)
     check("Equipe : 3 etiquettes pour Omar, toutes « Absent »", len(team) == 3 and all("Absent" in x for x in team), team)
-    side = p2.locator("div.space-y-1").filter(has_text="Omar").first.inner_text()
-    check("Equipe : la barre laterale ne dit pas « maladie »", "maladie" not in side.lower(), side)
+    # Depuis le 22/09/2026 un equipier ne voit plus les heures de ses collegues :
+    # la ligne d'Omar n'existe plus chez Double ; le motif ne doit apparaitre nulle part.
+    body = p2.locator("body").inner_text()
+    check("Equipe : ni la barre laterale ni le planning ne disent « maladie »", "maladie" not in body.lower(), body[:300])
 
     # --- le journal (lisible par toute l'equipe) ne porte pas le motif ---------------
     req = urllib.request.Request(

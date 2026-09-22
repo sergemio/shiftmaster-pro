@@ -2,6 +2,7 @@ import { Language, Shift, Staff } from '../types';
 import { Convention, Violation } from './laborRules';
 import { getTranslation } from './translations';
 import { formatTime, formatShortDate } from './helpers';
+import { formatDuration } from './worktime';
 import { DAYS_EN, DAYS_FR } from '../constants';
 
 /**
@@ -48,7 +49,9 @@ export const violationText = (
     Number.isInteger(n) ? String(n) : String(n).replace('.', language === 'fr' ? ',' : '.');
 
   const fill = (key: string, extra: Record<string, string> = {}) =>
-    Object.entries({ actual: num(v.actual), required: num(v.required), who, ...extra })
+    // Une duree se lit « 12 h 40 », pas « 12,67 heures » (recette du 22/09/2026) ;
+    // seul le nombre de jours d'affilee reste un compte.
+    Object.entries({ actual: v.rule === 'maxConsecutiveDays' ? num(v.actual) : formatDuration(v.actual, language), required: num(v.required), who, ...extra })
       .reduce((str, [k, val]) => str.replaceAll(`{${k}}`, val), t(preview ? `${key}Preview` : key));
 
   const dayLabel = (iso: string) =>

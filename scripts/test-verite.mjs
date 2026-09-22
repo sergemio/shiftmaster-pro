@@ -250,7 +250,7 @@ check('V22 pause de 20 min dans le shift', rules([sh('omar', MON, 9, 17, { break
   const v = violationsForStaff([{ id: 'p', staffId: 'omar', date: '2026-09-21', start: 9, end: 15.5 }], CONVENTIONS['1501'],
     { from: '2026-09-21', to: '2026-09-27' })[0];
   check('V22 phrase affichee', violationText(v, 'fr', new Map(), 'Omar', CONVENTIONS['1501']),
-    "Omar travaille 6,5 heures d'affilée le lundi 21 sept 26 sans pause d'au moins 20 minutes, or le Code du travail impose cette pause dès 6 heures de travail.");
+    "Omar travaille 6 h 30 d'affilée le lundi 21 sept 26 sans pause d'au moins 20 minutes, or le Code du travail impose cette pause dès 6 heures de travail.");
 }
 
 // --- V23 Remplacant a deux endroits a la fois ----------------------------------

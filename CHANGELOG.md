@@ -5,6 +5,24 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-22 (soir, 5) — Corrections de la recette en ligne (en ligne)
+
+Recette du site en ligne (restaurant « Bistrot Recette », supprime ensuite) : inscription, assistant,
+visite, equipe, invitation, shifts, conge, arret, mois, paie, copie de semaine, export, suppression.
+- **Bloquant corrige** : le lien de confirmation d'email ouvrait une page d'erreur Firebase (« The selected
+  page mode is invalid », cle absente du lien). L'app traite desormais elle-meme ces liens
+  (`components/AuthActionPage.tsx` : confirmation d'adresse, nouveau mot de passe) et renvoie a la page
+  d'origine (invitation comprise). **Pas encore actif** : les emails pointent toujours vers la page
+  Firebase ; changer leur URL d'action est refuse par Google (API : EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED,
+  console : « an error occurred while updating URL action »). A reprendre (Serge, 22/09/2026).
+- Emails de connexion demandes dans la langue de l'app (non verifiable dans l'emulateur).
+- Equipier (non admin) : ne voit plus les heures ni les alertes de ses collegues ; sur telephone, arrive
+  sur « Ma semaine » (sauf vue deja choisie).
+- Adresse email facultative pour ajouter un equipier.
+- Alertes : « 12 h 40 » au lieu de « 12,67 heures ».
+- Cout : « — » au lieu de « ≥ 0 € » quand aucun shift n'a de taux.
+- Test : `recette_fixes_test.py` (11 controles).
+
 ## 2026-09-22 (soir, 4) — Donnees du restaurant (RGPD) et sauvegarde de nuit (en ligne)
 
 - **Parametres > Donnees du restaurant** (admins, meme en lecture seule) : « Telecharger toutes les

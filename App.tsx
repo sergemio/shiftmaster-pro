@@ -164,6 +164,8 @@ const App: React.FC = () => {
     // Le choix fait ensuite dans l'app reste memorise.
     return (localStorage.getItem('shiftmaster_lang') as Language) || 'fr';
   });
+  // Vue choisie lors d'une visite precedente (sinon, defaut selon le role : voir autoMyWeek).
+  const viewChosenBefore = useRef<boolean>((() => { try { return !!localStorage.getItem('shiftmaster_view'); } catch { return false; } })());
   const [viewType, setViewType] = useState<ViewType>(() => {
     return (localStorage.getItem('shiftmaster_view') as ViewType) || 'day';
   });
@@ -383,6 +385,16 @@ const App: React.FC = () => {
   // Sans fiche a son nom, « ma semaine » n'a rien a montrer : on retombe sur le
   // planning complet plutot que sur un ecran vide.
   const effectiveViewType: ViewType = viewType === 'me' && !me ? 'day' : viewType;
+
+  // Un equipier (pas admin) sur telephone, sans vue choisie, arrive sur « Ma
+  // semaine » : c'est ce qu'il vient voir (recette du 22/09/2026). Un choix
+  // explicite, retenu dans le navigateur, reste respecte.
+  const autoMyWeek = useRef(false);
+  useEffect(() => {
+    if (autoMyWeek.current || !me || isAdmin || !connected) return;
+    autoMyWeek.current = true;
+    if (!viewChosenBefore.current && window.innerWidth < 768) setViewType('me');
+  }, [me, isAdmin, connected]);
 
   // A failed write used to be invisible: the badge said "Saved" regardless.
   useEffect(() => {
@@ -2267,7 +2279,7 @@ const App: React.FC = () => {
             language={language}
             timezone={timezone}
             viewType={effectiveViewType}
-            ruleWarnings={warningsByShift}
+            ruleWarnings={isAdmin ? warningsByShift : {}}
             selectedShiftIds={selectedShiftIds}
             onToggleSelect={toggleShiftSelection}
             me={me}
@@ -2296,6 +2308,7 @@ const App: React.FC = () => {
       <Sidebar
         shifts={shifts}
         staff={displayStaff}
+        onlyStaffId={isAdmin ? null : (me?.id || '__none__')}
         currentWeek={currentWeek}
         onAddClick={fromSidebar(() => setIsShiftModalOpen(true))}
         onAbsenceClick={fromSidebar(() => setIsAbsenceModalOpen(true))}
@@ -2317,7 +2330,8 @@ const App: React.FC = () => {
         onCopyLastWeek={handleCopyLastWeek}
         onStartDraft={!inDraft && effectiveViewType === 'day' ? fromSidebar(startDraft) : undefined}
         draftExists={draft !== null}
-        compliance={complianceList}
+        // Les alertes de duree du travail parlent des collegues : reservees aux admins.
+        compliance={isAdmin ? complianceList : []}
         conventionLabel={conventionLabel(convention)}
         checklist={checklist}
         onDeleteWeek={handleDeleteWeek}

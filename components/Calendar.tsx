@@ -662,8 +662,11 @@ const Calendar: React.FC<CalendarProps> = ({
       {/* Jamais dans l'image exportee : elle part a l'equipe, et le cout employeur
           d'un shift n'a rien a faire sur un emploi du temps (decision de Serge, 18/09). */}
       {!isExporting && Object.keys(rates).length > 0 && shifts.length > 0 && (() => {
+        // Aucun shift chiffre (que des shifts sans taux) : « ≥ 0 € » ne disait rien ;
+        // un tiret, et l'infobulle explique (recette du 22/09/2026).
         const money = (c: { total: number; missing: number }) =>
-          `${c.missing > 0 ? '≥ ' : ''}${formatMoney(Math.round(c.total), language as Language)}`;
+          c.missing > 0 && c.total === 0 ? '—'
+            : `${c.missing > 0 ? '≥ ' : ''}${formatMoney(Math.round(c.total), language as Language)}`;
         const hint = (title: string, c: { missing: number }) =>
           c.missing > 0 ? `${title}\n${t('costMissing').replace('{n}', String(c.missing))}` : title;
         return (

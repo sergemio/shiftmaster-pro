@@ -4,7 +4,7 @@ import { lazySubscribeWith } from './lazySubscribe';
 
 // Use the Official Google Firebase ESM CDN to ensure total compatibility
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged, connectAuthEmulator, createUserWithEmailAndPassword, updateProfile, sendEmailVerification, sendPasswordResetEmail, reload } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged, connectAuthEmulator, createUserWithEmailAndPassword, updateProfile, sendEmailVerification, sendPasswordResetEmail, reload, applyActionCode, verifyPasswordResetCode, confirmPasswordReset } from 'firebase/auth';
 
 // Import the Firebase configuration
 import firebaseConfig from '../firebase-applet-config.json';
@@ -107,6 +107,30 @@ const lazySubscribe = (open: (ctx: { fs: FirestoreModule; db: any }) => () => vo
   lazySubscribeWith(firestore, open);
 
 export const auth = getAuth(app);
+
+/**
+ * Emails de connexion (confirmation d'adresse, mot de passe oublie) : dans la
+ * langue de l'app, et avec un retour vers la page ou l'on etait (lien
+ * d'invitation compris). Recette du 22/09/2026 : ils partaient en anglais.
+ */
+const emailSettings = () => {
+  try { auth.languageCode = localStorage.getItem('shiftmaster_lang') || 'fr'; } catch { auth.languageCode = 'fr'; }
+  return { url: window.location.origin + window.location.pathname + window.location.search };
+};
+
+/**
+ * Liens recus par email (?mode=…&oobCode=…), traites par l'app elle-meme et non
+ * par la page generique de Firebase (qui echouait : cle absente du lien).
+ */
+export const confirmEmailCode = async (code: string): Promise<{ error?: string }> => {
+  try { await applyActionCode(auth, code); return {}; } catch (e: any) { return { error: e?.code || 'unknown' }; }
+};
+export const checkResetCode = async (code: string): Promise<{ email?: string; error?: string }> => {
+  try { return { email: await verifyPasswordResetCode(auth, code) }; } catch (e: any) { return { error: e?.code || 'unknown' }; }
+};
+export const setNewPassword = async (code: string, password: string): Promise<{ error?: string }> => {
+  try { await confirmPasswordReset(auth, code, password); return {}; } catch (e: any) { return { error: e?.code || 'unknown' }; }
+};
 if (USE_EMULATORS) connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
 const provider = new GoogleAuthProvider();
 
@@ -330,7 +354,7 @@ export const signUpWithEmail = async (name: string, email: string, password: str
   try {
     const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
     if (name.trim()) await updateProfile(result.user, { displayName: name.trim() });
-    try { await sendEmailVerification(result.user); } catch { /* l'envoi reessaiera depuis l'app */ }
+    try { await sendEmailVerification(result.user, emailSettings()); } catch { /* l'envoi reessaiera depuis l'app */ }
     return { user: result.user };
   } catch (error: any) {
     return authError(error);
@@ -339,7 +363,7 @@ export const signUpWithEmail = async (name: string, email: string, password: str
 
 export const resetPassword = async (email: string): Promise<{ error?: string }> => {
   try {
-    await sendPasswordResetEmail(auth, email.trim());
+    await sendPasswordResetEmail(auth, email.trim(), emailSettings());
     return {};
   } catch (error: any) {
     return { error: error?.code || 'unknown' };
@@ -462,7 +486,7 @@ export const refreshUser = async (): Promise<boolean> => {
 };
 
 export const resendVerification = async (): Promise<void> => {
-  if (auth.currentUser) await sendEmailVerification(auth.currentUser);
+  if (auth.currentUser) await sendEmailVerification(auth.currentUser, emailSettings());
 };
 
 export const logout = async () => {
