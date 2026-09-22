@@ -3,7 +3,7 @@ import React, { useRef } from 'react';
 import { Shift, Staff, DragType, Language } from '../types';
 import { formatTime, formatShortDate, formatMoney, OrphanReason } from '../utils/helpers';
 import { getTranslation } from '../utils/translations';
-import { clampBreak, shiftWorkHours } from '../utils/worktime';
+import { clampBreak, shiftWorkHours, formatDuration } from '../utils/worktime';
 
 interface ShiftCardProps {
   shift: Shift;
@@ -202,8 +202,8 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             {formatTime(startTime)} - {formatTime(endTime)}
           </span>
           <div className="flex gap-1 flex-wrap">
-            <span className="bg-slate-200/60 text-slate-600 text-xs font-black px-1 md:px-1.5 py-0.5 rounded uppercase tracking-tighter border border-slate-300/30">
-              {duration.toFixed(duration % 1 === 0 ? 0 : 1)}H
+            <span className="bg-slate-200/60 text-slate-600 text-xs font-black px-1 md:px-1.5 py-0.5 rounded tracking-tighter border border-slate-300/30">
+              {formatDuration(duration, language)}
             </span>
             {isPendingExtra && (
               /* Le badge dit ce que les hachures ne peuvent pas dire. Neutre et

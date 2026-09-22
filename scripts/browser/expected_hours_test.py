@@ -72,13 +72,13 @@ with sync_playwright() as pw:
     p.on("pageerror", lambda e: errors.append(str(e)))
     login(p, "serge@test.fr")
 
-    check("Au depart : Omar 9.5 / 35h, sans note", "9.5 / 35h" in row(p, "Omar").inner_text() and not notes(p),
+    check("Au depart : Omar 9 h 30 / 35 h, sans note", "9 h 30 / 35 h" in row(p, "Omar").inner_text() and not notes(p),
           row(p, "Omar").inner_text())
 
     # --- 1. un jour de conge sur un jour planifie ---------------------------------
     h = record(p, "Omar", "Congés payés", iso(MON), iso(MON, 1))
     check("Lundi de conge : 4,5 h d absence proposees (son shift)", h in ("4.5", "4,5"), h)
-    check("Semaine : l attendu d Omar tombe a 30,5 h", "5.0 / 30.5h" in row(p, "Omar").inner_text(), row(p, "Omar").inner_text())
+    check("Semaine : l attendu d Omar tombe a 30,5 h", "5 h / 30,5 h" in row(p, "Omar").inner_text(), row(p, "Omar").inner_text())
     check("Semaine : la note dit pourquoi", "30,5 h attendues (1 j de congé)" in notes(p), notes(p))
 
     # --- 2. deux jours d'arret sur une semaine non planifiee ----------------------
@@ -88,10 +88,10 @@ with sync_playwright() as pw:
     # --- 3. vue mois --------------------------------------------------------------
     p.get_by_role("button", name="Mois", exact=True).click(); p.wait_for_timeout(3000)
     txt = row(p, "Omar").inner_text()
-    check("Mois : attendu 151,7 - 4,5 - 14 = 133,2 h", "/ 133.2h" in txt, txt)
+    check("Mois : attendu 151,7 - 4,5 - 14 = 133,2 h", "/ 133,2 h" in txt, txt)
     check("Mois : motifs melanges -> « absence », 3 jours, le motif reste prive",
           "133,2 h attendues (3 j d'absence)" in notes(p), notes(p))
-    check("Mois : l ecart se calcule sur l attendu reduit (5 - 133,2 = -128,2)", "128.2" in txt, txt)
+    check("Mois : l ecart se calcule sur l attendu reduit (5 - 133,2 = -128,2, soit 128 h 12)", "128 h 12" in txt, txt)
     p.screenshot(path=DIR + r"\lot3_month.png")
     p.get_by_role("button", name="Semaine", exact=True).click(); p.wait_for_timeout(800)
 
@@ -100,7 +100,7 @@ with sync_playwright() as pw:
     for _ in range(SEMAINES):
         p.get_by_test_id("week-nav").get_by_role("button", name=bouton).click(); p.wait_for_timeout(1800)
     txt = row(p, "Omar").inner_text()
-    check("Semaine de l arret : Omar 0.0 / 21h (35 - 14)", "0.0 / 21h" in txt, txt)
+    check("Semaine de l arret : Omar 0 h / 21 h (35 - 14)", "0 h / 21 h" in txt, txt)
     check("Semaine de l arret : l etiquette « Absent » reste, sans note en double", "Absent" in txt and not notes(p), (txt, notes(p)))
     check("Admin : aucune erreur JavaScript", not errors, errors[:1])
 

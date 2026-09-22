@@ -34,7 +34,7 @@ with sync_playwright() as pw:
     check("Depart : 2 anciennes etiquettes pour Omar (mer, ven)", len(bands) == 2, bands)
     sidebar = p.locator("div.space-y-1").filter(has_text="Omar").first.inner_text().replace("\n", " ")
     print("   sidebar avant:", sidebar)
-    check("Anciennes etiquettes : attendu estime 35 - 2 x 7 = 21 h", "/ 21h" in sidebar, sidebar)
+    check("Anciennes etiquettes : attendu estime 35 - 2 x 7 = 21 h", "/ 21 h" in sidebar, sidebar)
 
     p.get_by_role("button", name="Absences", exact=True).first.click(); p.wait_for_timeout(600)
     p.get_by_label("Qui est absent").select_option(label="Omar")

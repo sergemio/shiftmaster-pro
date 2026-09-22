@@ -235,3 +235,26 @@ export const expectedHours = (contract: number, absenceHours = 0): number =>
 
 /** Arrondi d'affichage : une decimale. Les calculs, eux, restent exacts. */
 export const roundTenth = (n: number): number => Math.round(n * 10) / 10;
+
+/**
+ * Une duree lisible : « 7 h 15 », « 35 h ». Arrondie a la minute. Pour ce qui
+ * est travaille (cartes, totaux). Remplace « 7.3H » : 7 h 15 lu comme 7 h 30
+ * (constate au relu du jeu de verite, 22/09/2026).
+ */
+export const formatDuration = (hours: number, language = 'fr'): string => {
+  const total = Math.round(hours * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (language === 'fr') return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
+  return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+};
+
+/**
+ * Un nombre d'heures de reference (contrat, attendu) : « 35 h », « 151,7 h ».
+ * Reste en decimal : c'est la forme de la mensualisation (151,67 h) et de la paie.
+ */
+export const formatHoursRef = (hours: number, language = 'fr'): string => {
+  const r = roundTenth(hours);
+  const s = Number.isInteger(r) ? String(r) : r.toFixed(1);
+  return language === 'fr' ? `${s.replace('.', ',')} h` : `${s}h`;
+};

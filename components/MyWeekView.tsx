@@ -5,7 +5,7 @@ import {
   formatTime, getShiftIsoDate, formatShortDate, contractHoursOn, monthlyContractHours,
   AbsenceDeduction, expectedNote, toWeekId,
 } from '../utils/helpers';
-import { datedWeek, hoursByWorker, shiftWorkHours, expectedHours, roundTenth } from '../utils/worktime';
+import { datedWeek, hoursByWorker, shiftWorkHours, expectedHours, roundTenth, formatDuration, formatHoursRef } from '../utils/worktime';
 
 interface MyWeekViewProps {
   shifts: Shift[];
@@ -124,7 +124,7 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
         <div className="rounded-xl border border-slate-200 p-4">
           <div className="text-xs font-bold uppercase tracking-widest text-slate-400">{t('periodWeek')}</div>
           <div className="mt-1 text-xl font-black text-slate-900 tabular-nums">
-            {weekHours.toFixed(1)}<span className="text-sm font-bold text-slate-400"> / {weekContract}h</span>
+            {formatDuration(weekHours, language)}<span className="text-sm font-bold text-slate-400"> / {formatHoursRef(weekContract, language)}</span>
           </div>
           {weekNote && <div data-testid="expected-note" className="mt-0.5 text-xs text-slate-400">{weekNote}</div>}
         </div>
@@ -133,7 +133,7 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
           <div className="mt-1 text-xl font-black text-slate-900 tabular-nums">
             {monthHours === null
               ? <span className="text-sm font-bold text-slate-300">—</span>
-              : <>{monthHours.toFixed(1)}<span className="text-sm font-bold text-slate-400"> / {monthContract}h</span></>}
+              : <>{formatDuration(monthHours, language)}<span className="text-sm font-bold text-slate-400"> / {formatHoursRef(monthContract, language)}</span></>}
           </div>
           {monthNote && <div data-testid="expected-note" className="mt-0.5 text-xs text-slate-400">{monthNote}</div>}
         </div>
@@ -177,7 +177,7 @@ const MyWeekView: React.FC<MyWeekViewProps> = ({
                     {formatTime(s.startTime)} – {formatTime(s.endTime)}
                   </span>
                   <span className="text-xs font-bold text-slate-500">
-                    {shiftWorkHours(s).toFixed(1)}h
+                    {formatDuration(shiftWorkHours(s), language)}
                   </span>
                   {s.coverageBy === me.id && (
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">

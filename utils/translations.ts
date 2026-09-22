@@ -372,6 +372,7 @@ export const translations: Record<Language, Record<string, string>> = {
     payNoAbsence: "Absences: none",
     payAbsences: "Absences:",
     payAbsenceLine: "{kind} from {from} to {to}: {days} d counted, {h} h of absence",
+    payAbsenceLineOne: "{kind} on {from}: {days} d counted, {h} h of absence",
     payHalf: "(half day)",
     payContinues: "(whole period {from} to {to})",
     payJustifYes: "certificate received",
@@ -381,8 +382,11 @@ export const translations: Record<Language, Record<string, string>> = {
     payReachesLegal: "— WARNING: 35 h reached, not allowed for a part-time contract",
     payComp: "complementary hours",
     paySup: "overtime",
+    payComp1: "complementary hours",
+    paySup1: "overtime",
     payExtrasTitle: "EXTRAS (no contract)",
-    payExtraLine: "{name}: {h} h over {n} day(s) — {dates}",
+    payExtraLine: "{name}: {h} h over {n} days — {dates}",
+    payExtraLineOne: "{name}: {h} h on 1 day — {dates}",
     payFooter: "Hours from the published schedule. Hours beyond contract are counted per calendar week on actual work; a week spanning two months belongs to the month of its Sunday. Premium rates, sick pay and allowances follow the collective agreement.",
     payCsvHeader: "Employee;Item;From;To;Days;Hours;Detail",
     payCsvWorked: "Hours worked",
@@ -442,6 +446,7 @@ export const translations: Record<Language, Record<string, string>> = {
     holiday_closure: "restaurant closure",
     payClosuresTitle: "Closure decided by the restaurant (to settle with the employer: imposed paid leave or paid days):",
     payClosureLine: "from {from} to {to}",
+    payClosureLineOne: "on {from}",
     payCsvClosure: "Restaurant closure",
     holidaysTitle: "Public holidays",
     holidaysHint: "The app knows the 11 French public holidays. Switch on the ones when the restaurant is closed: no shift can be planned, and they are not deducted from paid leave. Applies every year.",
@@ -535,7 +540,10 @@ export const translations: Record<Language, Record<string, string>> = {
     confirmDeleteWeek: "Are you sure you want to delete all shifts for this week?",
     confirmDeleteShift: "Are you sure? This action cannot be undone.",
     yesDelete: "Yes, Delete",
-    noKeep: "No, Keep It"
+    noKeep: "No, Keep It",
+    areYouSure: "Are you sure?",
+    deleteShiftFor: "You are about to delete the shift for",
+    cannotBeUndone: "This action cannot be undone."
   },
   fr: {
     appName: "ShiftMaster",
@@ -907,6 +915,7 @@ export const translations: Record<Language, Record<string, string>> = {
     payNoAbsence: "Absences : aucune",
     payAbsences: "Absences :",
     payAbsenceLine: "{kind} du {from} au {to} : {days} j décomptés, {h} h d'absence",
+    payAbsenceLineOne: "{kind} le {from} : {days} j décompté, {h} h d'absence",
     payHalf: "(demi-journée)",
     payContinues: "(période complète du {from} au {to})",
     payJustifYes: "justificatif reçu",
@@ -916,8 +925,11 @@ export const translations: Record<Language, Record<string, string>> = {
     payReachesLegal: "— ATTENTION : 35 h atteintes, interdit pour un temps partiel",
     payComp: "complémentaires",
     paySup: "supplémentaires",
+    payComp1: "complémentaire",
+    paySup1: "supplémentaire",
     payExtrasTitle: "EXTRAS (hors contrat)",
-    payExtraLine: "{name} : {h} h sur {n} jour(s) — {dates}",
+    payExtraLine: "{name} : {h} h sur {n} jours — {dates}",
+    payExtraLineOne: "{name} : {h} h sur 1 jour — {dates}",
     payFooter: "Heures issues du planning publié. Heures au-delà du contrat comptées par semaine civile, sur le travail effectif ; une semaine à cheval sur deux mois est rattachée au mois de son dimanche. Taux de majoration, maintien de salaire et indemnités : selon la convention collective.",
     payCsvHeader: "Salarié;Rubrique;Du;Au;Jours;Heures;Détail",
     payCsvWorked: "Heures travaillées",
@@ -977,6 +989,7 @@ export const translations: Record<Language, Record<string, string>> = {
     holiday_closure: "fermeture du restaurant",
     payClosuresTitle: "Fermeture décidée par le restaurant (à voir avec l’employeur : congés imposés ou jours payés) :",
     payClosureLine: "du {from} au {to}",
+    payClosureLineOne: "le {from}",
     payCsvClosure: "Fermeture du restaurant",
     holidaysTitle: "Jours fériés",
     holidaysHint: "L'app connaît les 11 jours fériés. Activez ceux où le restaurant ferme : aucun shift ne pourra y être posé, et ils ne seront pas décomptés des congés payés. Valable chaque année.",
@@ -1069,8 +1082,11 @@ export const translations: Record<Language, Record<string, string>> = {
     employeeView: "Vue par Employé",
     confirmDeleteWeek: "Voulez-vous vraiment supprimer tous les shifts de cette semaine ?",
     confirmDeleteShift: "Êtes-vous sûr ? Cette action est irréversible.",
-    yesDelete: "Oui, Supprimer",
-    noKeep: "Non, Garder"
+    yesDelete: "Oui, supprimer",
+    noKeep: "Non, le garder",
+    areYouSure: "Supprimer ce shift ?",
+    deleteShiftFor: "Vous allez supprimer le shift de",
+    cannotBeUndone: "Cette action est irréversible."
   }
 };
 

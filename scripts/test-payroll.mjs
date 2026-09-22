@@ -197,5 +197,28 @@ check('CSV : heures supplementaires d\'Omar', rows.includes('Omar;supplémentair
   check('Sans fermeture : rien en tete du texte', !payrollText(pmN, LC).includes('FERMETURE'));
 }
 
+// --- libelles : jour unique, singulier, tri naturel (relu du jeu de verite, 22/09/2026) ---
+{
+  const L1 = { ...L, absenceLineOne: '{kind} le {from} : {days} j, {h} h', complementaire: 'complémentaire',
+    supplementaire: 'supplémentaire', extraLineOne: '{name} : {h} h sur 1 jour — {dates}',
+    extraLine: '{name} : {h} h sur {n} jours — {dates}',
+    closuresTitle: 'FERMETURE :', closureLine: 'du {from} au {to}', closureLineOne: 'le {from}' };
+  const line = { ...pm.lines[0], entry: null, exit: null, contractChanges: [],
+    absences: [{ kind: 'cp', start: '2026-09-21', end: '2026-09-21', fullStart: '2026-09-21', fullEnd: '2026-09-21', days: 1, hours: 7 }],
+    weeks: [
+      { monday: '2026-09-07', sunday: '2026-09-13', worked: 36, contract: 35, extra: 1, beyondTenth: 0, kind: 'supplementaires' },
+      { monday: '2026-09-14', sunday: '2026-09-20', worked: 37, contract: 35, extra: 2, beyondTenth: 0, kind: 'supplementaires' },
+    ] };
+  const pmO = { ...pm, lines: [line], closures: [{ start: '2026-09-14', end: '2026-09-14' }],
+    extras: [{ name: 'Monique', hours: 6, days: ['2026-09-12'] }, { name: 'Paulo', hours: 8, days: ['2026-09-12', '2026-09-19'] }] };
+  const tO = payrollText(pmO, L1);
+  check('Texte : absence d\'un seul jour -> « le 21/09 »', tO.includes('Congés payés le 21/09 : 1 j, 7 h'), tO);
+  check('Texte : fermeture d\'un seul jour -> « le 14/09 »', tO.includes('  - le 14/09\n'), tO);
+  check('Texte : 1 h -> « supplémentaire », 2 h -> « supplémentaires »', tO.includes('soit 1 h supplémentaire\n') && tO.includes('soit 2 h supplémentaires'), tO);
+  check('Texte : extra d\'un jour -> « sur 1 jour », de deux -> « sur 2 jours »', tO.includes('Monique : 6 h sur 1 jour — 12/09') && tO.includes('Paulo : 8 h sur 2 jours'), tO);
+  const pmS = payrollVariables('2026-09', [{ ...staff[0], id: 'v11', name: 'V11' }, { ...staff[0], id: 'v2', name: 'V2' }], {}, [], countDays);
+  check('Tri naturel : V2 avant V11', pmS.lines.map(l => l.name).join(',') === 'V2,V11', pmS.lines.map(l => l.name));
+}
+
 console.log(fails ? `\n${fails} ECHEC(S)` : '\nTOUT PASSE');
 process.exit(fails ? 1 : 0);

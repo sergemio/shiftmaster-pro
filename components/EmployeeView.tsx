@@ -4,7 +4,7 @@ import { Shift, Staff, Language } from '../types';
 import { DAYS_EN, DAYS_FR } from '../constants';
 import { getTranslation } from '../utils/translations';
 import { formatTime, isStaffActiveInWeek, contractHoursOn, getShiftIsoDate, toWeekId } from '../utils/helpers';
-import { datedWeek, hoursByWorker, shiftWorkHours, workerOf } from '../utils/worktime';
+import { datedWeek, hoursByWorker, shiftWorkHours, workerOf, formatDuration, formatHoursRef } from '../utils/worktime';
 
 interface EmployeeViewProps {
   shifts: Shift[];
@@ -80,8 +80,8 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
                         {member.role}
                       </span>
                     </div>
-                    <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-tighter self-start">
-                      {member.totalHours.toFixed(1)}h / {contractHoursOn(member, getShiftIsoDate(currentWeek, 0))}h
+                    <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded tracking-tighter self-start">
+                      {formatDuration(member.totalHours, language)} / {formatHoursRef(contractHoursOn(member, getShiftIsoDate(currentWeek, 0)), language)}
                     </span>
                   </div>
                 </div>
@@ -110,8 +110,8 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({
                             <span className="text-xs font-bold text-slate-800">
                               {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
                             </span>
-                            <span className="text-xs font-medium text-slate-500 uppercase tracking-tight">
-                              {shiftWorkHours(shift).toFixed(1)}h
+                            <span className="text-xs font-medium text-slate-500 tracking-tight">
+                              {formatDuration(shiftWorkHours(shift), language)}
                             </span>
                           </div>
                           {shift.notes && (

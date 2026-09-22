@@ -70,9 +70,9 @@ with sync_playwright() as pw:
     # --- 2. totaux du mois : justes, et mis a jour sans changer de semaine -------------
     p.get_by_role("button", name="Mois", exact=True).click(); p.wait_for_timeout(3000)
     before = p.locator("body").inner_text()
-    # Format des totaux du mois : « 12.5 / 151h » (heures faites / heures du contrat).
+    # Format des totaux du mois : « 12 h 30 / 151,7 h » (heures faites / heures du contrat).
     check("Vue Mois : les totaux d'heures du mois s'affichent",
-          re.search(r"\d+\.\d+ / \d+h", before) is not None, before[-300:])
+          re.search(r"\d+ h( \d\d)? / [\d,]+ h", before) is not None, before[-300:])
 
     # un shift de plus dans la semaine affichee
     p.get_by_role("button", name="Ajouter Shift").first.click(); p.wait_for_timeout(700)

@@ -278,7 +278,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                     onClick={onClose}
                     className="flex-1 px-6 py-4 border border-slate-200 text-slate-500 font-bold rounded-2xl hover:bg-slate-50 transition-all text-base shadow-sm active:scale-95"
                   >
-                    {isReadOnly ? 'Close' : 'Cancel'}
+                    {isReadOnly ? t('close') : t('cancel')}
                   </button>
                   {!isReadOnly && (
                     <button 
@@ -286,7 +286,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                       disabled={employment.errors.length > 0}
                       className="flex-1 px-6 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 text-base active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
                     >
-                      Save Changes
+                      {t('saveChanges')}
                     </button>
                   )}
                 </div>
@@ -300,7 +300,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                       <svg className="w-4 h-4 transition-transform group-hover:rotate-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
-                      Delete Shift
+                      {t('deleteShift')}
                     </button>
                   </div>
                 )}
@@ -314,9 +314,9 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 </div>
-                <h3 className="text-xl font-bold text-slate-800">Are you sure?</h3>
+                <h3 className="text-xl font-bold text-slate-800">{t('areYouSure')}</h3>
                 <p className="text-slate-500 leading-relaxed">
-                  You are about to delete the shift for <span className="font-bold text-slate-800">{assignedStaff?.name}</span>. This action cannot be undone.
+                  {t('deleteShiftFor')} <span className="font-bold text-slate-800">{assignedStaff?.name}</span>. {t('cannotBeUndone')}
                 </p>
               </div>
 
@@ -326,14 +326,14 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                   onClick={handleDelete}
                   className="w-full py-4 bg-red-500 text-white font-bold rounded-2xl hover:bg-red-600 transition-all shadow-lg shadow-red-100 text-base active:scale-95"
                 >
-                  Yes, Delete Shift
+                  {t('yesDelete')}
                 </button>
                 <button 
                   type="button"
                   onClick={() => setIsConfirmingDelete(false)}
                   className="w-full py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all text-base active:scale-95"
                 >
-                  No, Keep It
+                  {t('noKeep')}
                 </button>
               </div>
             </div>

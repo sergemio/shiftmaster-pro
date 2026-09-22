@@ -39,7 +39,7 @@ with sync_playwright() as pw:
         t = p.locator("#shift-break-start option:checked").inner_text() if m != "0" else ""
         p.keyboard.press("Escape"); p.wait_for_timeout(500)
         return f"Pause {t} · {m} min"
-    check("Carte : 7,5 h de travail et bande « Pause »", "7.5H" in card().inner_text() and title() == "Pause 13:45 · 30 min", card().inner_text())
+    check("Carte : 7,5 h de travail et bande « Pause »", "7 h 30" in card().inner_text() and title() == "Pause 13:45 · 30 min", card().inner_text())
 
     # 2. glisser la pause d'une heure vers le bas
     hour = card().bounding_box()["height"] / 8
@@ -56,7 +56,7 @@ with sync_playwright() as pw:
     card().dblclick(force=True); p.wait_for_timeout(800)
     p.locator("#shift-break-minutes").select_option("45"); p.wait_for_timeout(300)
     p.locator("form button[type=submit]").first.click(); p.wait_for_timeout(1800)
-    check("Fiche : pause passee a 45 min, 7,25 h", "Pause 45 min" in card().inner_text() and "7.3H" in card().inner_text(), card().inner_text())
+    check("Fiche : pause passee a 45 min, 7,25 h", "Pause 45 min" in card().inner_text() and "7 h 15" in card().inner_text(), card().inner_text())
 
     # 5. conservee apres rechargement
     p.reload(); p.wait_for_timeout(4500)

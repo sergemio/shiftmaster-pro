@@ -268,5 +268,14 @@ const dst = (sat, sun) => violationsForStaff([
 check('V24 octobre : 12 h de repos reelles, rien', dst('2026-10-24', '2026-10-25'), []);
 check('V24 mars : 10 h de repos reelles, alerte', dst('2026-03-28', '2026-03-29'), ['dailyRest 10']);
 
+// --- Affichage des durees (22/09/2026) : « 7.3H » se lisait 7 h 30 pour 7 h 15 ----
+check('Affichage : 7,25 h -> « 7 h 15 »', W.formatDuration(7.25), '7 h 15');
+check('Affichage : 7,5 h -> « 7 h 30 »', W.formatDuration(7.5), '7 h 30');
+check('Affichage : 35 h -> « 35 h »', W.formatDuration(35), '35 h');
+check('Affichage : 23/3 h -> « 7 h 40 »', W.formatDuration(23 / 3), '7 h 40');
+check('Affichage : 0,9999 h arrondi a la minute -> « 1 h »', W.formatDuration(0.9999), '1 h');
+check('Affichage : contrat 35 x 52 / 12 -> « 151,7 h »', W.formatHoursRef(35 * 52 / 12), '151,7 h');
+check('Affichage : attendu 30,5 -> « 30,5 h »', W.formatHoursRef(30.5), '30,5 h');
+
 console.log(ko === 0 ? `\nTOUT PASSE (${n} controles)` : `\n${ko} ECHEC(S) sur ${n}`);
 process.exit(ko === 0 ? 0 : 1);

@@ -221,10 +221,11 @@ export const payrollVariables = (
     });
   }
 
-  lines.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  // Tri naturel : « Julie 2 » avant « Julie 11 ».
+  lines.sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
   const extras = [...extraRows.values()]
     .map(r => ({ ...r, days: r.days.sort(), hours: round2(r.hours) }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
   const monthClosures = closures
     .filter(c => c.start <= last && c.end >= first)
     .sort((a, b) => a.start.localeCompare(b.start));
@@ -247,6 +248,7 @@ export interface PayrollLabels {
   noAbsence: string;          // « Absences : aucune »
   absences: string;           // « Absences : »
   absenceLine: string;        // « {kind} du {from} au {to} : {days} j, {h} h »
+  absenceLineOne?: string;    // un seul jour : « {kind} le {from} : … »
   halfDay: string;            // « (demi-journée) »
   continues: string;          // « (période du {from} au {to}) »
   justifReceived: string;     // « justificatif reçu »
@@ -256,12 +258,16 @@ export interface PayrollLabels {
   reachesLegal: string;       // « ⚠ 35 h atteintes : interdit pour un temps partiel »
   complementaires: string;
   supplementaires: string;
+  complementaire?: string;    // singulier, sous 2 h : « 1 h complémentaire »
+  supplementaire?: string;
   extrasTitle: string;        // « Extras (hors contrat) »
-  extraLine: string;          // « {name} : {h} h sur {n} jour(s) — {dates} »
+  extraLine: string;          // « {name} : {h} h sur {n} jours — {dates} »
+  extraLineOne?: string;      // « {name} : {h} h sur 1 jour — {dates} »
   daysUnit: string;           // « j »
   footer: string;             // « Chiffres issus du planning… »
   closuresTitle?: string;     // « Fermeture décidée par le restaurant : … »
   closureLine?: string;       // « du {from} au {to} »
+  closureLineOne?: string;    // « le {from} »
   csvClosure?: string;        // « Fermeture du restaurant »
   kindLabel: (kind: LeaveKind) => string;
   date: (iso: string) => string;
@@ -284,7 +290,7 @@ export const payrollText = (pm: PayrollMonth, L: PayrollLabels): string => {
   if (pm.closures.length && L.closuresTitle && L.closureLine) {
     out.push(L.closuresTitle);
     for (const c of pm.closures) {
-      out.push('  - ' + fill(L.closureLine, { from: L.date(c.start), to: L.date(c.end) }) + (c.note ? ` — ${c.note}` : ''));
+      out.push('  - ' + fill(c.start === c.end && L.closureLineOne ? L.closureLineOne : L.closureLine, { from: L.date(c.start), to: L.date(c.end) }) + (c.note ? ` — ${c.note}` : ''));
     }
     out.push('');
   }
@@ -302,7 +308,8 @@ export const payrollText = (pm: PayrollMonth, L: PayrollLabels): string => {
     } else {
       out.push('  ' + L.absences);
       for (const a of line.absences) {
-        let s = fill(L.absenceLine, {
+        // « du 21 sept au 21 sept » se lisait mal : un seul jour a sa phrase.
+        let s = fill(a.start === a.end && L.absenceLineOne ? L.absenceLineOne : L.absenceLine, {
           kind: L.kindLabel(a.kind), from: L.date(a.start), to: L.date(a.end),
           days: L.num(a.days), h: L.num(a.hours),
         });
@@ -321,7 +328,10 @@ export const payrollText = (pm: PayrollMonth, L: PayrollLabels): string => {
       let s = fill(L.weekLine, {
         from: L.date(w.monday), to: L.date(w.sunday), worked: L.num(w.worked),
         contract: L.num(w.contract), extra: L.num(w.extra),
-        kind: w.kind === 'complementaires' ? L.complementaires : L.supplementaires,
+        // Accord francais : singulier sous 2 (« 1,5 h supplementaire »).
+        kind: w.kind === 'complementaires'
+          ? (w.extra < 2 && L.complementaire ? L.complementaire : L.complementaires)
+          : (w.extra < 2 && L.supplementaire ? L.supplementaire : L.supplementaires),
       });
       if (w.beyondTenth > 0) s += ', ' + fill(L.beyondTenth, { h: L.num(w.beyondTenth) });
       if (w.reachesLegal) s += ' ' + L.reachesLegal;
@@ -332,7 +342,7 @@ export const payrollText = (pm: PayrollMonth, L: PayrollLabels): string => {
   if (pm.extras.length) {
     out.push(L.extrasTitle);
     for (const e of pm.extras) {
-      out.push('  ' + fill(L.extraLine, {
+      out.push('  ' + fill(e.days.length === 1 && L.extraLineOne ? L.extraLineOne : L.extraLine, {
         name: e.name, h: L.num(e.hours), n: String(e.days.length), dates: e.days.map(L.date).join(', '),
       }));
     }

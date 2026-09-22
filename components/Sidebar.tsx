@@ -11,7 +11,7 @@ const ABSENCE_LABELS: Record<string, string> = {
 };
 import { getTranslation } from '../utils/translations';
 import { isStaffActiveInWeek, contractHoursOn, monthlyContractHours, getShiftIsoDate, formatMoney, AbsenceDeduction, expectedNote, visibleAbsenceKind, toWeekId } from '../utils/helpers';
-import { datedWeek, hoursByWorker, shiftWorkHours, expectedHours, roundTenth } from '../utils/worktime';
+import { datedWeek, hoursByWorker, shiftWorkHours, expectedHours, roundTenth, formatDuration, formatHoursRef } from '../utils/worktime';
 
 /**
  * Bloc repliable de la colonne de droite (version A de la maquette du 13/09/2026,
@@ -446,11 +446,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <span className="text-slate-400 font-bold tabular-nums">
                   {/* Un extra n'a pas d'heures de contrat : « 12.0 / 0h » se lirait
                       comme un depassement, alors qu'il n'y a rien a comparer. */}
-                  {person.isExtra ? `${totalWorked.toFixed(1)}h` : `${totalWorked.toFixed(1)} / ${contractHours}h`}
+                  {person.isExtra ? formatDuration(totalWorked, language) : `${formatDuration(totalWorked, language)} / ${formatHoursRef(contractHours, language)}`}
                   {isMonth && contractHours > 0 && (
                     <span className={`ml-1.5 ${totalWorked >= contractHours ? 'text-emerald-600' : 'text-amber-600'}`}>
                       {totalWorked >= contractHours ? '+' : '−'}
-                      {Math.abs(totalWorked - contractHours).toFixed(1)}
+                      {formatDuration(Math.abs(totalWorked - contractHours), language)}
                     </span>
                   )}
                 </span>

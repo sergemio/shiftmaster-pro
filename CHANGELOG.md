@@ -5,7 +5,21 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
-## 2026-09-22 (soir) — Relecture du jeu de verite dans l'app : un bug de pause (non commite)
+## 2026-09-22 (soir, 2) — Affichage des heures, boutons en francais, libelles de paie (en ligne)
+
+- **Heures** : « 7.3H » (lu 7 h 30 pour 7 h 15) devient « 7 h 15 » sur les cartes, la barre laterale,
+  la vue par employe et « Ma semaine » (`formatDuration`, arrondi a la minute). Le contrat et l'attendu
+  restent en decimal a virgule (« 151,7 h », forme de la mensualisation) (`formatHoursRef`).
+  La paie reste en decimal (« 7,67 h ») : c'est ce que saisit le logiciel de paie.
+- **Fiche d'un shift** : Annuler / Enregistrer / Supprimer le shift, et la confirmation, en francais.
+- **Paie** : un seul jour -> « le 21 sept 26 » (absence, fermeture) ; « 1 h supplementaire » au singulier
+  sous 2 h ; « sur 1 jour » / « sur 2 jours » ; tri naturel des noms (V2 avant V11).
+- Tests : 7 controles d'affichage dans `test-verite.mjs`, 5 de libelles dans `test-payroll.mjs` ;
+  tests navigateur alignes sur le nouveau format.
+- Fichiers : `utils/worktime.ts`, `utils/payroll.ts`, `utils/translations.ts`, `components/ShiftCard.tsx`,
+  `Sidebar.tsx`, `EmployeeView.tsx`, `MyWeekView.tsx`, `EditShiftModal.tsx`, `PayrollModal.tsx`.
+
+## 2026-09-22 (soir) — Relecture du jeu de verite dans l'app : un bug de pause (commit c6b4658, en ligne)
 
 - Restaurant « Jeu de verite » dans l'emulateur (`scripts/seed-verite.mjs`, compte verite@test.fr) : un
   employe par scenario. Relu a l'ecran : 23 scenarios sur 24 conformes du premier coup.

@@ -64,7 +64,7 @@ with sync_playwright() as pw:
     save(p)
     p.keyboard.press("Escape"); p.wait_for_timeout(600)
     print("   sidebar:", row(p, "Omar"))
-    check("Barre laterale : l attendu reste reduit de 5 h (30 h)", "/ 30h" in row(p, "Omar"), row(p, "Omar"))
+    check("Barre laterale : l attendu reste reduit de 5 h (30 h)", "/ 30 h" in row(p, "Omar"), row(p, "Omar"))
 
     # ---- 2. deux semaines de conges, arret au milieu (a cheval sur la 2e semaine)
     open_modal(p)
