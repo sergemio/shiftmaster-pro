@@ -37,6 +37,9 @@ export const violationText = (
   who: string,
   /** Pour citer la convention quand c'est elle qui fixe le seuil. */
   convention: Convention,
+  /** Formulaire de shift : le shift n'existe pas encore, la phrase passe au
+   *  conditionnel (« Avec ce shift, … travaillerait »). */
+  preview = false,
 ): string => {
   const t = getTranslation(language);
   // La virgule decimale est francaise ; l'anglais garde le point. Sans ca on
@@ -46,7 +49,7 @@ export const violationText = (
 
   const fill = (key: string, extra: Record<string, string> = {}) =>
     Object.entries({ actual: num(v.actual), required: num(v.required), who, ...extra })
-      .reduce((str, [k, val]) => str.replaceAll(`{${k}}`, val), t(key));
+      .reduce((str, [k, val]) => str.replaceAll(`{${k}}`, val), t(preview ? `${key}Preview` : key));
 
   switch (v.rule) {
     case 'dailyRest': {

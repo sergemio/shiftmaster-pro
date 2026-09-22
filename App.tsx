@@ -1076,7 +1076,7 @@ const App: React.FC = () => {
       // Seulement la personne concernee : on ne va pas signaler le probleme
       // d'un collegue au moment ou l'on saisit le shift de quelqu'un d'autre.
       .filter(v => v.staffId === staffId)
-      .map(v => violationText(v, language, index, violationWho(v, staffList), convention));
+      .map(v => violationText(v, language, index, violationWho(v, staffList), convention, true));
   }, [shifts, neighbourWeeks, currentWeek, staffList, convention, language]);
 
   /**

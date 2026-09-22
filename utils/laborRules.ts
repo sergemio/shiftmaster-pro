@@ -167,7 +167,15 @@ export const violationsForStaff = (
   }
   for (const [date, list] of byDate) {
     if (!inWindow(date)) continue;
-    const total = list.reduce((sum, s) => sum + (s.end - s.start), 0);
+    // Plages REUNIES, pas additionnees : deux shifts qui se chevauchent (10 h 30 -
+    // 16 h 30 et 11 h 30 - 17 h 30) font 7 h de presence, pas 12 h (retour de
+    // Serge, 22/09/2026 : l'alerte annoncait 12 h pour un planning a 6 h).
+    let total = 0, reach = -Infinity;
+    for (const s of [...list].sort((a, b) => a.start - b.start)) {
+      const from = Math.max(s.start, reach);
+      if (s.end > from) total += s.end - from;
+      reach = Math.max(reach, s.end);
+    }
     if (total > convention.maxDailyHours) {
       out.push({
         rule: 'maxDaily',
@@ -185,9 +193,14 @@ export const violationsForStaff = (
   // ------------------------------------------------------------- repos quotidien
   // Entre deux shifts de DATES differentes. Deux shifts le meme jour, c'est une
   // coupure : un autre sujet, avec ses propres regles.
+  // « prev » = le shift qui finit le plus tard jusqu'ici, et non le dernier
+  // commence : avec 10 h - 23 h et 11 h - 17 h le meme jour, le repos court
+  // depuis 23 h, pas depuis 17 h.
+  let latest = sorted[0];
   for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
+    const prev = latest;
     const cur = sorted[i];
+    if (at(cur.date, cur.end) > at(latest.date, latest.end)) latest = cur;
     if (cur.date === prev.date) continue;
     const gap = at(cur.date, cur.start) - at(prev.date, prev.end);
     if (gap < convention.dailyRestHours && inWindow(cur.date)) {
@@ -240,16 +253,17 @@ export const violationsForStaff = (
   // grand est trop court, la semaine n'offre nulle part le repos hebdomadaire.
   if (window) {
     const gaps: number[] = [];
+    let reach = at(sorted[0].date, sorted[0].end);
     for (let i = 1; i < sorted.length; i++) {
-      gaps.push(at(sorted[i].date, sorted[i].start) - at(sorted[i - 1].date, sorted[i - 1].end));
+      gaps.push(at(sorted[i].date, sorted[i].start) - reach);
+      reach = Math.max(reach, at(sorted[i].date, sorted[i].end));
     }
     // Les bords comptent : le repos peut commencer avant la fenetre ou finir
     // apres. Sans eux, une semaine ou l'on ne travaille que le lundi serait
     // signalee alors qu'elle est evidemment conforme.
     const first = sorted[0];
-    const last = sorted[sorted.length - 1];
     gaps.push(at(first.date, first.start) - at(window.from, 0));
-    gaps.push(at(addDays(window.to, 1), 0) - at(last.date, last.end));
+    gaps.push(at(addDays(window.to, 1), 0) - reach);
 
     const longest = Math.max(...gaps);
     if (longest < convention.weeklyRestHours) {
