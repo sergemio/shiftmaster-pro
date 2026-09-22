@@ -5,6 +5,16 @@ import LeaveCard from './LeaveCard';
 import { isFormerStaff, todayIso, currentContractHours, formatShortDate } from '../utils/helpers';
 import DateField from './DateField';
 
+/**
+ * Une couleur par personne sur le planning. Avant (recette du 22/09/2026),
+ * tout le monde recevait le meme indigo : les shifts ne se distinguaient plus.
+ */
+const STAFF_COLORS = ['#6366f1', '#0d9488', '#e11d48', '#d97706', '#7c3aed', '#0284c7', '#16a34a', '#c026d3', '#ea580c', '#475569'];
+export const nextStaffColor = (staff: { color?: string; endDate?: string | null }[]): string => {
+  const used = new Set(staff.filter(p => !p.endDate).map(p => (p.color || '').toLowerCase()));
+  return STAFF_COLORS.find(c => !used.has(c)) ?? STAFF_COLORS[staff.length % STAFF_COLORS.length];
+};
+
 interface StaffModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -60,7 +70,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newContractHours, setNewContractHours] = useState(35);
-  const [newColor, setNewColor] = useState('#6366f1');
+  const [newColor, setNewColor] = useState(() => nextStaffColor(staffList));
   const [newRole, setNewRole] = useState<'admin' | 'staff'>('staff');
   const [newJobTitle, setNewJobTitle] = useState('');
   const [newStartDate, setNewStartDate] = useState('');
@@ -161,7 +171,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
     setNewContractHours(35);
     setNewRole('staff');
     setNewJobTitle('');
-    setNewColor('#6366f1');
+    setNewColor(nextStaffColor([...staffList, newStaff]));
     setNewStartDate('');
     setNewEndDate('');
     setIsAddingNew(false);

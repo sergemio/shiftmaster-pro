@@ -216,6 +216,7 @@ const App: React.FC = () => {
    * jeton. null = pas encore lu : on n'affiche rien plutot que de supposer.
    */
   const [memberships, setMemberships] = useState<Record<string, OrgRole> | null>(null);
+  const [lostOrg, setLostOrg] = useState(false);
   const [isSupport, setIsSupport] = useState(false);
   /** Restaurant affiche. Toutes les lectures et ecritures se font sous orgs/{orgId}. */
   const [orgId, setOrgId] = useState<string | null>(null);
@@ -248,12 +249,14 @@ const App: React.FC = () => {
   // Invitation en cours : lue une fois dans l'adresse (?org=…&invite=…), puis
   // gardee le temps de la session pour survivre a la connexion ou a
   // l'inscription. Le jeton est retire de la barre d'adresse aussitot.
-  const [pendingInvite, setPendingInvite] = useState<{ orgId: string; token: string } | null>(() => {
+  // Le nom du restaurant voyage dans le lien (&r=) : l'invite ne peut pas lire
+  // le restaurant avant d'y entrer, et doit savoir qui l'invite (recette du 22/09/2026).
+  const [pendingInvite, setPendingInvite] = useState<{ orgId: string; token: string; orgName?: string } | null>(() => {
     try {
       const q = new URLSearchParams(window.location.search);
       const orgParam = q.get('org'), token = q.get('invite');
       if (orgParam && token) {
-        const inv = { orgId: orgParam, token };
+        const inv = { orgId: orgParam, token, orgName: (q.get('r') || '').slice(0, 80) };
         sessionStorage.setItem('shiftmaster_invite', JSON.stringify(inv));
         window.history.replaceState(null, '', window.location.pathname);
         return inv;
@@ -428,6 +431,10 @@ const App: React.FC = () => {
       const ids = Object.keys(orgs);
       const remembered = localStorage.getItem('shiftmaster_org');
       const chosen = remembered && ids.includes(remembered) ? remembered : (ids[0] ?? null);
+      // Le restaurant ouvert la derniere fois n'est plus dans ses droits
+      // (supprime, ou acces retire) : on le lui dit au lieu de le laisser
+      // devant « Creez votre restaurant » sans explication.
+      setLostOrg(!!remembered && !ids.includes(remembered) && ids.length === 0);
       setIsSupport(support);
       setMemberships(orgs);
       setCurrentOrg(chosen);
@@ -642,7 +649,7 @@ const App: React.FC = () => {
   }, [user, isGuest, pendingInvite, memberships, inviteState]);
 
   const inviteUrl = (token: string) =>
-    `${window.location.origin}${window.location.pathname}?org=${encodeURIComponent(orgId || '')}&invite=${token}`;
+    `${window.location.origin}${window.location.pathname}?org=${encodeURIComponent(orgId || '')}&invite=${token}${org?.name ? `&r=${encodeURIComponent(org.name)}` : ''}`;
 
   const inviteStaff = useCallback(async (person: Staff): Promise<string | null> => {
     if (isReadOnly || !person.email) return null;
@@ -2061,7 +2068,7 @@ const App: React.FC = () => {
           )}
           {pendingInvite && (
             <p className="text-sm font-semibold text-lime-100 bg-lime-500/20 border border-lime-300/30 rounded-2xl px-4 py-3" data-testid="invite-banner">
-              {t('invBanner')}
+              {pendingInvite.orgName ? t('invBannerNamed').replace('{org}', pendingInvite.orgName) : t('invBanner')}
             </p>
           )}
           <AuthForm
@@ -2089,6 +2096,7 @@ const App: React.FC = () => {
         state={inviteState}
         email={user.email || ''}
         detail={inviteDetail}
+        orgName={pendingInvite.orgName}
         onCheckVerified={async () => { const ok = await refreshUser(); if (ok) await acceptPendingInvite(); return ok; }}
         onResend={resendVerification}
         onLogout={handleLogout}
@@ -2106,7 +2114,7 @@ const App: React.FC = () => {
   // Compte valide, mais rattache a aucun restaurant : il cree le sien, ou
   // attend l'invitation de son responsable.
   if (user && !isGuest && !orgId) {
-    return <OnboardingScreen email={user.email || ''} onCreate={handleCreateOrg} onLogout={handleLogout} language={language} />;
+    return <OnboardingScreen email={user.email || ''} lostOrg={lostOrg} onCreate={handleCreateOrg} onLogout={handleLogout} language={language} />;
   }
 
   const orgIds = memberships ? Object.keys(memberships) : [];
@@ -2431,7 +2439,7 @@ const App: React.FC = () => {
         orgData={connected && isAdmin && org ? {
           orgName: org.name,
           isOwner: org.ownerUid === user?.uid,
-          onDeleted: async () => { await loadMemberships(true); window.location.reload(); },
+          onDeleted: async () => { localStorage.removeItem('shiftmaster_org'); await loadMemberships(true); window.location.reload(); },
         } : undefined} />
       <PayrollModal
         isOpen={isPayrollOpen}

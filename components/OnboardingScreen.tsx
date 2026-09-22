@@ -9,6 +9,8 @@ interface OnboardingScreenProps {
   onCreate: (name: string, convention: string) => Promise<string | null>;
   onLogout: () => void;
   language?: Language;
+  /** Le restaurant ouvert la derniere fois n'est plus accessible. */
+  lostOrg?: boolean;
 }
 
 /**
@@ -17,7 +19,7 @@ interface OnboardingScreenProps {
  * seulement — le nom, et la convention qui fixe les seuils des alertes ; le
  * reste se regle plus tard dans les Parametres.
  */
-const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ email, onCreate, onLogout, language = 'fr' }) => {
+const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ email, onCreate, onLogout, language = 'fr', lostOrg = false }) => {
   const t = getTranslation(language);
   const [name, setName] = useState('');
   const [convention, setConvention] = useState<string | null>(null);
@@ -37,6 +39,11 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ email, onCreate, on
   return (
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-slate-50">
       <div className="max-w-md w-full flex flex-col gap-4">
+        {lostOrg && (
+          <p role="status" data-testid="lost-org" className="text-sm font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+            {t('onbLostOrg')}
+          </p>
+        )}
         <form onSubmit={submit} className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 flex flex-col gap-5" data-testid="onboarding">
           <div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight text-balance">{t('onbTitle')}</h1>

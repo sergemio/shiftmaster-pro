@@ -5,6 +5,17 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-22 (soir, 6) — Suite de la recette : couleurs, invitation, restaurant disparu (en ligne)
+
+- Nouvel equipier : couleur libre prise dans une palette de 10 (avant : le meme indigo pour tous).
+  Les equipiers existants gardent la leur (`components/StaffModal.tsx`).
+- Lien d'invitation : porte le nom du restaurant (`&r=`), affiche « Chez Léa vous invite sur son
+  planning » et « Invitation de Chez Léa ». Les anciens liens gardent le texte generique.
+- Compte dont le restaurant a disparu (supprime ou acces retire) : message « n'est plus accessible,
+  demandez une nouvelle invitation » au-dessus de « Creez votre restaurant » (`OnboardingScreen.tsx`).
+  Le proprietaire qui supprime son restaurant ne le voit pas (memoire du restaurant effacee).
+- Test : `recette_fixes2_test.py` (8 controles). Suite complete : 25 suites, 389 controles, tout passe.
+
 ## 2026-09-22 (soir, 5) — Corrections de la recette en ligne (en ligne)
 
 Recette du site en ligne (restaurant « Bistrot Recette », supprime ensuite) : inscription, assistant,

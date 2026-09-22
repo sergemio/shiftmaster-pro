@@ -16,6 +16,8 @@ interface InviteScreenProps {
   /** Abandonner l'invitation et continuer (creer son restaurant, par exemple). */
   onDismiss: () => void;
   language?: Language;
+  /** Nom du restaurant, lu dans le lien d'invitation. */
+  orgName?: string;
 }
 
 /**
@@ -23,7 +25,7 @@ interface InviteScreenProps {
  * cet ecran explique ce qui manque et comment le regler, sans cul-de-sac.
  */
 const InviteScreen: React.FC<InviteScreenProps> = ({
-  state, email, detail, onCheckVerified, onResend, onLogout, onDismiss, language = 'fr',
+  state, email, detail, onCheckVerified, onResend, onLogout, onDismiss, language = 'fr', orgName,
 }) => {
   const t = getTranslation(language);
   const [note, setNote] = useState<string | null>(null);
@@ -46,7 +48,7 @@ const InviteScreen: React.FC<InviteScreenProps> = ({
   return (
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-slate-50">
       <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 flex flex-col gap-4" data-testid="invite-screen">
-        <h1 className="text-xl font-black text-slate-900 text-balance">{t('invTitle')}</h1>
+        <h1 className="text-xl font-black text-slate-900 text-balance">{orgName ? t('invTitleNamed').replace('{org}', orgName) : t('invTitle')}</h1>
         {state === 'working' && <p className="text-slate-600">{t('invWorking')}</p>}
         {state === 'unverified' && (
           <>
