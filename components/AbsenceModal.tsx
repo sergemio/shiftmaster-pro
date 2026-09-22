@@ -205,7 +205,15 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
   // Apres un enregistrement, une annulation ou une suppression, le formulaire
   // repart vierge MAIS reste sur la meme personne : revenir au premier de la
   // liste faisait saisir l'absence suivante au mauvais nom sans s'en apercevoir.
+  // Compteur de remises a zero. Apres un enregistrement, le formulaire repart
+  // sur les dates par defaut (aujourd'hui) : si l'absence suivante porte sur les
+  // MEMES dates, rien ne change aux yeux des calculs, les heures proposees
+  // n'etaient pas recalculees et restaient vides — « Enregistrer » grise (vu le
+  // 22/09/2026, un arret le jour meme apres un conge). Le compteur force le
+  // rechargement du planning (des shifts ont pu etre retires) et la proposition.
+  const [formEpoch, setFormEpoch] = useState(0);
   const resetForm = (p: AbsencePeriod | null, keepStaffId?: string) => {
+    setFormEpoch(n => n + 1);
     setEditing(p);
     setTouched(!!p);
     setStaffId(p?.staffId || keepStaffId || staff[0]?.id || '');
@@ -270,7 +278,7 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
     loadPlanned(staffId, start, end).then(info => { if (live) setPlanned(info); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, staffId, start, end]);
+  }, [isOpen, staffId, start, end, formEpoch]);
 
   // Detail jour par jour : il accompagne la periode, pour que chaque semaine et
   // chaque mois retranchent de l'attendu les heures qui y tombent.
@@ -316,7 +324,7 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
   useEffect(() => {
     if (!hoursEdited && proposedHours !== null) setHours(fmtHours(proposedHours));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proposedHours, hoursEdited]);
+  }, [proposedHours, hoursEdited, formEpoch]);
 
   const fromPlanning = !!planned && periodDays(start, end)
     .some(d => planned.plannedWeekIds.includes(weekIdOfIso(d)));

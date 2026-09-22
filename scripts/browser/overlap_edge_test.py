@@ -2,7 +2,7 @@ import re
 """Absences, cas limites : heures reprises d un conge par un arret, arret au milieu de deux semaines de conges, arret allonge."""
 import tempfile, json
 from playwright.sync_api import sync_playwright
-from dates import MON, iso, fr
+from dates import MON, TODAY, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
 DIR = tempfile.gettempdir()
 res = []
@@ -106,6 +106,19 @@ with sync_playwright() as pw:
     items2 = listed(p, "Double")
     check("Apres rechargement, meme liste", sorted(items2) == sorted(items), (items2, items))
     p.keyboard.press("Escape")
+
+    # ---- 7. deux absences de suite sur les dates PAR DEFAUT (aujourd'hui) : apres le
+    # premier enregistrement, le formulaire repart sur ces memes dates ; les heures
+    # proposees restaient vides et « Enregistrer » grise (22/09/2026). Ce controle
+    # le reproduit quel que soit le jour, pas seulement le mardi.
+    open_modal(p)
+    fill(p, "Serge", "Congés payés", iso(TODAY), iso(TODAY, 1))
+    save(p)
+    fill(p, "Serge", "Arrêt maladie", iso(TODAY), iso(TODAY, 1))
+    check("Meme dates juste apres un enregistrement : heures proposees (pas vides)", hours(p) != "", hours(p))
+    check("... et « Enregistrer l'absence » cliquable",
+          p.get_by_role("button", name="Enregistrer l'absence").is_enabled())
+    p.keyboard.press("Escape"); p.wait_for_timeout(400)
 
     check("Aucune erreur JavaScript / console", not errors, errors[:3])
     b.close()

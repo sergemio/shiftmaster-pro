@@ -5,6 +5,20 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-22 — Deux correctifs : heures chevauchantes, heures d'absence vides
+
+- **Duree du travail** (commit a23a5e6, en ligne) : Serge voyait « 12 heures travaillees » pour un lundi
+  a 6 h — le formulaire additionnait le shift existant (10:30-16:30) et celui en cours de saisie
+  (11:30-17:30). Plages desormais reunies (7 h) ; repos quotidien et hebdomadaire mesures depuis la fin la
+  plus tardive (l'ancien calcul ratait un repos de 9 h) ; alertes du formulaire au conditionnel « Avec ce
+  shift, … travaillerait ». `test-labor-rules-overlap.mjs` importe le vrai moteur (8 cas, l'ancien code en
+  ratait 5).
+- **Absences** (non commite) : apres un enregistrement, le formulaire repart sur les dates par defaut
+  (aujourd'hui). Une deuxieme absence sur ces MEMES dates ne recalculait rien : heures vides,
+  « Enregistrer » grise. Revele par `overlap_edge_test`, qui echouait uniquement le mardi (son mardi de
+  test tombait sur aujourd'hui). Correctif : un compteur de remises a zero force le rechargement du
+  planning et la proposition d'heures (`AbsenceModal.tsx`). Controle ajoute, independant du jour.
+
 ## 2026-09-21 (nuit, suite) — Chantier 4 : carte « Premiers pas » (branche `saas`, non commite)
 
 Valide par Serge. En haut de la barre laterale, pour un admin : « Ajouter un equipier », « Placer un
