@@ -29,7 +29,8 @@ const load = async (entry) => {
 const W = await load('utils/worktime.ts');
 const { payrollVariables } = await load('utils/payroll.ts');
 const { violationsForStaff, CONVENTIONS } = await load('utils/laborRules.ts');
-const { monthlyContractHours } = await load('utils/helpers.ts');
+const { monthlyContractHours, findOverlappingShiftIds } = await load('utils/helpers.ts');
+const { violationText } = await load('utils/violationText.ts');
 rmSync(dir, { recursive: true, force: true });
 
 let ko = 0, n = 0;
@@ -77,7 +78,9 @@ const v1 = [MON, TUE, WED, THU, FRI].map(d => sh('omar', d, 10, 17));
 both('V1 lun-ven 10-17', v1, 'omar', 35);
 check('V1 cout a 15 EUR/h', W.workCost(week(v1), { omar: 15 }).total, 525);
 check('V1 aucune heure sup', line(pay(v1), 'omar').weeks, []);
-check('V1 aucune alerte', rules(v1), []);
+// 7 h d'un seul tenant, sans pause : au-dela de 6 h continues, la pause de
+// 20 min manque (L3121-16), chaque jour. Rien d'autre.
+check('V1 seule alerte : pause manquante, 5 jours', rules(v1), Array(5).fill('breakRequired 7'));
 
 // --- V2 Pause de 30 min -------------------------------------------------------
 // 10-18 = 8 h, moins 30 min = 7,5 h ; x 5 = 37,5 h ; 37,5 - 35 = 2,5 h sup.
@@ -94,7 +97,9 @@ check('V2 heures sup', line(pay(v2), 'omar').weeks.map(w => [w.extra, w.kind]), 
 const v3 = [sh('omar', MON, 10.5, 16.5), sh('omar', MON, 11.5, 17.5)];
 both('V3 doublon le meme lundi', v3, 'omar', 7);
 check('V3 cout', W.workCost(week(v3), { omar: 15 }).total, 105);
-check('V3 pas d alerte journee', rules(v3), []);
+// 7 h de presence d'un seul tenant (10 h 30 - 17 h 30) : pas de depassement
+// de journee (le doublon ne fait pas 12 h), mais pas de pause.
+check('V3 pas de journee de 12 h ; pause manquante', rules(v3), ['breakRequired 7']);
 
 // --- V4 Coupure puis reprise matinale ----------------------------------------
 // Lundi 11-15 + 18-23 = 4 + 5 = 9 h ; mardi 9-14 = 5 h ; total 14 h.
@@ -109,7 +114,8 @@ check('V4 alerte repos 10 h', rules(v4), ['dailyRest 10']);
 const v5 = [sh('omar', MON, 18, 25), sh('omar', TUE, 10, 15)];
 both('V5 18 h - 1 h + mardi', v5, 'omar', 12);
 check('V5 les 7 h comptent le lundi', W.hoursByWorkerDate(week(v5)).get('omar').get('2026-09-21'), 7);
-check('V5 alerte repos 9 h', rules(v5), ['dailyRest 9']);
+// 18 h - 1 h d'un seul tenant (7 h) : pause manquante ; repos 1 h -> 10 h = 9 h.
+check('V5 alertes : pause, repos 9 h', rules(v5), ['breakRequired 7', 'dailyRest 9']);
 check('V5 cout', W.workCost(week(v5), { omar: 15 }).total, 180);
 
 // --- V6 Remplacement ----------------------------------------------------------
@@ -163,7 +169,7 @@ check('V12 extra : 6 h a l ecran', hours(v12, 'xmon'), 6);
 // 8-20 avec 1 h de pause = 11 h : pas au-dessus de 11 h, pas d'alerte.
 // 8-20 sans pause = 12 h : alerte journee 12.
 check('V13 HCR 8-20 pause 1 h', rules([sh('omar', MON, 8, 20, { breakStart: 13, breakMinutes: 60 })], '1979'), []);
-check('V13 HCR 8-20 sans pause', rules([sh('omar', MON, 8, 20)], '1979'), ['maxDaily 12']);
+check('V13 HCR 8-20 sans pause', rules([sh('omar', MON, 8, 20)], '1979'), ['maxDaily 12', 'breakRequired 12']);
 
 // --- V14 La pause reste dans le shift -----------------------------------------
 // 10-18, pause 30 min placee a 17 h 45 : ramenee a 17 h 30. Shift de 30 min avec
@@ -180,6 +186,87 @@ check('V15 cout du mois', W.workCost(two, { omar: 15 }).total, 210);
 // --- V16 Taux inconnu : jamais zero ------------------------------------------
 // Omar a 15 EUR (7 h = 105 EUR), Julie sans taux : total 105, 1 shift non chiffre.
 check('V16 cout partiel', W.workCost(week([sh('omar', MON, 10, 17), sh('julie', MON, 10, 17)]), { omar: 15 }), { total: 105, missing: 1 });
+
+// =============================================================================
+// Chantier 2 (22/09/2026) : repos hebdomadaire, 48 h, pause, remplacant, heure
+// d'ete. Chaque attendu est calcule a la main dans le commentaire.
+// =============================================================================
+const PREV = '2026-09-13', NEXT = '2026-09-27';
+const SAT = 5, SUN = 6;
+const rulesOf = (work, conv = '1501', win = { from: '2026-09-21', to: '2026-09-27' }) =>
+  violationsForStaff(work.map(({ shift: s, date }) => ({
+    id: s.id, staffId: W.workerOf(s), date, start: s.startTime, end: s.endTime,
+    ...(s.breakMinutes ? { breakStart: s.breakStart, breakMinutes: s.breakMinutes } : {}),
+  })), CONVENTIONS[conv], win).map(v => `${v.rule} ${v.actual}`);
+
+// --- V17 Lundi-samedi, dimanche libre, semaine suivante vide ------------------
+// 6 x 9-15 (6 h pile : pas au-dela de 6 h, pas de pause due). Repos samedi 15 h
+// -> suite inconnue = repos. Avant : fausse alerte « 33 h ». Attendu : rien.
+check('V17 lun-sam, dimanche libre, suivante vide : rien',
+  rules([MON, TUE, WED, THU, FRI, SAT].map(d => sh('omar', d, 9, 15))), []);
+
+// --- V18 Mardi-dimanche, lundi libre, semaine precedente vide -----------------
+check('V18 mar-dim, lundi libre, precedente vide : rien',
+  rules([TUE, WED, THU, FRI, SAT, SUN].map(d => sh('omar', d, 9, 15))), []);
+
+// --- V19 Reprise trop tot la semaine suivante (connue) -------------------------
+// Lun-ven 10-16, samedi 15-21 (6 h), lundi suivant 6 h - 10 h.
+// Repos samedi 21 h -> lundi 6 h = 33 h ; dont 27 h dans la semaine (>= 24 h) :
+// il compte pour cette semaine, et 33 < 35 : alerte 33.
+check('V19 samedi 21 h -> lundi suivant 6 h : repos 33 h',
+  rulesOf([...week([MON, TUE, WED, THU, FRI].map(d => sh('omar', d, 10, 16))),
+           ...week([sh('omar', SAT, 15, 21)]),
+           ...W.datedWeek(NEXT, [sh('omar', MON, 6, 10)])]),
+  ['weeklyRest 33']);
+
+// --- V20 Long repos pris la semaine precedente --------------------------------
+// Semaine precedente : lun-ven 10-16, week-end libre. Cette semaine : lun-jeu
+// 10-16, vendredi 17-23, samedi libre, dimanche 9-15.
+// Repos vendredi 23 h -> dimanche 9 h = 34 h. Le repos vendredi precedent 16 h
+// -> lundi 10 h (66 h) n'a que 10 h dans cette semaine : il ne la couvre pas.
+// Attendu : alerte 34 (avant : aucune, selon les semaines chargees).
+check('V20 repos pris surtout la semaine d avant : 34 h signale',
+  rulesOf([...W.datedWeek(PREV, [MON, TUE, WED, THU, FRI].map(d => sh('omar', d, 10, 16))),
+           ...week([MON, TUE, WED, THU].map(d => sh('omar', d, 10, 16))),
+           ...week([sh('omar', FRI, 17, 23), sh('omar', SUN, 9, 15)])]),
+  ['weeklyRest 34']);
+
+// --- V21 48 h dans la semaine --------------------------------------------------
+// Lun-sam 9-17, pause 30 min : 7,5 h x 6 = 45 h -> rien.
+// Lun-sam 9-18, pause 30 min : 8,5 h x 6 = 51 h -> alerte 51.
+check('V21 45 h : rien', rules([MON, TUE, WED, THU, FRI, SAT].map(d => sh('omar', d, 9, 17, { breakStart: 13, breakMinutes: 30 }))), []);
+check('V21 51 h : alerte 48 h', rules([MON, TUE, WED, THU, FRI, SAT].map(d => sh('omar', d, 9, 18, { breakStart: 13, breakMinutes: 30 }))), ['maxWeekly 51']);
+
+// --- V22 Pause de 20 minutes ---------------------------------------------------
+// 9-15 : 6 h pile -> rien. 9 h - 15 h 30 : 6,5 h -> alerte 6,5.
+// 9-13 puis 13 h 15 - 17 : coupure de 15 min, trop courte : 9 h -> 17 h d'affilee = 8 h.
+// 9-13 puis 13 h 20 - 17 : coupure de 20 min, elle vaut pause -> rien.
+check('V22 6 h pile : rien', rules([sh('omar', MON, 9, 15)]), []);
+check('V22 6 h 30 sans pause', rules([sh('omar', MON, 9, 15.5)]), ['breakRequired 6.5']);
+check('V22 coupure de 15 min : ne compte pas', rules([sh('omar', MON, 9, 13), sh('omar', MON, 13.25, 17)]), ['breakRequired 8']);
+check('V22 coupure de 20 min : vaut pause', rules([sh('omar', MON, 9, 13), sh('omar', MON, 13 + 1 / 3, 17)]), []);
+check('V22 pause de 20 min dans le shift', rules([sh('omar', MON, 9, 17, { breakStart: 13, breakMinutes: 20 })]), []);
+{
+  const v = violationsForStaff([{ id: 'p', staffId: 'omar', date: '2026-09-21', start: 9, end: 15.5 }], CONVENTIONS['1501'],
+    { from: '2026-09-21', to: '2026-09-27' })[0];
+  check('V22 phrase affichee', violationText(v, 'fr', new Map(), 'Omar', CONVENTIONS['1501']),
+    "Omar travaille 6,5 heures d'affilée le lundi 21 sept 26 sans pause d'au moins 20 minutes, or le Code du travail impose cette pause dès 6 heures de travail.");
+}
+
+// --- V23 Remplacant a deux endroits a la fois ----------------------------------
+// Alice 10-16 et reprend Bob 14-20 le meme mercredi : les deux cartes en rouge.
+check('V23 chevauchement du remplacant signale', [...findOverlappingShiftIds(v7)].sort(), [v7[0].id, v7[1].id].sort());
+
+// --- V24 Changement d'heure ----------------------------------------------------
+// Nuit du 24 au 25 octobre 2026 (on recule d'une heure) : samedi 23 h -> dimanche
+// 10 h = 12 h ecoulees -> rien. Nuit du 28 au 29 mars 2026 (on avance) : 10 h
+// ecoulees -> alerte 10.
+const dst = (sat, sun) => violationsForStaff([
+  { id: 'a', staffId: 'omar', date: sat, start: 18, end: 23 },
+  { id: 'b', staffId: 'omar', date: sun, start: 10, end: 14 },
+], CONVENTIONS['1501'], { from: sat, to: sun }).filter(v => v.rule === 'dailyRest').map(v => `${v.rule} ${v.actual}`);
+check('V24 octobre : 12 h de repos reelles, rien', dst('2026-10-24', '2026-10-25'), []);
+check('V24 mars : 10 h de repos reelles, alerte', dst('2026-03-28', '2026-03-29'), ['dailyRest 10']);
 
 console.log(ko === 0 ? `\nTOUT PASSE (${n} controles)` : `\n${ko} ECHEC(S) sur ${n}`);
 process.exit(ko === 0 ? 0 : 1);

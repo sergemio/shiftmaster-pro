@@ -989,8 +989,8 @@ const App: React.FC = () => {
     return findViolations(flat, convention, {
       from: getShiftIsoDate(currentWeek, 0),
       to: getShiftIsoDate(currentWeek, 6),
-    }, pooled);
-  }, [shifts, neighbourWeeks, currentWeek, displayStaff, convention]);
+    }, pooled, timezone);
+  }, [shifts, neighbourWeeks, currentWeek, displayStaff, convention, timezone]);
 
   /** Les shifts de la fenetre, indexes pour retrouver celui qu'un message cite. */
   const shiftIndex = useMemo(() => {
@@ -1074,12 +1074,12 @@ const App: React.FC = () => {
     return findViolations(flat, convention, {
       from: getShiftIsoDate(currentWeek, 0),
       to: getShiftIsoDate(currentWeek, 6),
-    }, pooled)
+    }, pooled, timezone)
       // Seulement la personne concernee : on ne va pas signaler le probleme
       // d'un collegue au moment ou l'on saisit le shift de quelqu'un d'autre.
       .filter(v => v.staffId === staffId)
       .map(v => violationText(v, language, index, violationWho(v, staffList), convention, true));
-  }, [shifts, neighbourWeeks, currentWeek, staffList, convention, language]);
+  }, [shifts, neighbourWeeks, currentWeek, staffList, convention, language, timezone]);
 
   /**
    * La periode d'emploi, jour par jour, pour un shift qu'on s'apprete a poser.

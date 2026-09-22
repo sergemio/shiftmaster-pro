@@ -143,7 +143,7 @@ Une grandeur = **une fonction**, dans un module de calcul pur, sans React ni Fir
 
 ### Ordre des chantiers
 1. Module présence + branchement des 8 sites + jeu de vérité (corrige § 2.A, B, C, D, E, H d'un coup). **Fait le 22/09/2026** (`utils/worktime.ts`, `scripts/test-verite.mjs`, pause, fin après minuit ; voir CHANGELOG), non commité.
-2. Repos hebdomadaire (§ 3, ligne 2).
+2. Repos hebdomadaire (§ 3, ligne 2). **Fait le 22/09/2026**, avec les règles du point 3 ci-dessous sauf amplitude.
 3. Règles absentes : 48 h, pause, chevauchement remplaçant ; changement d'heure ; shifts après minuit.
 4. Amplitude, après sourçage de l'IDCC 1979.
 

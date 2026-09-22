@@ -5,7 +5,23 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
-## 2026-09-22 (apres-midi) — Chantier 1 de l'audit des calculs : un seul calcul du temps de travail (non commite)
+## 2026-09-22 (fin d'apres-midi) — Chantier 2 de l'audit : alertes de duree du travail
+
+- **Repos hebdomadaire** : une semaine voisine vide ou non planifiee compte comme du repos (decision de
+  Serge) ; fini la fausse alerte « 33 h » pour lundi-samedi, dimanche libre. Un repos ne couvre la
+  semaine que si 24 h au moins y tombent : un long repos pris la semaine d'avant ne la couvre plus
+  (le meme planning etait juge differemment selon les semaines chargees).
+- **Trois alertes ajoutees**, informatives comme les autres : 48 h dans la semaine (L3121-20) ; pause de
+  20 min au-dela de 6 h de travail continu (L3121-16 ; une coupure d'au moins 20 min vaut pause, une
+  pause saisie dans le shift aussi) ; remplacant a deux endroits a la fois (chevauchement calcule sur
+  celui qui fait le shift, carte en rouge, infobulle au nom du remplacant).
+- **Changement d'heure** : le repos se mesure en temps ecoule, dans le fuseau du restaurant (la nuit
+  d'octobre donne 12 h, celle de mars 10 h ; avant, 11 h les deux fois).
+- **Tests** : jeu de verite porte a 64 controles (V17-V24, dont la phrase affichee) ;
+  `test-labor-rules.mjs` : les deux cas qui figeaient la fausse alerte du dimanche sont alignes sur la
+  decision, un vrai cas fautif (samedi 21 h -> lundi 6 h connu, 33 h) le remplace.
+
+## 2026-09-22 (apres-midi) — Chantier 1 de l'audit des calculs : un seul calcul du temps de travail (commit 170d38c, en ligne)
 
 Audit complet dans `docs/audit-calculs.md` (decisions de Serge en tete). « Combien d'heures a travaille
 cette personne » avait **huit** definitions ; une seule comptait une fois deux shifts qui se chevauchent.

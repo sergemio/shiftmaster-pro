@@ -412,7 +412,9 @@ export const findOverlappingShiftIds = (shifts: Shift[]): Set<string> => {
   const clashing = new Set<string>();
   const byPersonAndDay = new Map<string, Shift[]>();
   for (const s of shifts) {
-    const key = `${s.staffId}#${s.dayIndex}`;
+    // Celui qui fait le shift : Alice qui reprend 14 h - 20 h pendant son propre
+    // 10 h - 16 h est a deux endroits a la fois (audit du 22/09/2026).
+    const key = `${s.coverageBy || s.staffId}#${s.dayIndex}`;
     const list = byPersonAndDay.get(key);
     if (list) list.push(s);
     else byPersonAndDay.set(key, [s]);

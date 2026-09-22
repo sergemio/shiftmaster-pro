@@ -19,7 +19,7 @@
 
 import { mergeSpans, minutesToHours, spanMinutes, workSpans } from './worktime';
 
-export type RuleId = 'dailyRest' | 'weeklyRest' | 'maxDaily' | 'maxConsecutiveDays';
+export type RuleId = 'dailyRest' | 'weeklyRest' | 'maxDaily' | 'maxConsecutiveDays' | 'maxWeekly' | 'breakRequired';
 
 /** Un shift a plat, avec sa date reelle. Le moteur ne manipule que ca. */
 export interface DatedShift {
@@ -54,6 +54,12 @@ export interface Convention {
   maxDailyHours: number;
   /** Jours travailles d'affilee au maximum. */
   maxConsecutiveDays: number;
+  /** Duree maximale sur une meme semaine (L3121-20). */
+  maxWeeklyHours: number;
+  /** Travail continu au-dela duquel une pause est due (L3121-16), en heures. */
+  breakAfterHours: number;
+  /** Duree minimale de cette pause, en minutes : une coupure plus courte ne compte pas. */
+  breakMinutes: number;
 }
 
 export const CONVENTIONS: Record<string, Convention> = {
@@ -67,6 +73,9 @@ export const CONVENTIONS: Record<string, Convention> = {
     weeklyRestHours: 35,
     maxDailyHours: 10,
     maxConsecutiveDays: 6,
+    maxWeeklyHours: 48,
+    breakAfterHours: 6,
+    breakMinutes: 20,
   },
   // Hotels, cafes, restaurants : la convention de la restauration « a table ».
   // La duree maximale d'une journee y depend du poste (11 h cuisinier, 11 h 30
@@ -82,6 +91,9 @@ export const CONVENTIONS: Record<string, Convention> = {
     weeklyRestHours: 35,
     maxDailyHours: 11,
     maxConsecutiveDays: 6,
+    maxWeeklyHours: 48,
+    breakAfterHours: 6,
+    breakMinutes: 20,
   },
   // Sans convention : le Code du travail seul (L3131-1 repos quotidien,
   // L3132-2 repos hebdomadaire, L3121-18 duree quotidienne maximale).
@@ -95,6 +107,9 @@ export const CONVENTIONS: Record<string, Convention> = {
     weeklyRestHours: 35,
     maxDailyHours: 10,
     maxConsecutiveDays: 6,
+    maxWeeklyHours: 48,
+    breakAfterHours: 6,
+    breakMinutes: 20,
   },
 };
 
@@ -127,10 +142,39 @@ export interface Violation {
   required: number;
 }
 
-/** Instant absolu en heures depuis l'epoque, pour comparer deux dates. */
-const at = (date: string, hour: number): number => {
+// -----------------------------------------------------------------------------
+// Le temps. Les horaires sont des heures MURALES (18 h 30 a Paris) ; le repos
+// se mesure en temps ECOULE. La nuit du changement d'heure, les deux different
+// d'une heure : du samedi 23 h au dimanche 10 h, il s'ecoule 12 h fin octobre et
+// 10 h fin mars. Calculer en UTC donnait 11 h les deux fois (audit du 22/09/2026).
+// -----------------------------------------------------------------------------
+
+export const DEFAULT_TIME_ZONE = 'Europe/Paris';
+
+const formatters = new Map<string, Intl.DateTimeFormat>();
+/** Decalage de la zone sur UTC, en heures, a l'instant `utcHours`. */
+const offsetAt = (utcHours: number, timeZone: string): number => {
+  let f = formatters.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', {
+      timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
+    formatters.set(timeZone, f);
+  }
+  const p = Object.fromEntries(f.formatToParts(new Date(utcHours * 3600000)).map(x => [x.type, x.value]));
+  const wall = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) / 3600000;
+  return wall - utcHours;
+};
+
+/** Instant absolu (heures depuis l'epoque) d'une heure murale d'un jour donne.
+ *  `hour` peut depasser 24 : 25 = 1 h du matin le lendemain. */
+const at = (date: string, hour: number, timeZone: string): number => {
   const [y, m, d] = date.split('-').map(Number);
-  return Date.UTC(y, m - 1, d) / 3600000 + hour;
+  const wall = Date.UTC(y, m - 1, d) / 3600000 + hour;
+  // Le decalage depend de l'instant cherche : une seconde passe le stabilise.
+  let off = offsetAt(wall, timeZone);
+  off = offsetAt(wall - off, timeZone);
+  return wall - off;
 };
 
 const addDays = (date: string, n: number): string => {
@@ -141,12 +185,19 @@ const addDays = (date: string, n: number): string => {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/** Plages de travail effectif d'un shift date (pause retiree), en minutes. */
+const spansOf = (s: DatedShift) => workSpans({
+  staffId: s.staffId, dayIndex: 0, startTime: s.start, endTime: s.end,
+  breakStart: s.breakStart, breakMinutes: s.breakMinutes,
+});
+
 /**
  * Toutes les infractions pour une personne, sur la liste de shifts fournie.
  *
  * L'appelant decide de la fenetre : plus il fournit de semaines, plus les regles
- * qui traversent les semaines sont exactes. Une fenetre trop courte ne produit
- * pas de faux positif — elle produit un silence, ce qui est le bon defaut.
+ * qui traversent les semaines sont exactes. Ce qui n'est pas fourni compte comme
+ * du repos : une fenetre trop courte produit un silence, jamais une fausse
+ * alerte (decision de Serge du 22/09/2026).
  */
 export const violationsForStaff = (
   shifts: DatedShift[],
@@ -155,31 +206,28 @@ export const violationsForStaff = (
    *  mais ne declenchent pas d'avertissement : on ne va pas alerter sur une
    *  semaine que l'utilisateur ne regarde pas. */
   window?: { from: string; to: string },
+  timeZone: string = DEFAULT_TIME_ZONE,
 ): Violation[] => {
   const out: Violation[] = [];
   const inWindow = (date: string) => !window || (date >= window.from && date <= window.to);
+  const t = (date: string, hour: number) => at(date, hour, timeZone);
 
-  const sorted = [...shifts].sort((a, b) => at(a.date, a.start) - at(b.date, b.start));
+  const sorted = [...shifts].sort((a, b) => t(a.date, a.start) - t(b.date, b.start));
   if (sorted.length === 0) return out;
 
-  // ---------------------------------------------------------- duree quotidienne
-  // On additionne les shifts d'une meme journee : une coupure midi/soir reste
-  // une seule journee de travail, et c'est bien le total qui est plafonne.
   const byDate = new Map<string, DatedShift[]>();
   for (const s of sorted) {
     const list = byDate.get(s.date) || [];
     list.push(s);
     byDate.set(s.date, list);
   }
+
+  // ---------------------------------------------------------- duree quotidienne
+  // Le temps de travail du module unique (utils/worktime.ts) : plages reunies,
+  // pause retiree. Une coupure midi/soir reste une seule journee de travail.
   for (const [date, list] of byDate) {
     if (!inWindow(date)) continue;
-    // Le temps de travail du module unique (utils/worktime.ts) : plages reunies,
-    // pause retiree. Deux shifts qui se chevauchent (10 h 30 - 16 h 30 et
-    // 11 h 30 - 17 h 30) font 7 h, pas 12 h (retour de Serge, 22/09/2026).
-    const total = minutesToHours(spanMinutes(mergeSpans(list.flatMap(s => workSpans({
-      staffId: s.staffId, dayIndex: 0, startTime: s.start, endTime: s.end,
-      breakStart: s.breakStart, breakMinutes: s.breakMinutes,
-    })))));
+    const total = minutesToHours(spanMinutes(mergeSpans(list.flatMap(spansOf))));
     if (total > convention.maxDailyHours) {
       out.push({
         rule: 'maxDaily',
@@ -194,6 +242,32 @@ export const violationsForStaff = (
     }
   }
 
+  // --------------------------------------------------------------------- pause
+  // Code du travail L3121-16 : des 6 h de travail, 20 minutes de pause
+  // consecutives. Decision du 22/09/2026 : on regarde le travail CONTINU ; une
+  // coupure entre deux shifts vaut pause si elle dure au moins 20 minutes. Une
+  // pause plus courte ne coupe rien. Signale au-dela de 6 h continues.
+  for (const [date, list] of byDate) {
+    if (!inWindow(date)) continue;
+    const spans = mergeSpans(list.flatMap(spansOf));
+    let longest = 0, from = spans[0]?.[0] ?? 0, to = from;
+    for (const [a, z] of spans) {
+      if (a - to >= convention.breakMinutes) from = a;
+      to = Math.max(to, z);
+      longest = Math.max(longest, to - from);
+    }
+    if (longest > convention.breakAfterHours * 60) {
+      out.push({
+        rule: 'breakRequired',
+        staffId: list[0].staffId,
+        shiftId: list[list.length - 1].id,
+        date,
+        actual: round2(minutesToHours(longest)),
+        required: convention.breakAfterHours,
+      });
+    }
+  }
+
   // ------------------------------------------------------------- repos quotidien
   // Entre deux shifts de DATES differentes. Deux shifts le meme jour, c'est une
   // coupure : un autre sujet, avec ses propres regles.
@@ -204,9 +278,9 @@ export const violationsForStaff = (
   for (let i = 1; i < sorted.length; i++) {
     const prev = latest;
     const cur = sorted[i];
-    if (at(cur.date, cur.end) > at(latest.date, latest.end)) latest = cur;
+    if (t(cur.date, cur.end) > t(latest.date, latest.end)) latest = cur;
     if (cur.date === prev.date) continue;
-    const gap = at(cur.date, cur.start) - at(prev.date, prev.end);
+    const gap = t(cur.date, cur.start) - t(prev.date, prev.end);
     if (gap < convention.dailyRestHours && inWindow(cur.date)) {
       out.push({
         rule: 'dailyRest',
@@ -247,37 +321,72 @@ export const violationsForStaff = (
     }
   }
 
-  // ------------------------------------------------------- repos hebdomadaire
-  // 24 h consecutives + le repos quotidien, soit 35 h. Un jour marque « off »
-  // ne suffit donc pas : finir vendredi a 23 h 30 et reprendre dimanche a 9 h
-  // fait 33 h 30, samedi vide ou non. C'est exactement ce qu'un planificateur
-  // ne peut pas deviner de tete.
-  //
-  // On regarde le plus grand repos disponible dans la fenetre. Si meme le plus
-  // grand est trop court, la semaine n'offre nulle part le repos hebdomadaire.
   if (window) {
-    const gaps: number[] = [];
-    let reach = at(sorted[0].date, sorted[0].end);
-    for (let i = 1; i < sorted.length; i++) {
-      gaps.push(at(sorted[i].date, sorted[i].start) - reach);
-      reach = Math.max(reach, at(sorted[i].date, sorted[i].end));
-    }
-    // Les bords comptent : le repos peut commencer avant la fenetre ou finir
-    // apres. Sans eux, une semaine ou l'on ne travaille que le lundi serait
-    // signalee alors qu'elle est evidemment conforme.
-    const first = sorted[0];
-    gaps.push(at(first.date, first.start) - at(window.from, 0));
-    gaps.push(at(addDays(window.to, 1), 0) - reach);
+    const from = t(window.from, 0);
+    const to = t(addDays(window.to, 1), 0);
+    const mine = sorted.filter(s => inWindow(s.date));
 
-    const longest = Math.max(...gaps);
-    if (longest < convention.weeklyRestHours) {
-      out.push({
-        rule: 'weeklyRest',
-        staffId: first.staffId,
-        date: window.from,
-        actual: round2(longest),
-        required: convention.weeklyRestHours,
-      });
+    // ------------------------------------------------------ duree hebdomadaire
+    // Code du travail L3121-20 : 48 h au plus sur une meme semaine.
+    if (mine.length > 0) {
+      let minutes = 0;
+      for (const list of byDate.values()) {
+        if (inWindow(list[0].date)) minutes += spanMinutes(mergeSpans(list.flatMap(spansOf)));
+      }
+      const week = minutesToHours(minutes);
+      if (week > convention.maxWeeklyHours) {
+        out.push({
+          rule: 'maxWeekly',
+          staffId: mine[0].staffId,
+          // Sur le dernier shift de la semaine : c'est lui qui fait depasser.
+          shiftId: mine[mine.length - 1].id,
+          date: window.from,
+          actual: round2(week),
+          required: convention.maxWeeklyHours,
+        });
+      }
+    }
+
+    // ------------------------------------------------------ repos hebdomadaire
+    // 24 h consecutives + le repos quotidien, soit 35 h (L3132-2). Un jour marque
+    // « off » ne suffit donc pas : finir vendredi a 23 h 30 et reprendre dimanche
+    // a 9 h fait 33 h 30, samedi vide ou non.
+    //
+    // Les repos sont les intervalles entre deux periodes de travail. Avant le
+    // premier shift connu et apres le dernier, le repos est OUVERT : une semaine
+    // voisine vide ou pas encore planifiee compte comme du repos (decision de
+    // Serge du 22/09/2026 ; avant, lundi 0 h etait pris pour une reprise et une
+    // semaine « lundi-samedi, dimanche libre » etait signalee).
+    //
+    // Un repos ne compte pour CETTE semaine que si au moins 24 h en tombent dans
+    // la semaine : un long repos pris surtout la semaine precedente ne couvre pas
+    // celle-ci (le meme planning etait juge differemment selon les semaines
+    // chargees). On retient la longueur du repos s'il remplit cette condition,
+    // sinon sa seule part dans la semaine ; le plus grand doit atteindre 35 h.
+    if (mine.length > 0) {
+      const rests: [number, number][] = [];
+      let reach = -Infinity;
+      for (const s of sorted) {
+        const a = t(s.date, s.start);
+        if (a > reach) rests.push([reach, a]);
+        reach = Math.max(reach, t(s.date, s.end));
+      }
+      rests.push([reach, Infinity]);
+      let longest = 0;
+      for (const [a, z] of rests) {
+        const inside = Math.min(z, to) - Math.max(a, from);
+        if (inside <= 0) continue;
+        longest = Math.max(longest, inside >= 24 ? z - a : inside);
+      }
+      if (longest < convention.weeklyRestHours) {
+        out.push({
+          rule: 'weeklyRest',
+          staffId: mine[0].staffId,
+          date: window.from,
+          actual: round2(longest),
+          required: convention.weeklyRestHours,
+        });
+      }
     }
   }
 
@@ -297,6 +406,7 @@ export const findViolations = (
   convention: Convention,
   window?: { from: string; to: string },
   pooledStaffIds: string[] = [],
+  timeZone: string = DEFAULT_TIME_ZONE,
 ): Violation[] => {
   const pooled = new Set(pooledStaffIds);
   const byStaff = new Map<string, DatedShift[]>();
@@ -308,7 +418,7 @@ export const findViolations = (
   }
   const out: Violation[] = [];
   for (const list of byStaff.values()) {
-    out.push(...violationsForStaff(list, convention, window));
+    out.push(...violationsForStaff(list, convention, window, timeZone));
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.rule.localeCompare(b.rule));
 };

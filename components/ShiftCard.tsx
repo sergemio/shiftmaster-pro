@@ -236,7 +236,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
                  personne ne peut etre a deux endroits a la fois, c'est une
                  erreur de saisie et non une situation normale (R5.2). */
               <span
-                title={`${staff.name} a deja un autre shift a ce moment-la`}
+                title={`${(coverStaff || staff).name} a deja un autre shift a ce moment-la`}
                 className="bg-red-100 text-red-800 text-xs font-bold px-1 md:px-1.5 py-0.5 rounded border border-red-300 basis-full leading-tight"
               >
                 {/* Un seul mot court : il se replie plutot que de disparaitre.

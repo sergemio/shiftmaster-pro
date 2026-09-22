@@ -8,7 +8,7 @@ import { loadTs } from './load-ts.mjs';
 const { violationsForStaff, findViolations } = await loadTs('utils/laborRules.ts');
 const { addDaysIso: addDays } = await loadTs('utils/helpers.ts');
 // ---------------------------------------------------------------------------
-const RAPIDE = { dailyRestHours: 11, weeklyRestHours: 35, maxDailyHours: 10, maxConsecutiveDays: 6 };
+const RAPIDE = { dailyRestHours: 11, weeklyRestHours: 35, maxDailyHours: 10, maxConsecutiveDays: 6, maxWeeklyHours: 48, breakAfterHours: 6, breakMinutes: 20 };
 // Lundi 31 aout 2026 -> dimanche 6 septembre 2026.
 const LUN = '2026-08-31';
 const D = n => addDays(LUN, n);
@@ -42,13 +42,19 @@ check('coupure midi/soir le meme jour : pas un repos quotidien',
   []);
 
 // -------------------------------------------------------- duree quotidienne
-check('10 h pile : conforme',
+// 10 h d'un seul tenant : la journee est dans la limite, mais aucune pause
+// (L3121-16, regle ajoutee le 22/09/2026).
+check('10 h pile sans pause : journee conforme, pause manquante',
   rules(violationsForStaff([S('a', 0, 11, 21)], RAPIDE)),
+  ['breakRequired']);
+
+check('10 h pile avec 30 min de pause : conforme',
+  rules(violationsForStaff([{ ...S('a', 0, 11, 21.5), breakStart: 15, breakMinutes: 30 }], RAPIDE)),
   []);
 
 check('10 h 30 d un coup : signale',
   violationsForStaff([S('a', 0, 11, 21.5)], RAPIDE).map(v => [v.rule, v.actual, v.required]),
-  [['maxDaily', 10.5, 10]]);
+  [['maxDaily', 10.5, 10], ['breakRequired', 10.5, 6]]);
 
 check('deux shifts qui totalisent 11 h : signale, badge sur le second',
   violationsForStaff([S('a', 0, 8, 13), S('b', 0, 15, 21)], RAPIDE)
@@ -56,9 +62,11 @@ check('deux shifts qui totalisent 11 h : signale, badge sur le second',
   [['maxDaily', 11, 'b']]);
 
 // -------------------------------------------------------- jours consecutifs
-check('6 jours d affilee : conforme',
+// Decision du 22/09/2026 : la semaine suivante, vide, compte comme du repos.
+// Avant, samedi 16 h -> dimanche minuit (32 h) etait signale a tort.
+check('6 jours d affilee, dimanche libre : conforme',
   rules(violationsForStaff([0, 1, 2, 3, 4, 5].map(d => service(d)), RAPIDE, SEMAINE)),
-  ['weeklyRest']);   // 6 jours passent, mais il ne reste pas 35 h de repos
+  []);
 
 check('7 jours d affilee : signale au 7e',
   violationsForStaff([0, 1, 2, 3, 4, 5, 6].map(d => service(d)), RAPIDE, SEMAINE)
@@ -84,10 +92,10 @@ check('meme cas avec reprise a 11 h : 35 h 30, conforme',
   rules(violationsForStaff([...SEMAINE_PLEINE, S('a', 4, 18, 23.5), S('b', 6, 11, 14)], RAPIDE, SEMAINE)),
   []);
 
-check('semaine sans aucun repos de 35 h : signale',
-  violationsForStaff([0, 1, 2, 3, 4, 5].map(d => service(d)), RAPIDE, SEMAINE)
+check('samedi 23 h -> lundi suivant 8 h (connu) : 33 h, signale',
+  violationsForStaff([0, 1, 2, 3, 4].map(d => service(d)).concat([S('sa', 5, 15, 23), S('lu', 7, 8, 12)]), RAPIDE, SEMAINE)
     .filter(v => v.rule === 'weeklyRest').map(v => [v.actual, v.required]),
-  [[32, 35]]);
+  [[33, 35]]);
 
 check('un seul jour travaille : conforme (les bords de semaine comptent)',
   rules(violationsForStaff([S('a', 2, 12, 16)], RAPIDE, SEMAINE)),

@@ -51,6 +51,9 @@ export const violationText = (
     Object.entries({ actual: num(v.actual), required: num(v.required), who, ...extra })
       .reduce((str, [k, val]) => str.replaceAll(`{${k}}`, val), t(preview ? `${key}Preview` : key));
 
+  const dayLabel = (iso: string) =>
+    `${(language === 'fr' ? DAYS_FR : DAYS_EN)[(new Date(iso + 'T00:00:00Z').getUTCDay() + 6) % 7][language === 'fr' ? 'toLowerCase' : 'toString']()} ${formatShortDate(iso, language)}`;
+
   switch (v.rule) {
     case 'dailyRest': {
       const other = v.otherShiftId ? shiftsById.get(v.otherShiftId) : undefined;
@@ -67,9 +70,11 @@ export const violationText = (
       return fill('ruleDailyRest', { other: label });
     }
     case 'weeklyRest': return fill('ruleWeeklyRest');
+    case 'maxWeekly': return fill('ruleMaxWeekly');
+    case 'breakRequired': return fill('ruleBreakRequired', { day: dayLabel(v.date), minutes: String(convention.breakMinutes) });
     case 'maxDaily': return fill('ruleMaxDaily', {
       // « le mardi 22 sept 26 » : « ce jour-la » obligeait a chercher lequel.
-      day: `${(language === 'fr' ? DAYS_FR : DAYS_EN)[(new Date(v.date + 'T00:00:00Z').getUTCDay() + 6) % 7][language === 'fr' ? 'toLowerCase' : 'toString']()} ${formatShortDate(v.date, language)}`,
+      day: dayLabel(v.date),
       source: convention.idcc
         ? t('ruleSourceConvention').replace('{label}', convention.label).replace('{idcc}', convention.idcc)
         : t('ruleSourceLaw'),

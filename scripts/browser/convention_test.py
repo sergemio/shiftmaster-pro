@@ -1,7 +1,9 @@
 """Convention collective par restaurant (lot 1f) : choix dans les Parametres,
 seuils des alertes. Seed : Sezam (demo) en IDCC 1501 (journee max 10 h).
 Un shift de 10 h 30 est une infraction en 1501 et en « Code du travail »,
-pas en HCR (11 h, poste le plus protecteur)."""
+pas en HCR (11 h, poste le plus protecteur).
+10 h - 21 h avec 30 min de pause : 10 h 30 de travail, sans tronçon de plus de
+6 h (la regle de pause, ajoutee le 22/09/2026, ne se declenche donc pas)."""
 from playwright.sync_api import sync_playwright
 from dates import MON, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
@@ -32,7 +34,7 @@ with sync_playwright() as pw:
       const S = await import(url);
       const w = (await S.loadWeeks([week]))[week];
       await S.saveWeekToFirebase(week, { ...w, shifts: [...w.shifts,
-        { id: 'long1', staffId: 's3', dayIndex: 4, startTime: 10, endTime: 20.5 }] });
+        { id: 'long1', staffId: 's3', dayIndex: 4, startTime: 10, endTime: 21, breakStart: 15, breakMinutes: 30 }] });
     }""", {"url": url, "week": W})
     p.wait_for_timeout(1500)
     body = p.locator("body").inner_text()
