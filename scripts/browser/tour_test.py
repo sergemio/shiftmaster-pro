@@ -5,6 +5,7 @@ production. Les comptes de demonstration ont la visite deja vue
 (seed-emulator.mjs) : elle est donc testee ici, sur des comptes neufs.
 """
 from playwright.sync_api import sync_playwright
+from settings_ui import open_settings
 import time
 import tempfile
 D = tempfile.gettempdir()  # captures d'ecran : hors du depot
@@ -65,7 +66,7 @@ with sync_playwright() as pw:
     p = login(b, 1400, 900, email)
     check("Autre appareil (navigateur vierge) : la visite ne revient pas, retenue sur le compte", p.get_by_test_id("tour").count() == 0)
     # relance depuis les parametres
-    p.locator("[data-tour=settings]").click(); p.wait_for_timeout(500)
+    open_settings(p); p.wait_for_timeout(500)
     p.get_by_role("button", name="Revoir la visite guidée").click(); p.wait_for_timeout(600)
     check("Paramètres > « Revoir la visite guidée » la relance", p.get_by_test_id("tour").count() == 1)
     p.keyboard.press("Escape"); p.wait_for_timeout(400)

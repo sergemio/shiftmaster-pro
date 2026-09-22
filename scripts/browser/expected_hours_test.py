@@ -9,6 +9,7 @@ d'aujourd'hui (voir `dates.py`).
 import tempfile
 from datetime import timedelta
 from playwright.sync_api import sync_playwright
+from settings_ui import open_settings
 from dates import MON, iso, fr
 
 # La semaine de l'arret maladie : une semaine voisine NON planifiee dont le
@@ -115,8 +116,8 @@ with sync_playwright() as pw:
     p2.get_by_role("button", name="Mois", exact=True).click(); p2.wait_for_timeout(3000)
     n2 = notes(p2)
     check("Omar (barre laterale, mois) voit 133,2 h attendues", any("133,2 h attendues" in x for x in n2), n2)
-    p2.get_by_role("button", name="Paramètres", exact=True).first.click(); p2.wait_for_timeout(500)
-    p2.get_by_role("button", name="Ma semaine").first.click(); p2.wait_for_timeout(600)
+    open_settings(p2); p2.wait_for_timeout(500)
+    p2.get_by_role("radio", name="Ma semaine").first.click(); p2.wait_for_timeout(600)
     p2.keyboard.press("Escape"); p2.wait_for_timeout(3000)
     n2 = [x for x in notes(p2)]
     check("« Ma semaine » : attendu de la semaine 30,5 h", "30,5 h attendues (1 j de congé)" in n2, n2)

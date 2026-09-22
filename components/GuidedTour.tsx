@@ -50,8 +50,12 @@ const GuidedTour: React.FC<Props> = ({ steps, language, onClose, finishLabel }) 
   const last = i === steps.length - 1;
 
   const measure = useCallback(() => {
-    const el = step.target ? document.querySelector(step.target) : null;
-    const r = el && (el as HTMLElement).offsetParent !== null ? el.getBoundingClientRect() : null;
+    // La cible visible : les reglages ont un bouton par taille d'ecran
+    // (roue dentee sur telephone, menu du tiroir sur ordinateur).
+    const el = step.target
+      ? Array.from(document.querySelectorAll<HTMLElement>(step.target)).find(e => e.offsetParent !== null) ?? null
+      : null;
+    const r = el ? el.getBoundingClientRect() : null;
     setRect(r && r.width > 0 ? r : null);
   }, [step.target]);
 

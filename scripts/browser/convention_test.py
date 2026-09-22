@@ -5,6 +5,7 @@ pas en HCR (11 h, poste le plus protecteur).
 10 h - 21 h avec 30 min de pause : 10 h 30 de travail, sans tronçon de plus de
 6 h (la regle de pause, ajoutee le 22/09/2026, ne se declenche donc pas)."""
 from playwright.sync_api import sync_playwright
+from settings_ui import open_settings
 from dates import MON, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
 # Semaine en cours : son identifiant est le DIMANCHE qui precede son lundi.
@@ -41,11 +42,11 @@ with sync_playwright() as pw:
     check("IDCC 1501 : le shift de 10 h 30 declenche une alerte, convention nommee", FAST in body, [l for l in body.splitlines() if "IDCC" in l])
 
     def choose(label):
-        p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
+        open_settings(p); p.wait_for_timeout(500)
         p.get_by_role("radio", name=label).click(); p.wait_for_timeout(1200)
         p.keyboard.press("Escape"); p.wait_for_timeout(800)
 
-    p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
+    open_settings(p); p.wait_for_timeout(500)
     radios = [p.get_by_role("radio", name=n) for n in (FAST, HCR, CODE)]
     check("Parametres : trois choix de convention", all(r.count() == 1 for r in radios))
     check("... la convention du restaurant est cochee (1501)", radios[0].get_attribute("aria-checked") == "true")
@@ -55,7 +56,7 @@ with sync_playwright() as pw:
     body = p.locator("body").inner_text()
     check("HCR : plus d'alerte pour 10 h 30 (seuil 11 h)", HCR not in body and FAST not in body, [l for l in body.splitlines() if "IDCC" in l])
     p.reload(); p.wait_for_timeout(4200)
-    p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
+    open_settings(p); p.wait_for_timeout(500)
     check("Le choix HCR persiste apres rechargement", p.get_by_role("radio", name=HCR).get_attribute("aria-checked") == "true")
     p.keyboard.press("Escape"); p.wait_for_timeout(300)
 
@@ -70,7 +71,7 @@ with sync_playwright() as pw:
     p2.reload()
     p2.get_by_label("Email").fill("omar@test.fr"); p2.get_by_label("Mot de passe").fill("test1234")
     p2.get_by_role("button", name="Se connecter", exact=True).click(); p2.wait_for_timeout(3800)
-    p2.get_by_role("button", name="Paramètres", exact=True).first.click(); p2.wait_for_timeout(500)
+    open_settings(p2); p2.wait_for_timeout(500)
     check("Employe : pas de reglage de convention", p2.get_by_role("radio", name=HCR).count() == 0)
     check("Aucune erreur JavaScript", not errors, errors[:2])
     b.close()

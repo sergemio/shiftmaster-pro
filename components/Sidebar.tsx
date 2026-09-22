@@ -127,6 +127,8 @@ interface SidebarProps {
   canRedo?: boolean;
   language?: Language;
   isOpen?: boolean;
+  /** Ordinateur : le tiroir des reglages est ouvert, la colonne sort de l'ecran par la droite. */
+  pushedOut?: boolean;
   onClose?: boolean | (() => void);
 }
 
@@ -166,6 +168,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   canRedo = false,
   language = 'en',
   isOpen = false,
+  pushedOut = false,
   onClose
 }) => {
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
@@ -273,8 +276,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       <aside className={`
         fixed md:relative top-0 right-0 h-full bg-white z-[110] md:z-auto
         w-[min(320px,85vw)] sm:w-[320px] md:w-[320px] lg:w-[340px] border-l flex flex-col gap-3.5 px-4 py-4 overflow-y-auto hide-scrollbar
-        transition-transform duration-300 ease-in-out
+        transition-[transform,margin] duration-300 ease-in-out flex-none
         ${isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
+        ${pushedOut ? 'md:-mr-[320px] lg:-mr-[340px]' : ''}
       `}>
         {/* Dans le tiroir du telephone, titre + export + annuler/retablir + fermer ne
             tiennent pas sur une ligne : le titre etait ecrase en « S.. ». Sous 768 px

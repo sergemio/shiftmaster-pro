@@ -9,6 +9,7 @@ ecoules), pour ne pas dependre du jour ou le test tourne.
 import calendar
 from datetime import date, timedelta
 from playwright.sync_api import sync_playwright
+from settings_ui import open_settings
 from dates import MON, NEXT_MON, TODAY, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
 res = []
@@ -101,7 +102,7 @@ with sync_playwright() as pw:
     p.keyboard.press("Escape"); p.wait_for_timeout(400)
 
     # --- 5. reglage ouvrables / ouvres ------------------------------------------------------
-    p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
+    open_settings(p); p.wait_for_timeout(500)
     rad = p.get_by_role("radio", name="Jours ouvrables (lun–sam, 30 j/an)")
     check("Parametres : jours ouvrables par defaut", rad.get_attribute("aria-checked") == "true")
     p.get_by_role("radio", name="Jours ouvrés (lun–ven, 25 j/an)").click(); p.wait_for_timeout(1200)
@@ -115,7 +116,7 @@ with sync_playwright() as pw:
     check("En ouvres, une semaine de conges = 5 jours", d.startswith("5 jour"), d)
     p.keyboard.press("Escape"); p.wait_for_timeout(300)
     p.reload(); p.wait_for_timeout(4200)
-    p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
+    open_settings(p); p.wait_for_timeout(500)
     check("Le reglage ouvres persiste apres rechargement",
           p.get_by_role("radio", name="Jours ouvrés (lun–ven, 25 j/an)").get_attribute("aria-checked") == "true")
     p.get_by_role("radio", name="Jours ouvrables (lun–sam, 30 j/an)").click(); p.wait_for_timeout(1000)
@@ -127,7 +128,7 @@ with sync_playwright() as pw:
     err2 = []
     p2.on("pageerror", lambda e: err2.append(str(e)))
     login(p2, "omar@test.fr")
-    p2.get_by_role("button", name="Paramètres", exact=True).first.click(); p2.wait_for_timeout(500)
+    open_settings(p2); p2.wait_for_timeout(500)
     check("Employe : pas de reglage du decompte des conges", p2.get_by_role("radio", name="Jours ouvrés (lun–ven, 25 j/an)").count() == 0)
     p2.get_by_role("button", name="Ma semaine").first.click(); p2.wait_for_timeout(300)
     p2.keyboard.press("Escape"); p2.wait_for_timeout(1200)

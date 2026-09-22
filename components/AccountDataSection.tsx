@@ -45,7 +45,6 @@ const AccountDataSection: React.FC<{
 
   return (
     <section data-testid="account-data">
-      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2.5">{t('orgDataTitle')}</h3>
       <div className="flex flex-col gap-2">
         <button
           type="button"

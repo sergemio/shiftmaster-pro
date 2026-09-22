@@ -5,6 +5,23 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-22 (soir, 7) — Tiroir des reglages + sections repliables (en ligne)
+
+Maquettes : `maquettes/tiroir-menu.html` (5 versions) ; Serge choisit la version B.
+- Ordinateur : bouton menu (trois traits) avant le nom de l'app. Il ouvre un tiroir a gauche
+  (320/340 px, la largeur de la colonne des stats) qui pousse tout l'ecran : le planning garde sa
+  largeur, la colonne des stats sort par la droite. Croix ou Echap pour fermer. La roue dentee
+  n'existe plus que sur telephone (fenetre Parametres inchangee dans son principe).
+- Contenu des reglages (tiroir ET fenetre telephone) : sections repliables, fermees par defaut,
+  qui glissent a l'ouverture (0,2 s) — Affichage, Heures d'ouverture, Convention collective,
+  Decompte des conges, Jours feries, Fermetures, Couts horaires, Donnees, Donnees du restaurant.
+  Choix exclusifs en boutons de choix, oui/non en interrupteurs.
+- Liste de demarrage « Heures d'ouverture » : ouvre les reglages sur cette section.
+- Visite guidee : vise le bouton visible (menu sur ordinateur, roue dentee sur telephone).
+- Tests : `drawer_test.py` (17 controles) ; `settings_ui.py` (ouvrir les reglages et deplier les
+  sections) repris par 10 suites. Suite : 25/26 ; `leave_balance_test` echoue entre 23 h et minuit
+  (heure de Paris) : le PC est a l'heure du Liban, le test compte un jour de plus que l'app.
+
 ## 2026-09-22 (soir, 6) — Suite de la recette : couleurs, invitation, restaurant disparu (en ligne)
 
 - Nouvel equipier : couleur libre prise dans une palette de 10 (avant : le meme indigo pour tous).

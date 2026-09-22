@@ -7,6 +7,7 @@ la semaine en cours sert de temoin, elle doit rester sans fermeture. Dates
 calculees a partir d'aujourd'hui — voir `dates.py`."""
 import re
 from playwright.sync_api import sync_playwright
+from settings_ui import open_settings
 from dates import NEXT_MON, MON, iso, fr, mois, jour_nom
 URL = "http://localhost:3100/shiftmaster-pro/"
 res = []
@@ -22,7 +23,7 @@ def login(p, email):
     p.get_by_role("button", name="Se connecter", exact=True).click(); p.wait_for_timeout(3800)
 
 def settings(p):
-    p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
+    open_settings(p); p.wait_for_timeout(500)
 
 def next_week(p):
     p.get_by_role("button", name="Semaine suivante").click(); p.wait_for_timeout(1500)
@@ -38,7 +39,7 @@ with sync_playwright() as pw:
 
     # --- 1. saisie dans les parametres ------------------------------------------------
     settings(p)
-    sec = p.get_by_test_id("closures")
+    sec = p.get_by_test_id("settings-closures")
     check("Parametres : section « Fermetures du restaurant »", sec.count() == 1 and "FERMETURES DU RESTAURANT" in sec.inner_text().upper())
     check("Bouton d'ajout desactive tant que les dates manquent", sec.get_by_role("button", name="Ajouter cette fermeture").is_disabled())
     sec.get_by_label("Du").fill(iso(NEXT_MON))

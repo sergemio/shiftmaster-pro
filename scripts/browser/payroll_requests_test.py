@@ -4,6 +4,7 @@ Donnees : seed-emulator. Omar 35 h (shifts lun 14/09 4,5 h, mar 15/09 5 h),
 Double 20 h (mer 16/09 3 h). Lancer `node scripts/seed-emulator.mjs` avant.
 """
 from playwright.sync_api import sync_playwright
+from settings_ui import open_settings
 from datetime import date, timedelta
 from dates import MON, iso, fr, mois, mois_long, semaine_entiere
 
@@ -41,8 +42,8 @@ def login(p, email):
     p.wait_for_timeout(3800)
 
 def my_week(p):
-    p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
-    p.get_by_role("button", name="Ma semaine").first.click(); p.wait_for_timeout(300)
+    open_settings(p); p.wait_for_timeout(500)
+    p.get_by_role("radio", name="Ma semaine").first.click(); p.wait_for_timeout(300)
     p.keyboard.press("Escape"); p.wait_for_timeout(600)
 
 def request_leave(p, kind, start, back, note=""):
@@ -127,7 +128,7 @@ with sync_playwright() as pw:
     serge.get_by_role("button", name="Enregistrer l'absence").click(); serge.wait_for_timeout(1800)
     serge.keyboard.press("Escape"); serge.wait_for_timeout(400)
 
-    serge.get_by_role("button", name="Paramètres", exact=True).first.click(); serge.wait_for_timeout(500)
+    open_settings(serge); serge.wait_for_timeout(500)
     serge.get_by_role("button", name="Éléments variables de paie").click(); serge.wait_for_timeout(600)
     serge.get_by_label("Mois").fill(MOIS_PAIE); serge.wait_for_timeout(2500)
     txt = serge.get_by_test_id("payroll-text").inner_text()
@@ -160,7 +161,7 @@ with sync_playwright() as pw:
     serge.keyboard.press("Escape"); serge.wait_for_timeout(300)
 
     # --- 5. Un employe n'a pas l'export -------------------------------------------------------
-    omar.get_by_role("button", name="Paramètres", exact=True).first.click(); omar.wait_for_timeout(500)
+    open_settings(omar); omar.wait_for_timeout(500)
     check("Employe : pas de bouton d'export de paie", omar.get_by_role("button", name="Éléments variables de paie").count() == 0)
     check("Aucune erreur JavaScript", not errs and not errs2, (errs + errs2)[:2])
     b.close()

@@ -7,6 +7,7 @@ Omar est equipier de Sezam : la section ne doit pas exister pour lui.
 """
 import json
 from playwright.sync_api import sync_playwright
+from settings_ui import open_settings
 URL = "http://localhost:3100/shiftmaster-pro/"
 res = []
 def check(label, ok, extra=""):
@@ -21,7 +22,7 @@ def login(b, email):
     return p, errs
 
 def settings(p):
-    p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(700)
+    open_settings(p); p.wait_for_timeout(700)
 
 with sync_playwright() as pw:
     b = pw.chromium.launch()

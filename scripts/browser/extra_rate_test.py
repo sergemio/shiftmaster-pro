@@ -4,6 +4,7 @@ Seed : Omar 16,5 EUR/h (lun 4,5 h + mar 5 h), Double 15 EUR/h (mer 3 h). On ajou
 d'extra de 5 h sans fiche : non chiffre tant qu'aucun taux par defaut n'existe.
 """
 from playwright.sync_api import sync_playwright
+from settings_ui import open_settings
 from dates import MON, iso, fr
 URL = "http://localhost:3100/shiftmaster-pro/"
 # Semaine en cours : son identifiant est le DIMANCHE qui precede son lundi.
@@ -36,7 +37,7 @@ with sync_playwright() as pw:
     euros = [l for l in side().split("\n") if "€" in l]
     check("Sans taux par defaut : total de la semaine partiel, « ≥ 202 € »", "≥ 202\xa0€" in euros, euros)
 
-    p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
+    open_settings(p); p.wait_for_timeout(500)
     field = p.get_by_label("Extras — coût horaire chargé par défaut")
     check("Parametres : ligne « Extras (par défaut) »", field.count() == 1)
     field.fill("14"); field.press("Enter"); p.wait_for_timeout(1200)
@@ -50,7 +51,7 @@ with sync_playwright() as pw:
           "272 €" in euros and not any("≥" in l for l in euros), euros)
 
     p.reload(); p.wait_for_timeout(4200)
-    p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
+    open_settings(p); p.wait_for_timeout(500)
     check("Le taux par defaut est enregistre (14 apres rechargement)",
           p.get_by_label("Extras — coût horaire chargé par défaut").input_value() == "14")
     check("Aucune erreur JavaScript", not errors, errors[:2])

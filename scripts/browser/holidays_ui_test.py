@@ -5,6 +5,7 @@ Semaine du 11 novembre (Armistice), calculee a partir d'aujourd'hui : voir `date
 """
 from datetime import date, timedelta
 from playwright.sync_api import sync_playwright
+from settings_ui import open_settings
 from dates import MON, TODAY, iso
 
 # Ferie de reference : le prochain 11 novembre (Armistice), un jour qui ne tombe
@@ -38,7 +39,7 @@ def to_november(p):
     p.wait_for_timeout(1200)
 
 def settings(p):
-    p.get_by_role("button", name="Paramètres", exact=True).first.click()
+    open_settings(p)
     p.wait_for_timeout(500)
 
 def armistice_switch(p):

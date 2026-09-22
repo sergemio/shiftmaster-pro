@@ -232,6 +232,17 @@ const App: React.FC = () => {
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  // Ordinateur : les reglages s'ouvrent dans un tiroir a gauche qui pousse
+  // tout l'ecran vers la droite (version B des maquettes, choix de Serge le 22/09/2026).
+  const [isSettingsDrawerOpen, setIsSettingsDrawerOpen] = useState(false);
+  const [drawerMounted, setDrawerMounted] = useState(false);
+  useEffect(() => { if (isSettingsDrawerOpen) setDrawerMounted(true); }, [isSettingsDrawerOpen]);
+  const [settingsSection, setSettingsSection] = useState<string | undefined>();
+  const openSettings = (section?: string) => {
+    setSettingsSection(section);
+    if (window.innerWidth >= 768) setIsSettingsDrawerOpen(true); else setIsSettingsModalOpen(true);
+  };
+  const closeSettings = () => { setIsSettingsModalOpen(false); setIsSettingsDrawerOpen(false); };
   const [isAbsenceModalOpen, setIsAbsenceModalOpen] = useState(false);
   /** Periode ouverte en modification depuis la bande du calendrier. */
   const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
@@ -1572,7 +1583,7 @@ const App: React.FC = () => {
     items: [
       { label: t('checklistTeam'), done: stepTeam, onClick: fromSidebar(() => openStaffFrom('shift')) },
       { label: t('checklistShift'), done: stepShift, onClick: fromSidebar(() => setIsShiftModalOpen(true)) },
-      { label: t('checklistHours'), done: stepHours, onClick: fromSidebar(() => setIsSettingsModalOpen(true)) },
+      { label: t('checklistHours'), done: stepHours, onClick: fromSidebar(() => openSettings('hours')) },
     ],
     onDismiss: () => markPrefs({ checklistDone: true }),
   } : undefined;
@@ -1754,6 +1765,7 @@ const App: React.FC = () => {
         else if (isExtrasModalOpen) setIsExtrasModalOpen(false);
         else if (isHistoryModalOpen) setIsHistoryModalOpen(false);
         else if (isSettingsModalOpen) setIsSettingsModalOpen(false);
+        else if (isSettingsDrawerOpen) setIsSettingsDrawerOpen(false);
         else if (selectedShiftIds.length > 0) setSelectedShiftIds([]);
         else if (isMobileSidebarOpen) setIsMobileSidebarOpen(false);
         return;
@@ -1780,7 +1792,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, redo, isShiftModalOpen, isStaffModalOpen, isExtrasModalOpen, isHistoryModalOpen, isSettingsModalOpen,
+  }, [undo, redo, isShiftModalOpen, isStaffModalOpen, isExtrasModalOpen, isHistoryModalOpen, isSettingsModalOpen, isSettingsDrawerOpen,
       isAbsenceModalOpen, isPayrollOpen, editingShiftId, isMonthPickerOpen, isMobileSidebarOpen, currentWeek,
       selectedShiftIds]);
 
@@ -2119,9 +2131,40 @@ const App: React.FC = () => {
 
   const orgIds = memberships ? Object.keys(memberships) : [];
 
+  // Les memes reglages en fenetre (telephone) et en tiroir (ordinateur).
+  const settingsProps = {
+    onClose: closeSettings,
+    initialSection: settingsSection,
+    language, onLanguageChange: setLanguage, viewType, onViewTypeChange: setViewType,
+    canSeeMyWeek: !!me, canSeeMoney: !isReadOnly, staff: staffList, rates, onRatesChange: updateRates,
+    hours: operatingHours,
+    onHoursChange: isReadOnly ? undefined : (h: OperatingHours) => { updateOperatingHours(h); markPrefs({ hoursSet: true }); },
+    closedHolidays, onClosedHolidaysChange: isReadOnly ? undefined : updateClosedHolidays,
+    closures, onClosuresChange: isReadOnly ? undefined : updateClosures,
+    leaveUnit, onLeaveUnitChange: isReadOnly ? undefined : updateLeaveUnit,
+    convention: conventionFor(conventionId).id, onConventionChange: isReadOnly ? undefined : updateConvention,
+    onOpenPayroll: isReadOnly ? undefined : () => { closeSettings(); setIsPayrollOpen(true); },
+    onReplayTour: isReadOnly ? undefined : () => { closeSettings(); setTourOpen(true); },
+    // Meme en lecture seule (essai termine), un admin garde le droit de tout telecharger.
+    orgData: connected && isAdmin && org ? {
+      orgName: org.name,
+      isOwner: org.ownerUid === user?.uid,
+      onDeleted: async () => { localStorage.removeItem('shiftmaster_org'); await loadMemberships(true); window.location.reload(); },
+    } : undefined,
+  };
+
   return (
-    <div className="flex h-screen bg-white">
-      <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex h-screen bg-white overflow-hidden">
+      {/* Tiroir des reglages (ordinateur) : il s'elargit pendant que la colonne
+          des stats sort par la droite, de la meme largeur — le planning glisse
+          sans changer de taille. Son contenu n'existe que tiroir ouvert (et le
+          temps qu'il se referme) : ferme, rien n'y est cliquable ni lisible. */}
+      <div className={`hidden md:block flex-none h-full overflow-hidden transition-[width] duration-300 ease-in-out ${isSettingsDrawerOpen ? 'w-[320px] lg:w-[340px] border-r border-slate-200' : 'w-0'}`}
+        data-testid="settings-drawer-slot"
+        onTransitionEnd={() => { if (!isSettingsDrawerOpen) setDrawerMounted(false); }}>
+        {(isSettingsDrawerOpen || drawerMounted) && <SettingsModal asDrawer isOpen={isSettingsDrawerOpen} {...settingsProps} />}
+      </div>
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Sur telephone, l'en-tete depassait l'ecran (51 px a 400 px de large) :
             engrenage coupe, avatar hors champ. Marges et ecarts resserres sous
             640 px, et l'avatar — decoratif a cette taille, le nom et la
@@ -2136,7 +2179,21 @@ const App: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <button 
+            <button
+              type="button"
+              onClick={() => { setSettingsSection(undefined); setIsSettingsDrawerOpen(o => !o); }}
+              data-tour="settings"
+              data-testid="settings-menu"
+              aria-label={t('settings')}
+              aria-expanded={isSettingsDrawerOpen}
+              title={t('settings')}
+              className={`hidden md:flex -ml-2 w-10 h-10 flex-none items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 active:scale-95 transition-all ${isSettingsDrawerOpen ? 'bg-slate-100' : ''}`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <button
               onClick={handleJumpToToday}
               className="text-base sm:text-lg font-bold text-slate-800 hover:text-indigo-600 transition-colors active:scale-95 flex-shrink-0 whitespace-nowrap"
               title={t('returnToday')}
@@ -2204,9 +2261,9 @@ const App: React.FC = () => {
               <span className="hidden sm:block max-w-[160px] truncate text-sm font-semibold text-slate-500" title={t('restaurant')}>{org.name}</span>
             ) : null}
             <button
-              onClick={() => setIsSettingsModalOpen(true)}
+              onClick={() => openSettings()}
               data-tour="settings"
-              className="w-9 h-9 md:w-9 md:h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
+              className="md:hidden w-9 h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
               title={t('settings')}
             >
               <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -2314,6 +2371,7 @@ const App: React.FC = () => {
         </div>
       </div>
       <Sidebar
+        pushedOut={isSettingsDrawerOpen}
         shifts={shifts}
         staff={displayStaff}
         onlyStaffId={isAdmin ? null : (me?.id || '__none__')}
@@ -2431,16 +2489,8 @@ const App: React.FC = () => {
         onRefuseRequest={(req, reply) => decideLeaveRequest(req, 'refused', { reply })}
         language={language}
       />
-      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : (h: OperatingHours) => { updateOperatingHours(h); markPrefs({ hoursSet: true }); }} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} closures={closures} onClosuresChange={isReadOnly ? undefined : updateClosures} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit}
-        convention={conventionFor(conventionId).id} onConventionChange={isReadOnly ? undefined : updateConvention}
-        onOpenPayroll={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setIsPayrollOpen(true); }}
-        onReplayTour={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setTourOpen(true); }}
-        // Meme en lecture seule (essai termine), un admin garde le droit de tout telecharger.
-        orgData={connected && isAdmin && org ? {
-          orgName: org.name,
-          isOwner: org.ownerUid === user?.uid,
-          onDeleted: async () => { localStorage.removeItem('shiftmaster_org'); await loadMemberships(true); window.location.reload(); },
-        } : undefined} />
+      {/* Remontee a chaque ouverture : sections refermees, ou celle demandee ouverte. */}
+      <SettingsModal key={String(isSettingsModalOpen)} isOpen={isSettingsModalOpen} {...settingsProps} />
       <PayrollModal
         isOpen={isPayrollOpen}
         onClose={() => setIsPayrollOpen(false)}

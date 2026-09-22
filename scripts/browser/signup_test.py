@@ -4,6 +4,7 @@ Cree un compte neuf a chaque passage (adresse horodatee) dans l'emulateur :
 jamais sur la production.
 """
 from playwright.sync_api import sync_playwright
+from settings_ui import open_settings
 import time
 URL = "http://localhost:3100/shiftmaster-pro/"
 res = []
@@ -53,7 +54,7 @@ with sync_playwright() as pw:
     check("La visite guidee s'ouvre a la premiere connexion", tour.count() == 1)
     if tour.count():
         tour.get_by_role("button", name="Passer").click(); p.wait_for_timeout(400)
-    p.get_by_role("button", name="Paramètres", exact=True).first.click(); p.wait_for_timeout(500)
+    open_settings(p); p.wait_for_timeout(500)
     check("La convention choisie est enregistree (HCR)",
           p.get_by_role("radio", name="Hôtels, cafés, restaurants (HCR) — IDCC 1979").get_attribute("aria-checked") == "true")
     p.keyboard.press("Escape"); p.wait_for_timeout(300)
