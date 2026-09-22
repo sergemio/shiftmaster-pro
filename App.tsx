@@ -2412,7 +2412,13 @@ const App: React.FC = () => {
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} language={language} onLanguageChange={setLanguage} viewType={viewType} onViewTypeChange={setViewType} canSeeMyWeek={!!me} canSeeMoney={!isReadOnly} staff={staffList} rates={rates} onRatesChange={updateRates} hours={operatingHours} onHoursChange={isReadOnly ? undefined : (h: OperatingHours) => { updateOperatingHours(h); markPrefs({ hoursSet: true }); }} closedHolidays={closedHolidays} onClosedHolidaysChange={isReadOnly ? undefined : updateClosedHolidays} closures={closures} onClosuresChange={isReadOnly ? undefined : updateClosures} leaveUnit={leaveUnit} onLeaveUnitChange={isReadOnly ? undefined : updateLeaveUnit}
         convention={conventionFor(conventionId).id} onConventionChange={isReadOnly ? undefined : updateConvention}
         onOpenPayroll={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setIsPayrollOpen(true); }}
-        onReplayTour={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setTourOpen(true); }} />
+        onReplayTour={isReadOnly ? undefined : () => { setIsSettingsModalOpen(false); setTourOpen(true); }}
+        // Meme en lecture seule (essai termine), un admin garde le droit de tout telecharger.
+        orgData={connected && isAdmin && org ? {
+          orgName: org.name,
+          isOwner: org.ownerUid === user?.uid,
+          onDeleted: async () => { await loadMemberships(true); window.location.reload(); },
+        } : undefined} />
       <PayrollModal
         isOpen={isPayrollOpen}
         onClose={() => setIsPayrollOpen(false)}

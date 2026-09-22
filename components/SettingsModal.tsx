@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Language, Staff, ViewType, Closure } from '../types';
+import AccountDataSection from './AccountDataSection';
 import ExportDataButton from './ExportDataButton';
 import HourlyRatesEditor from './HourlyRatesEditor';
 import { getTranslation } from '../utils/translations';
@@ -41,6 +42,8 @@ interface SettingsModalProps {
   onOpenPayroll?: () => void;
   /** Relance la visite guidee (absent pour qui ne planifie pas). */
   onReplayTour?: () => void;
+  /** Donnees du restaurant (RGPD) : absent = pas admin, la section n'apparait pas. */
+  orgData?: { orgName: string; isOwner: boolean; onDeleted: () => void };
 }
 
 /**
@@ -122,6 +125,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   staff = [],
   rates = {},
   onRatesChange,
+  orgData,
   hours = DEFAULT_OPERATING_HOURS,
   onHoursChange,
   closedHolidays = [],
@@ -370,6 +374,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
             </div>
           </section>
+
+          {orgData && <AccountDataSection language={language as Language} {...orgData} />}
         </div>
 
         <div className="flex-none px-6 md:px-8 pt-4 pb-6 md:pb-8 border-t border-slate-100">

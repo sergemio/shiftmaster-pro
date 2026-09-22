@@ -5,6 +5,21 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-22 (soir, 4) — Donnees du restaurant (RGPD) et sauvegarde de nuit (en ligne)
+
+- **Parametres > Donnees du restaurant** (admins, meme en lecture seule) : « Telecharger toutes les
+  donnees » = un fichier JSON avec le restaurant, ses membres et toutes ses sous-collections, dates en
+  texte (function `exportOrg`, lue cote serveur pour ne rien oublier).
+- **Supprimer le restaurant** (proprietaire seul) : il retape le nom exact, suppression immediate
+  (function `deleteOrg`, deja la, enfin reliee a un ecran). Le texte previent : copie 30 jours dans les
+  sauvegardes.
+- **Sauvegarde de nuit** : function `nightlyBackup`, 3 h heure de Paris, copie de toute la base dans le
+  bucket `saas-planning-resto-backups`, efface apres 30 jours. Mise en place : `scripts/setup-backups.mjs`.
+- Dependance explicite `@google-cloud/firestore` dans `functions/package.json`.
+- Test : `rgpd_test.py` (11 controles : equipier sans acces, export complet, nom exige, suppression, reconnexion).
+- Fichiers : `functions/index.js`, `components/AccountDataSection.tsx`, `SettingsModal.tsx`, `App.tsx`,
+  `services/firebaseService.ts`, `utils/translations.ts`.
+
 ## 2026-09-22 (soir, 3) — Pause : interrupteur, 20 min d'office au-dela de 6 h, duree au double-clic (en ligne)
 
 - **Nouveau shift de plus de 6 h** : pause de 20 min posee d'office au milieu (minimum legal, L3121-16),

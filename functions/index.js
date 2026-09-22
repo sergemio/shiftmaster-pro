@@ -23,6 +23,8 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import firestoreLib from '@google-cloud/firestore';
 import { randomBytes } from 'node:crypto';
 
 initializeApp();
@@ -263,4 +265,61 @@ export const deleteOrg = onCall(async (request) => {
     await syncClaims(m.id);
   }
   return { orgId, membersDetached: members.size };
+});
+
+// --- exportOrg ------------------------------------------------------------------
+
+/**
+ * Toutes les donnees d'un restaurant, en un seul objet (droit d'acces et de
+ * portabilite, RGPD art. 15 et 20). Admins seulement : ils voient deja tout.
+ * Lu cote serveur pour ne rien oublier : chaque sous-collection, quelle
+ * qu'elle soit, y compris celles ajoutees plus tard.
+ */
+// Dates Firestore -> texte ISO : le fichier doit se lire sans Firebase.
+const plain = (v) => v instanceof Timestamp ? v.toDate().toISOString()
+  : Array.isArray(v) ? v.map(plain)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)]))
+  : v;
+
+export const exportOrg = onCall(async (request) => {
+  const caller = requireAuth(request);
+  const orgId = cleanOrgId(request.data?.orgId);
+  requireOrgAdmin(caller, orgId);
+  const orgRef = db.doc(`orgs/${orgId}`);
+  const org = await orgRef.get();
+  if (!org.exists) throw new HttpsError('not-found', 'Restaurant introuvable.');
+
+  const collections = {};
+  for (const coll of await orgRef.listCollections()) {
+    const snap = await coll.get();
+    collections[coll.id] = Object.fromEntries(snap.docs.map(d => [d.id, plain(d.data())]));
+  }
+  const members = await db.collection('users').where(`orgs.${orgId}`, 'in', ['admin', 'staff']).get();
+  return {
+    exportedAt: nowIso(),
+    orgId,
+    restaurant: plain(org.data()),
+    members: members.docs.map(m => ({ email: m.data().email || null, role: m.data().orgs[orgId] })),
+    ...collections,
+  };
+});
+
+// --- nightlyBackup --------------------------------------------------------------
+
+/**
+ * Copie de TOUTE la base chaque nuit a 3 h (heure de Paris), dans le bucket
+ * `<projet>-backups` (meme region que la base). Le bucket efface les copies de
+ * plus de 30 jours (regle de cycle de vie) : un restaurant supprime disparait
+ * donc des sauvegardes 30 jours apres (decision de Serge du 22/09/2026).
+ * Restauration : `gcloud firestore import gs://<bucket>/<date>`.
+ */
+export const nightlyBackup = onSchedule({ schedule: '0 3 * * *', timeZone: 'Europe/Paris' }, async () => {
+  const project = process.env.GCLOUD_PROJECT;
+  const client = new firestoreLib.v1.FirestoreAdminClient();
+  const [op] = await client.exportDocuments({
+    name: client.databasePath(project, '(default)'),
+    outputUriPrefix: `gs://${project}-backups/${new Date().toISOString().slice(0, 10)}`,
+    collectionIds: [],   // toutes les collections
+  });
+  console.log('Sauvegarde lancee :', op.name);
 });

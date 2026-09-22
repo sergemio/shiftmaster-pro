@@ -374,6 +374,25 @@ export const createOrgCall = async (input: { name: string; convention: string; l
   }
 };
 
+/** Toutes les donnees du restaurant courant, en un objet (RGPD : acces et portabilite). */
+export const exportOrgCall = async (): Promise<{ data?: unknown; error?: string }> => {
+  try {
+    return { data: await callFunction<unknown>('exportOrg', { orgId: requireOrg() }) };
+  } catch (e: any) {
+    return { error: e?.message || e?.code || 'unknown' };
+  }
+};
+
+/** Supprime DEFINITIVEMENT le restaurant courant. Le serveur exige le nom exact. */
+export const deleteOrgCall = async (confirmName: string): Promise<{ ok?: boolean; error?: string }> => {
+  try {
+    await callFunction('deleteOrg', { orgId: requireOrg(), confirmName });
+    return { ok: true };
+  } catch (e: any) {
+    return { error: e?.message || e?.code || 'unknown' };
+  }
+};
+
 // --- invitations (lot 1e) --------------------------------------------------------
 
 /**
