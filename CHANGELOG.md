@@ -5,6 +5,27 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-23 (nuit) — Fuseau du restaurant + corrections de la recette locale (en ligne)
+
+Demande de Serge : « je dois pouvoir piloter mon restaurant de n'importe ou dans le monde ».
+- Toutes les dates « du jour » suivent le fuseau du RESTAURANT, jamais celui de l'appareil
+  (`utils/helpers.ts` : `setRestaurantTimeZone`, `todayIso`, `currentWeekStart`) : soldes de conges,
+  absences, paie, export du mois, annee des feries, semaine ouverte, jour surligne (y compris les
+  onglets des jours sur telephone, qui lisaient la date de l'appareil).
+- Reglages : section « Fuseau horaire du restaurant » (gerants), avec l'heure actuelle au restaurant.
+  Creation d'un restaurant : fuseau demande, pre-rempli avec celui de l'appareil.
+- Recette locale (captures ordinateur, tablette, telephone, essai termine, anglais) :
+  - tablette 768-1279 px : l'en-tete se chevauchait → nom du restaurant et de l'utilisateur
+    masques a cette largeur, repris dans un bloc « compte » en bas des reglages, avec Deconnexion
+    (le telephone n'avait aucun bouton de deconnexion) ;
+  - tablette paysage : semaine entiere sans defilement (grille 620 px minimum au lieu de 1000 sous 1280 px) ;
+  - conventions nommees en anglais dans l'interface anglaise ; taux horaires affiches « 16,5 » en francais ;
+    « Type de vue ».
+  - Non corrige (attend le paiement) : essai termine = seulement « Acces lecture seule » en bas de colonne.
+  - Non verifie : connexion Google jusqu'au bout.
+- Tests : `timezone_test.py` (10, gerant simule a Bali), `drawer_test.py` (+3 tablette) ; les tests
+  comptent « aujourd'hui » a l'heure de Paris (`dates.py`, `seed-emulator.mjs`). Suite : 27/27, 419 controles.
+
 ## 2026-09-22 (soir, 7) — Tiroir des reglages + sections repliables (en ligne)
 
 Maquettes : `maquettes/tiroir-menu.html` (5 versions) ; Serge choisit la version B.

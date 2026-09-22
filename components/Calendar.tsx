@@ -447,7 +447,7 @@ const Calendar: React.FC<CalendarProps> = ({
     <div 
       id="calendar-grid-capture"
       ref={gridRef}
-      className="relative select-none min-w-0 md:min-w-[1000px] transition-all duration-300 bg-white"
+      className="relative select-none min-w-0 md:min-w-[620px] xl:min-w-[1000px] transition-all duration-300 bg-white"
       /* La hauteur etait la somme, ecrite en dur, de l'en-tete et de la grille.
          La bande des absences est venue s'intercaler sans y etre comptee : avec
          deux absences le meme jour, le conteneur debordait de 50px et l'export
@@ -502,11 +502,8 @@ const Calendar: React.FC<CalendarProps> = ({
           const date = new Date(currentWeek);
           date.setDate(date.getDate() + idx + 1); // +1: weekStart is Sunday, dayIndex 0 = Monday
           const dayNum = date.getDate();
-          const today = new Date();
-          const isToday = 
-            date.getDate() === today.getDate() &&
-            date.getMonth() === today.getMonth() &&
-            date.getFullYear() === today.getFullYear();
+          // Aujourd'hui a l'heure du restaurant, pas a celle de l'appareil.
+          const isToday = idx === todayIndex;
           const isActive = idx === activeDayIndex;
 
           return (

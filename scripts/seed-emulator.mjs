@@ -39,7 +39,9 @@ const DAY = 24 * 3600 * 1000;
 
 // Semaine courante : identifiant = dimanche precedent (convention de l'app).
 const sundayBefore = (d) => { const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); x.setUTCDate(x.getUTCDate() - (x.getUTCDay() === 0 ? 7 : x.getUTCDay())); return x; };
-const weekId = sundayBefore(new Date()).toISOString().slice(0, 10);
+// Semaine en cours a l'heure des restaurants de demo (Paris), comme l'app.
+const parisToday = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()) + 'T12:00:00');
+const weekId = sundayBefore(parisToday).toISOString().slice(0, 10);
 
 const ORGS = {
   sezam: {

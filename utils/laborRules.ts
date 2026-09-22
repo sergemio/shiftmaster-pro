@@ -40,6 +40,8 @@ export interface Convention {
   id: string;
   /** Nom affiche a l'utilisateur. Il doit toujours savoir quelle loi on lui cite. */
   label: string;
+  /** Nom en anglais, pour l'interface anglaise. */
+  labelEn: string;
   idcc: string;
   /** D'ou viennent les chiffres, et quand ils ont ete verifies pour la derniere
    *  fois. Les conventions changent par avenants : sans ces deux champs, la
@@ -66,6 +68,7 @@ export const CONVENTIONS: Record<string, Convention> = {
   '1501': {
     id: '1501',
     label: 'Restauration rapide',
+    labelEn: 'Quick-service restaurants',
     idcc: '1501',
     source: 'IDCC 1501 pour la journee ; Code du travail pour les repos',
     checkedOn: '2026-09-06',
@@ -84,6 +87,7 @@ export const CONVENTIONS: Record<string, Convention> = {
   '1979': {
     id: '1979',
     label: 'Hôtels, cafés, restaurants (HCR)',
+    labelEn: 'Hotels, cafés, restaurants (HCR)',
     idcc: '1979',
     source: 'IDCC 1979, avenant n° 2 du 05/02/2007 (non reverifie en ligne) ; Code du travail pour les repos',
     checkedOn: '2026-09-18',
@@ -100,6 +104,7 @@ export const CONVENTIONS: Record<string, Convention> = {
   none: {
     id: 'none',
     label: 'Code du travail (sans convention)',
+    labelEn: 'Labour Code (no collective agreement)',
     idcc: '',
     source: 'Code du travail L3131-1, L3132-2, L3121-18',
     checkedOn: '2026-09-18',
@@ -118,7 +123,10 @@ export const conventionFor = (id?: string | null): Convention =>
   CONVENTIONS[id === 'hcr' ? '1979' : id || DEFAULT_CONVENTION] || CONVENTIONS[DEFAULT_CONVENTION];
 
 /** Libelle complet, IDCC compris quand il existe. */
-export const conventionLabel = (c: Convention): string => (c.idcc ? `${c.label} — IDCC ${c.idcc}` : c.label);
+export const conventionLabel = (c: Convention, language: string = 'fr'): string => {
+  const label = language === 'fr' ? c.label : c.labelEn;
+  return c.idcc ? `${label} — IDCC ${c.idcc}` : label;
+};
 
 export const DEFAULT_CONVENTION = '1501';
 

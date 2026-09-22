@@ -16,7 +16,8 @@ la semaine EN COURS ; c'est elle que l'application ouvre au demarrage.
 Figer l'heure du navigateur a ete ecarte : la base et les jetons de connexion
 gardent la vraie heure, on obtiendrait deux verites dans le meme test.
 """
-from datetime import date, timedelta
+from zoneinfo import ZoneInfo
+from datetime import date, datetime, timedelta
 
 # Abreviations de mois telles que l'app les affiche : Intl en francais, point retire.
 MOIS_COURT = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin',
@@ -25,7 +26,9 @@ MOIS_LONG = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
              'août', 'septembre', 'octobre', 'novembre', 'décembre']
 JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 
-TODAY = date.today()
+# « Aujourd'hui » a l'heure du restaurant de demo (Paris), pas a celle du PC :
+# l'app compte ainsi (22/09/2026), et le PC de Serge est souvent a l'heure du Liban.
+TODAY = datetime.now(ZoneInfo("Europe/Paris")).date()
 #: lundi de la semaine en cours — celle que l'app ouvre, et que la demo remplit
 MON = TODAY - timedelta(days=TODAY.weekday())
 #: lundis des semaines voisines

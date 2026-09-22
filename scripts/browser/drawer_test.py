@@ -63,6 +63,17 @@ with sync_playwright() as pw:
     check("Ordinateur : aucune erreur JavaScript", not errs, errs[:2])
     p.context.close()
 
+    # tablette paysage : en-tete sans chevauchement, semaine entiere, deconnexion dans les reglages
+    p, errs = login(b, (1024, 768), mobile=True)
+    boxes = [e.bounding_box() for e in p.locator("header > div").all()]
+    check("Tablette : les deux blocs de l'en-tete ne se chevauchent pas", boxes[0]["x"] + boxes[0]["width"] <= boxes[1]["x"] + 1, boxes)
+    grid = p.get_by_text(re.compile(r"^dimanche$", re.I)).first.bounding_box()
+    check("Tablette paysage : dimanche visible sans defiler", grid["x"] + grid["width"] <= 1024 - 300, grid)
+    open_settings(p, expand_all=False)
+    acc = p.get_by_test_id("settings-account")
+    check("Tablette : nom, restaurant et Deconnexion dans les reglages", acc.count() == 1 and "Sezam" in acc.inner_text() and "Déconnexion" in acc.inner_text())
+    p.context.close()
+
     p, errs = login(b, (390, 844), mobile=True)
     check("Telephone : pas de bouton menu des reglages", p.get_by_test_id("settings-menu").is_hidden())
     p.locator("header button[title='Paramètres']").last.click(); p.wait_for_timeout(500)

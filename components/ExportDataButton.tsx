@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Language } from '../types';
 import { exportWeeksData, loadStaffFromFirebase } from '../services/firebaseService';
-import { toWeekId } from '../utils/helpers';
+import { toWeekId, todayIso } from '../utils/helpers';
 
 interface ExportDataButtonProps {
   language?: Language;
@@ -19,10 +19,8 @@ interface ExportDataButtonProps {
  */
 const ExportDataButton: React.FC<ExportDataButtonProps> = ({ language = 'en' }) => {
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportMonth, setExportMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
+  // Mois en cours a l'heure du restaurant.
+  const [exportMonth, setExportMonth] = useState(() => todayIso().slice(0, 7));
   const [isExporting, setIsExporting] = useState(false);
 
   const handleExportData = async () => {

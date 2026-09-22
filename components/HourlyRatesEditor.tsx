@@ -38,8 +38,9 @@ const HourlyRatesEditor: React.FC<HourlyRatesEditorProps> = ({ staff, rates, onC
   const [draft, setDraft] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setDraft(Object.fromEntries(Object.entries(rates).map(([id, v]) => [id, String(v)])));
-  }, [rates]);
+    // « 16,5 » en francais : la saisie accepte deja la virgule, l'affichage la montre.
+    setDraft(Object.fromEntries(Object.entries(rates).map(([id, v]) => [id, fr ? String(v).replace('.', ',') : String(v)])));
+  }, [rates, fr]);
 
   const commit = (id: string, raw: string) => {
     const value = parseFloat(raw.replace(',', '.'));

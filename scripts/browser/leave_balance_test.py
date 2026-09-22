@@ -130,7 +130,7 @@ with sync_playwright() as pw:
     login(p2, "omar@test.fr")
     open_settings(p2); p2.wait_for_timeout(500)
     check("Employe : pas de reglage du decompte des conges", p2.get_by_role("radio", name="Jours ouvrés (lun–ven, 25 j/an)").count() == 0)
-    p2.get_by_role("button", name="Ma semaine").first.click(); p2.wait_for_timeout(300)
+    p2.get_by_role("radio", name="Ma semaine").first.click(); p2.wait_for_timeout(300)
     p2.keyboard.press("Escape"); p2.wait_for_timeout(1200)
     mb = p2.get_by_test_id("my-leave-balance")
     txt = mb.inner_text() if mb.count() else ""

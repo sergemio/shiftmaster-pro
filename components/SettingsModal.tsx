@@ -5,7 +5,7 @@ import AccountDataSection from './AccountDataSection';
 import ExportDataButton from './ExportDataButton';
 import HourlyRatesEditor from './HourlyRatesEditor';
 import { getTranslation } from '../utils/translations';
-import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours, frenchPublicHolidays, formatShortDate, todayIso } from '../utils/helpers';
+import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours, frenchPublicHolidays, formatShortDate, todayIso, timeZoneChoices } from '../utils/helpers';
 import { CONVENTIONS, conventionLabel } from '../utils/laborRules';
 
 interface SettingsModalProps {
@@ -39,6 +39,11 @@ interface SettingsModalProps {
   convention?: string;
   /** Rendu en tiroir lateral (ordinateur) plutot qu'en fenetre. */
   asDrawer?: boolean;
+  /** Qui est connecte, a quel restaurant, et la deconnexion (absente de l'en-tete sur tablette et telephone). */
+  account?: { name: string; email: string; orgName: string; onLogout: () => void };
+  /** Fuseau horaire du restaurant. `onTimezoneChange` absent = pas admin. */
+  timezone?: string;
+  onTimezoneChange?: (tz: string) => void;
   /** Section deja ouverte a l'arrivee (ex. « Heures d'ouverture » depuis la liste de demarrage). */
   initialSection?: string;
   onConventionChange?: (id: string) => void;
@@ -129,6 +134,7 @@ const ICONS: Record<string, string> = {
   euro: 'M17 6a7 7 0 100 12M4 10h9M4 14h9',
   data: 'M4 6c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
   shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+  globe: 'M12 21a9 9 0 100-18 9 9 0 000 18zM3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3z',
 };
 
 const Section: React.FC<{
@@ -206,6 +212,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onConventionChange,
   asDrawer = false,
   initialSection,
+  timezone = 'Europe/Paris',
+  onTimezoneChange,
+  account,
 }) => {
   const [openSet, setOpenSet] = useState<Set<string>>(() => new Set(initialSection ? [initialSection] : []));
   const toggle = (id: string) => setOpenSet(prev => {
@@ -253,12 +262,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         </Section>
       )}
 
+      {/* Ou se trouve le restaurant (22/09/2026) : « aujourd'hui », la semaine en
+          cours et le trait de l'heure suivent ce fuseau, pas celui de l'appareil. */}
+      {onTimezoneChange && (
+        <Section id="timezone" icon={ICONS.globe} title={t('tzTitle')} open={openSet} onToggle={toggle}>
+          <p className={hint}>{t('tzHint')}</p>
+          <select value={timezone} onChange={e => onTimezoneChange(e.target.value)} aria-label={t('tzTitle')}
+            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none">
+            {timeZoneChoices().map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
+          </select>
+          <p className="text-xs text-slate-600" data-testid="tz-now">
+            {t('tzNow')} <b>{new Date().toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit' })}</b>
+            {' · '}{formatShortDate(todayIso(timezone), language)}
+          </p>
+        </Section>
+      )}
+
       {/* Convention collective : les seuils des alertes de duree du travail
           (repos, journee maximale) en dependent. */}
       {onConventionChange && (
         <Section id="convention" icon={ICONS.book} title={t('conventionTitle')} open={openSet} onToggle={toggle}>
           <Choices label={t('conventionTitle')} value={convention} stacked
-            options={['1501', '1979', 'none'].map(id => [id, conventionLabel(CONVENTIONS[id])] as [string, string])}
+            options={['1501', '1979', 'none'].map(id => [id, conventionLabel(CONVENTIONS[id], language)] as [string, string])}
             onChange={onConventionChange} />
           <p className={hint}>{t('conventionHint')}</p>
         </Section>
@@ -281,7 +306,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         <Section id="holidays" icon={ICONS.calendar} title={t('holidaysTitle')} open={openSet} onToggle={toggle}>
           <p className={hint}>{t('holidaysHint')}</p>
           <ul className="flex flex-col">
-            {frenchPublicHolidays(new Date().getFullYear()).map(h => {
+            {frenchPublicHolidays(Number(todayIso().slice(0, 4))).map(h => {
               const closed = closedHolidays.includes(h.key);
               const name = t('holiday_' + h.key);
               return (
@@ -339,6 +364,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         <Section id="org" icon={ICONS.shield} title={t('orgDataTitle')} open={openSet} onToggle={toggle}>
           <AccountDataSection language={language as Language} {...orgData} />
         </Section>
+      )}
+
+      {account && (
+        <div className="mt-3 mx-2 pt-3 border-t border-slate-200 flex items-center gap-3" data-testid="settings-account">
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-semibold text-slate-800 truncate">{account.name}</span>
+            <span className="block text-xs text-slate-500 truncate">{[account.orgName, account.email].filter(Boolean).join(' · ')}</span>
+          </span>
+          <button type="button" onClick={account.onLogout}
+            className="flex-none text-sm font-semibold text-red-600 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50">
+            {t('signOut')}
+          </button>
+        </div>
       )}
     </div>
   );

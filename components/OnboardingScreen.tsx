@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { Language } from '../types';
 import { getTranslation } from '../utils/translations';
 import { CONVENTIONS, conventionLabel } from '../utils/laborRules';
+import { timeZoneChoices } from '../utils/helpers';
 
 interface OnboardingScreenProps {
   email: string;
   /** Renvoie un message d'erreur, ou null une fois le restaurant cree. */
-  onCreate: (name: string, convention: string) => Promise<string | null>;
+  onCreate: (name: string, convention: string, timezone: string) => Promise<string | null>;
   onLogout: () => void;
   language?: Language;
   /** Le restaurant ouvert la derniere fois n'est plus accessible. */
@@ -25,6 +26,9 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ email, onCreate, on
   const [convention, setConvention] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Pre-rempli avec le fuseau de l'appareil, mais c'est la ou se trouve le
+  // restaurant qui compte : un gerant a l'etranger le corrige ici.
+  const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Paris');
 
   const canCreate = name.trim().length > 0 && !!convention && !busy;
 
@@ -32,7 +36,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ email, onCreate, on
     e.preventDefault();
     if (!canCreate) return;
     setBusy(true); setError(null);
-    const err = await onCreate(name.trim(), convention!);
+    const err = await onCreate(name.trim(), convention!, timezone);
     if (err) { setError(err); setBusy(false); }
   };
 
@@ -61,11 +65,19 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ email, onCreate, on
               {['1501', '1979', 'none'].map(id => (
                 <button key={id} type="button" role="radio" aria-checked={convention === id} onClick={() => setConvention(id)}
                   className={`text-left px-4 py-3 rounded-xl border text-sm font-bold transition-all ${convention === id ? 'bg-indigo-50 border-indigo-600 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                  {conventionLabel(CONVENTIONS[id])}
+                  {conventionLabel(CONVENTIONS[id], language)}
                   <span className="block text-xs font-medium text-slate-500 mt-0.5">{t('onbConvHint_' + id)}</span>
                 </button>
               ))}
             </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="onb-tz" className="text-xs font-black uppercase tracking-widest text-slate-400">{t('tzTitle')}</label>
+            <select id="onb-tz" value={timezone} onChange={e => setTimezone(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-base font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500">
+              {timeZoneChoices().map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
+            </select>
+            <span className="text-xs text-slate-500">{t('onbTzHint')}</span>
           </div>
           {error && <p role="alert" className="text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>}
           <button type="submit" disabled={!canCreate}

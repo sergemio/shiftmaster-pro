@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, Language, Absence, AbsencePeriod, WeekData, DraftData, EMPTY_WEEK, ViewType, Org, OrgRole, Extra, WeekHoliday, LeaveBalance, LeaveUnit, LeaveRequest, RequestableLeaveKind, LaborConvention, Invite, Closure } from './types';
-import { getWeekStart, getWeekRangeString, getWeekRangeCompact, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind, costRates, leaveBalanceSummary, countLeaveDays, closedHolidayDates, todayIso } from './utils/helpers';
+import { getWeekStart, getWeekRangeString, getWeekRangeCompact, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind, costRates, leaveBalanceSummary, countLeaveDays, closedHolidayDates, todayIso, currentWeekStart, setRestaurantTimeZone, getRestaurantTimeZone } from './utils/helpers';
 import { INITIAL_STAFF } from './constants';
 import { PauseValue, pauseFields } from './components/PauseField';
 import { datedWeek, hoursByWorker, hoursByWorkerDate, workCost, workerOf, DatedWork } from './utils/worktime';
@@ -171,7 +171,7 @@ const App: React.FC = () => {
   });
   const t = useMemo(() => getTranslation(language), [language]);
 
-  const [currentWeek, setCurrentWeek] = useState<Date>(getWeekStart(new Date()));
+  const [currentWeek, setCurrentWeek] = useState<Date>(currentWeekStart);
   const [navDirection, setNavDirection] = useState<'forward' | 'backward' | 'none'>('none');
   const [staffList, setStaffList] = useState<Staff[]>([]);
   // Couts horaires charges. Vide tant qu'on n'est pas admin : on ne les
@@ -478,6 +478,7 @@ const App: React.FC = () => {
       const saved = JSON.parse(localStorage.getItem('sandbox_hours') || 'null');
       setOperatingHours(normalizeOperatingHours(saved?.start, saved?.end));
       setConventionId(localStorage.getItem('sandbox_convention') || DEFAULT_CONVENTION);
+      applyTimeZone(localStorage.getItem('sandbox_timezone') || 'Europe/Paris');
       return;
     }
     if (!connected) return;
@@ -485,7 +486,7 @@ const App: React.FC = () => {
     const unsubscribe = subscribeToOrg((next) => {
       setOrg(next);
       const settings = next?.settings;
-      if (settings?.timezone) setTimezone(settings.timezone);
+      applyTimeZone(settings?.timezone || 'Europe/Paris');
       if (settings?.convention) setConventionId(settings.convention);
       setOperatingHours(normalizeOperatingHours(settings?.openHour, settings?.closeHour));
     });
@@ -764,6 +765,27 @@ const App: React.FC = () => {
     return leaveBalanceSummary({ date: anchor.anchorDate, balance: anchor.anchorBalance },
       Object.values(absencePeriods).filter(p => p.staffId === me.id), me, todayIso(), leaveUnit, countDays);
   }, [me, leaveBalances, absencePeriods, leaveUnit, closedHolidays]);
+
+  /**
+   * Fuseau du restaurant : toutes les dates « du jour » le suivent. Si l'ecran
+   * montrait la semaine en cours, il montre celle du nouveau fuseau (autour de
+   * minuit le dimanche, ce n'est pas la meme).
+   */
+  const applyTimeZone = useCallback((next: string) => {
+    const before = getRestaurantTimeZone();
+    if (next === before) { setTimezone(next); return; }
+    const oldWeek = toWeekId(getWeekStart(new Date(), before));
+    setRestaurantTimeZone(next);
+    setTimezone(next);
+    setCurrentWeek(prev => toWeekId(prev) === oldWeek ? currentWeekStart() : prev);
+  }, []);
+
+  const updateTimezone = useCallback((next: string) => {
+    if (isReadOnly) return;
+    applyTimeZone(next);
+    if (isGuest) { localStorage.setItem('sandbox_timezone', next); return; }
+    saveGlobalSettings({ timezone: next });
+  }, [isReadOnly, isGuest, applyTimeZone]);
 
   const updateConvention = useCallback((next: string) => {
     if (isReadOnly) return;
@@ -1818,7 +1840,7 @@ const App: React.FC = () => {
 
   const handleJumpToToday = () => {
     setNavDirection('none');
-    setCurrentWeek(getWeekStart(new Date()));
+    setCurrentWeek(currentWeekStart());
     setIsMonthPickerOpen(false);
   };
 
@@ -2011,10 +2033,10 @@ const App: React.FC = () => {
 
   // Nouveau restaurant : la function pose le role dans le jeton ; on le
   // redemande tout de suite (sinon il n'arrive qu'a la prochaine connexion).
-  const handleCreateOrg = async (name: string, convention: string): Promise<string | null> => {
+  const handleCreateOrg = async (name: string, convention: string, timezone: string): Promise<string | null> => {
     const res = await createOrgCall({
       name, convention, language,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Paris',
+      timezone,
     });
     if (!res.orgId) return res.error || t('authErrUnknown');
     const { orgs, support } = await loadMemberships(true);
@@ -2135,6 +2157,7 @@ const App: React.FC = () => {
   const settingsProps = {
     onClose: closeSettings,
     initialSection: settingsSection,
+    account: user && !isGuest ? { name: user.displayName || user.email || '', email: user.email || '', orgName: org?.name || '', onLogout: handleLogout } : undefined,
     language, onLanguageChange: setLanguage, viewType, onViewTypeChange: setViewType,
     canSeeMyWeek: !!me, canSeeMoney: !isReadOnly, staff: staffList, rates, onRatesChange: updateRates,
     hours: operatingHours,
@@ -2143,6 +2166,7 @@ const App: React.FC = () => {
     closures, onClosuresChange: isReadOnly ? undefined : updateClosures,
     leaveUnit, onLeaveUnitChange: isReadOnly ? undefined : updateLeaveUnit,
     convention: conventionFor(conventionId).id, onConventionChange: isReadOnly ? undefined : updateConvention,
+    timezone, onTimezoneChange: isReadOnly ? undefined : updateTimezone,
     onOpenPayroll: isReadOnly ? undefined : () => { closeSettings(); setIsPayrollOpen(true); },
     onReplayTour: isReadOnly ? undefined : () => { closeSettings(); setTourOpen(true); },
     // Meme en lecture seule (essai termine), un admin garde le droit de tout telecharger.
@@ -2253,12 +2277,12 @@ const App: React.FC = () => {
                 value={orgId ?? ''}
                 onChange={e => switchOrg(e.target.value)}
                 aria-label={t('restaurant')}
-                className="hidden sm:block max-w-[160px] text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5"
+                className="hidden sm:block md:hidden xl:block max-w-[160px] text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5"
               >
                 {orgIds.map(id => <option key={id} value={id}>{id === orgId && org?.name ? org.name : id}</option>)}
               </select>
             ) : org?.name ? (
-              <span className="hidden sm:block max-w-[160px] truncate text-sm font-semibold text-slate-500" title={t('restaurant')}>{org.name}</span>
+              <span className="hidden sm:block md:hidden xl:block max-w-[160px] truncate text-sm font-semibold text-slate-500" title={t('restaurant')}>{org.name}</span>
             ) : null}
             <button
               onClick={() => openSettings()}
@@ -2269,7 +2293,9 @@ const App: React.FC = () => {
               <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             </button>
 
-            <div className="hidden sm:flex items-center gap-2 md:gap-3 pl-2 border-l">
+            {/* Tablette (768-1279 px) : la colonne des stats prend 320-340 px, l'en-tete
+                n'a plus la place — nom et deconnexion passent dans les reglages. */}
+            <div className="hidden sm:flex md:hidden xl:flex items-center gap-2 md:gap-3 pl-2 border-l">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold text-slate-900 leading-none truncate max-w-[80px]">{user?.displayName || "User"}</p>
                 <button onClick={handleLogout} className="text-xs text-red-500 hover:underline cursor-pointer whitespace-nowrap">{t('signOut')}</button>
@@ -2398,7 +2424,7 @@ const App: React.FC = () => {
         draftExists={draft !== null}
         // Les alertes de duree du travail parlent des collegues : reservees aux admins.
         compliance={isAdmin ? complianceList : []}
-        conventionLabel={conventionLabel(convention)}
+        conventionLabel={conventionLabel(convention, language)}
         checklist={checklist}
         onDeleteWeek={handleDeleteWeek}
         onOpenHistory={fromSidebar(() => setIsHistoryModalOpen(true))}

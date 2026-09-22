@@ -323,9 +323,31 @@ export const isStaffAssignableInWeek = (staff: Staff, weekStart: Date): boolean 
   return true;
 };
 
-/** Today as YYYY-MM-DD in the app's timezone. */
-export const todayIso = (timeZone: string = 'Europe/Paris'): string =>
+/**
+ * Fuseau du restaurant ouvert (22/09/2026). « Aujourd'hui » et « cette semaine »
+ * se comptent a l'heure du restaurant, jamais a celle de l'appareil : un gerant
+ * a Bali voit son planning lyonnais tel qu'a Lyon. L'app le fixe des que la
+ * fiche du restaurant arrive ; avant, Paris.
+ */
+let restaurantTimeZone = 'Europe/Paris';
+export const setRestaurantTimeZone = (timeZone: string): void => { restaurantTimeZone = timeZone; };
+export const getRestaurantTimeZone = (): string => restaurantTimeZone;
+
+/** Today as YYYY-MM-DD in the restaurant's timezone. */
+export const todayIso = (timeZone: string = restaurantTimeZone): string =>
   getIsoDateString(new Date(), timeZone);
+
+/** Semaine en cours (dimanche qui la precede) a l'heure du restaurant. */
+export const currentWeekStart = (): Date => getWeekStart(new Date(), restaurantTimeZone);
+
+/** Fuseaux proposes au restaurateur, ou a defaut le sien et Paris. */
+export const timeZoneChoices = (): string[] => {
+  try {
+    const all = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone');
+    if (all?.length) return all;
+  } catch { /* navigateur ancien */ }
+  return Array.from(new Set(['Europe/Paris', restaurantTimeZone]));
+};
 
 /**
  * Heures contractuelles applicables A UNE DATE donnee.
