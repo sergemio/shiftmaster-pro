@@ -496,6 +496,8 @@ const Calendar: React.FC<CalendarProps> = ({
         </div>
       )}
 
+      {/* Les 7 jours tiennent dans la largeur du telephone : avec 60px minimum
+          par jour, dimanche sortait de l'ecran sans que rien ne l'indique. */}
       <div ref={dayStripRef} className="flex border-b sticky top-0 z-20 bg-white shadow-sm overflow-x-auto hide-scrollbar md:overflow-visible">
         <div className="w-[54px] md:w-[60px] border-r bg-slate-50/50 flex-shrink-0" />
         {localizedDays.map((day, idx) => {
@@ -510,9 +512,9 @@ const Calendar: React.FC<CalendarProps> = ({
             <button 
               key={day} 
               onClick={() => setActiveDayIndex(idx)}
-              className={`flex-1 h-12 md:h-14 flex flex-col items-center justify-center border-r last:border-r-0 transition-all min-w-[60px] md:min-w-0 ${isToday ? 'bg-indigo-50/30' : 'bg-white'} ${isActive ? 'bg-indigo-50/50' : ''}`}
+              className={`flex-1 h-12 md:h-14 flex flex-col items-center justify-center border-r last:border-r-0 transition-all min-w-0 ${isToday ? 'bg-indigo-50/30' : 'bg-white'} ${isActive ? 'bg-indigo-50/50' : ''}`}
             >
-              <span className={`font-bold text-xs uppercase tracking-widest ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
+              <span className={`font-bold text-xs uppercase tracking-wide md:tracking-widest ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
                 <span className="md:hidden">{shortDays[idx]}</span>
                 <span className="hidden md:inline">{day}</span>
               </span>

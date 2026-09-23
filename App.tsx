@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Staff, Shift, Language, Absence, AbsencePeriod, WeekData, DraftData, EMPTY_WEEK, ViewType, Org, OrgRole, Extra, WeekHoliday, LeaveBalance, LeaveUnit, LeaveRequest, RequestableLeaveKind, LaborConvention, Invite, Closure } from './types';
-import { getWeekStart, getWeekRangeString, getWeekRangeCompact, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind, costRates, leaveBalanceSummary, countLeaveDays, closedHolidayDates, todayIso, currentWeekStart, setRestaurantTimeZone, getRestaurantTimeZone } from './utils/helpers';
+import { getWeekStart, getWeekRangeString, getWeekRangeCompact, getShiftDate, formatTime, toWeekId, isStaffAssignableInWeek, getAssignmentBlock, getOrphanReason, formatShortDate, POST_CONTRACT_GRACE_DAYS, getShiftIsoDate, weekIdsForMonth, syncStatus, SyncStatus, gridHourRange, normalizeOperatingHours, DEFAULT_OPERATING_HOURS, OperatingHours, extraStaffRows, missingStaffRows, nextExtraName, periodDays, weekIdOfIso, addDaysIso, holidaysBetween, isoDayIndex, absenceDeductions, applyAbsenceChanges, shiftsWithoutAbsence, AbsenceChange, publicAbsenceKind, visibleAbsenceKind, costRates, leaveBalanceSummary, countLeaveDays, closedHolidayDates, todayIso, currentWeekStart, setRestaurantTimeZone, getRestaurantTimeZone } from './utils/helpers';
 import { INITIAL_STAFF } from './constants';
 import { PauseValue, pauseFields } from './components/PauseField';
 import { datedWeek, hoursByWorker, hoursByWorkerDate, workCost, workerOf, DatedWork } from './utils/worktime';
@@ -297,9 +297,17 @@ const App: React.FC = () => {
    * reconstituees a partir des shifts, elles ne vivent pas en base.
    */
   const displayStaff = useMemo(
-    () => [...staffList, ...extraStaffRows([...shifts, ...(monthShifts || [])], extras)],
-    [staffList, shifts, monthShifts, extras],
+    () => {
+      const withExtras = [...staffList, ...extraStaffRows([...shifts, ...(monthShifts || [])], extras)];
+      return [...withExtras, ...missingStaffRows([...shifts, ...(monthShifts || [])], withExtras, t('missingStaff'))];
+    },
+    [staffList, shifts, monthShifts, extras, language],
   );
+  // Shifts de la semaine dont la fiche a ete supprimee (voir missingStaffRows).
+  const missingThisWeek = useMemo(() => {
+    const missing = new Set(displayStaff.filter(p => p.missing).map(p => p.id));
+    return shifts.filter(sh => missing.has(sh.staffId)).length;
+  }, [displayStaff, shifts]);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   // Shifts coches. Non vide = mode selection : un appui coche au lieu d'ouvrir
   // la fiche, et la barre d'actions apparait en bas.
@@ -322,6 +330,12 @@ const App: React.FC = () => {
   // `updatedAt` of the week currently on screen, used to detect that another
   // admin saved it while this one was editing.
   const weekVersion = useRef<string | null | undefined>(undefined);
+  // Versions ecrites par CET appareil. Sur un telephone en 4G, l'annonce d'une
+  // de nos propres sauvegardes peut arriver APRES la suivante : sans ce
+  // registre, l'app reprenait cette version perimee, se croyait devancee par
+  // quelqu'un d'autre et refusait l'enregistrement (recette du 23/09/2026).
+  const ownStamps = useRef<string[]>([]);
+  const rememberStamp = (stamp: string) => { ownStamps.current = [...ownStamps.current.slice(-30), stamp]; };
   // Saves are chained rather than fired in parallel: two quick edits (a drag,
   // then another) would otherwise both start from the same version and the
   // second would be reported as someone else's conflict.
@@ -841,6 +855,10 @@ const App: React.FC = () => {
     if (connected) {
       setIsLoading(true);
       const unsubscribe = subscribeToWeek(weekId, (week, updatedAt) => {
+        // Echo en retard d'une de nos sauvegardes deja depassee : on l'ignore,
+        // sinon l'ecran reculerait d'une etape et la version aussi.
+        const mine = ownStamps.current, cur = weekVersion.current;
+        if (updatedAt && cur && mine.includes(updatedAt) && mine.includes(cur) && updatedAt < cur) return;
         weekVersion.current = updatedAt;
         setOfficialWeek(week);
         setIsLoading(false);
@@ -1233,17 +1251,25 @@ const App: React.FC = () => {
     if (connected) {
       writeQueue.current = writeQueue.current.then(async () => {
         try {
-          const stamp = await saveWeekToFirebase(weekId, after, weekVersion.current);
+          let stamp: string;
+          try {
+            stamp = await saveWeekToFirebase(weekId, after, weekVersion.current);
+          } catch (e) {
+            // La version « de l'autre » est en fait la notre : personne d'autre
+            // n'a touche a la semaine, on reecrit par-dessus notre propre version.
+            if (!(e instanceof WeekConflictError) || !ownStamps.current.includes(e.theirUpdatedAt)) throw e;
+            stamp = await saveWeekToFirebase(weekId, after, e.theirUpdatedAt);
+          }
           // Adopt the version we just wrote, so consecutive edits by the same
           // person are not mistaken for someone else's changes.
-          if (stamp) weekVersion.current = stamp;
+          if (stamp) { rememberStamp(stamp); weekVersion.current = stamp; }
           setSaveError(null);
           setWriteFailed(false);
           triggerSyncFeedback();
         } catch (e) {
           if (e instanceof WeekConflictError) {
             setWriteFailed(true);
-            setSaveError('Someone else changed this week while you were editing it. Your change was not saved — what you see below is their version.');
+            setSaveError(t('weekConflict'));
             // The live subscription already pushed their version into `shifts`.
             setPast([]);
             setFuture([]);
@@ -1255,7 +1281,7 @@ const App: React.FC = () => {
       localStorage.setItem(`sandbox_week_${weekId}`, JSON.stringify(after));
       triggerSyncFeedback();
     }
-  }, [weekId, user, isGuest, orgId, isReadOnly, shifts, absences, holidays, draft]);
+  }, [weekId, user, isGuest, orgId, isReadOnly, shifts, absences, holidays, draft, language]);
 
   // Ancien point d'entree, conserve pour tout ce qui ne touche que les shifts.
   const handleUpdateShifts = useCallback(
@@ -1938,11 +1964,12 @@ const App: React.FC = () => {
       } catch (e) {
         if (e instanceof WeekConflictError) {
           setWriteFailed(true);
-          setSaveError('Someone else saved this week at the same moment. The draft was not published and is still here.');
+          setSaveError(t('draftConflict'));
         }
         return;
       }
       if (!stamp) return;
+      rememberStamp(stamp);
       weekVersion.current = stamp;
       await deleteDraft(weekId);
     } else {
@@ -2178,7 +2205,12 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
+    // `h-dvh` et non `h-screen` : sur iPhone, 100vh est plus haut que la partie
+    // visible (la barre de Safari en prend une partie), le haut du planning
+    // sortait de l'ecran et rien ne defilait pour le recuperer. dvh = la hauteur
+    // reellement visible. Le fond de page ne bloque plus le defilement : les
+    // ecrans plus hauts que le telephone (creation du restaurant) defilent.
+    <div className="flex h-dvh bg-white overflow-hidden">
       {/* Tiroir des reglages (ordinateur) : il s'elargit pendant que la colonne
           des stats sort par la droite, de la meme largeur — le planning glisse
           sans changer de taille. Son contenu n'existe que tiroir ouvert (et le
@@ -2320,6 +2352,11 @@ const App: React.FC = () => {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
+        )}
+        {isAdmin && missingThisWeek > 0 && (
+          <p role="status" data-testid="missing-staff-banner" className="bg-slate-100 border-b border-slate-200 px-4 md:px-6 py-2 text-sm font-medium text-slate-700">
+            {t('missingStaffBanner').replace('{n}', String(missingThisWeek))}
+          </p>
         )}
         {inDraft && (
           <div className="bg-amber-50 border-b-2 border-dashed border-amber-300 px-4 md:px-6 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">

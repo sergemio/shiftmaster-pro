@@ -5,6 +5,30 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-23 (soir, 8) — Recette iPhone + shifts des fiches supprimees (en ligne)
+
+Retour de Serge (captures iPhone, « no scroll ») puis recette sur iPhone 13 simule (moteur Safari) :
+- Creation du restaurant : la page ne defilait pas (`body { overflow: hidden }` dans `index.html`),
+  le bouton « Creer mon restaurant » restait sous la barre de Safari → retire.
+- Planning : `h-screen` (100vh) plus haut que la partie visible sur iPhone, le haut sortait de l'ecran
+  → `h-dvh` (`App.tsx`).
+- Interrupteurs des reglages en ovale : la regle « 44 px minimum » des boutons tactiles les etirait
+  → exclus (`index.css`), zone de toucher agrandie par un pseudo-element (`SettingsModal.tsx`).
+- Dimanche hors ecran dans les onglets des jours (60 px minimum par jour) → les 7 tiennent (`Calendar.tsx`).
+- Barre de selection : « −30 » coupe a gauche → retour a la ligne ; accents retablis
+  (« sélectionné(s) », « Déplacer vers »…) (`SelectionBar.tsx`, `translations.ts`).
+- Conflit de sauvegarde : message traduit ; et si la version « de l'autre » est une sauvegarde de
+  CET appareil (annonce en retard sur un reseau lent), on reecrit au lieu de refuser, et l'annonce
+  perimee est ignoree (`App.tsx`, `ownStamps`). Le faux conflit n'a pas pu etre reproduit en local.
+- Fiche equipe : champs date qui debordaient sur iPhone → `min-w-0 appearance-none`, libelles alignes
+  (`DateField.tsx`, fermetures dans `SettingsModal.tsx`).
+- Tiroir des reglages (ordinateur) : croix retiree, le bouton menu ouvre et ferme (comme YouTube).
+- Shifts dont la fiche a ete supprimee (recette sur la copie Sezam : 93 shifts, 609 h invisibles) :
+  affiches sous « Fiche supprimee · xxxx », comptes dans les totaux et la paie, bandeau pour les gerants
+  (`utils/helpers.ts` `missingStaffRows`, `App.tsx`, `PayrollModal.tsx`).
+- Tests : `mobile_test.py` (9, WebKit iPhone), `missing_staff_test.py` (6), `test-missing-staff.mjs` (7),
+  `drawer_test.py` adapte.
+
 ## 2026-09-23 (nuit) — Fuseau du restaurant + corrections de la recette locale (en ligne)
 
 Demande de Serge : « je dois pouvoir piloter mon restaurant de n'importe ou dans le monde ».

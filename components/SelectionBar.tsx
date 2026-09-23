@@ -62,7 +62,9 @@ const SelectionBar: React.FC<SelectionBarProps> = ({ count, onNudge, onMoveToDay
             {t('selectedCount').replace('{n}', String(count))}
           </span>
 
-          <div className="flex items-center justify-end gap-1.5 flex-nowrap sm:ml-auto">
+          {/* Retour a la ligne autorise : sur un iPhone reglé en grand texte, les
+              cinq boutons sur une ligne poussaient « −30 » hors de l'ecran. */}
+          <div className="flex items-center justify-end gap-1.5 flex-wrap sm:flex-nowrap sm:ml-auto">
             <button
               type="button"
               onClick={() => onNudge(-0.5)}

@@ -129,6 +129,8 @@ export interface Staff {
    * de `settings/staff`. Elle n'existe que le temps de l'affichage.
    */
   isExtra?: boolean;
+  /** Ligne recreee pour des shifts dont la fiche a ete supprimee. */
+  missing?: boolean;
   /**
    * Jours travailles par semaine selon le contrat (defaut 5). Sert a estimer
    * les heures d'absence d'une semaine qui n'est pas encore planifiee :

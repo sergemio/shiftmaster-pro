@@ -67,15 +67,20 @@ const DateField: React.FC<DateFieldProps> = ({
   // arrivees a venir, donc une date fausse se voit aussi dans la liste.
 
   return (
-    <div>
-      <label htmlFor={id} className={labelClassName}>{label}</label>
+    // Sur iPhone, un champ date a une largeur propre qui ignore `w-full` : il
+    // debordait de sa colonne, et de l'ecran pour celui de droite. `min-w-0` et
+    // `appearance-none` le ramenent a la largeur de la colonne. Le libelle prend
+    // la place libre pour que deux champs cote a cote restent alignes meme
+    // quand l'un des libelles passe sur deux lignes.
+    <div className="min-w-0 h-full flex flex-col">
+      <label htmlFor={id} className={`flex-1 ${labelClassName}`}>{label}</label>
       <input
         id={id}
         type="date"
         required={required}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={className}
+        className={`${className} block min-w-0 max-w-full appearance-none min-h-[2.5rem]`}
       />
       {spelled && (
         <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">{spelled}</p>

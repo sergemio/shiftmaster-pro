@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Staff, AbsencePeriod, LeaveUnit, Language, WeekData, Extra, Closure } from '../types';
 import { getTranslation } from '../utils/translations';
-import { weekIdsForMonth, countLeaveDays, closedHolidayDates, formatShortDate, todayIso } from '../utils/helpers';
+import { weekIdsForMonth, countLeaveDays, closedHolidayDates, formatShortDate, todayIso, missingStaffRows } from '../utils/helpers';
 import { payrollVariables, payrollText, payrollCsv, PayrollLabels } from '../utils/payroll';
 
 interface PayrollModalProps {
@@ -86,7 +86,10 @@ const PayrollModal: React.FC<PayrollModalProps> = ({
     const shiftsByWeek = Object.fromEntries(Object.entries(weeks).map(([id, w]) => [id, w.shifts || []]));
     const countDays = (a: string, b: string) => countLeaveDays(a, b, leaveUnit, closedHolidayDates(a, b, closedHolidays));
     const extraNames = Object.fromEntries(Object.values(extras).map(e => [e.id, [e.firstName, e.lastName].filter(Boolean).join(' ')]));
-    return payrollVariables(month, staff, shiftsByWeek, periods, countDays, extraNames, closures);
+    // Heures d'une fiche supprimee : sur une ligne nommee, jamais sous un identifiant brut.
+    const known = [...staff, ...Object.values(extras).map(e => ({ id: e.id }))];
+    const everyone = [...staff, ...missingStaffRows(Object.values(shiftsByWeek).flat(), known, t('missingStaff'))];
+    return payrollVariables(month, everyone, shiftsByWeek, periods, countDays, extraNames, closures);
   }, [weeks, month, staff, periods, extras, leaveUnit, closedHolidays, closures]);
 
   const text = result ? payrollText(result, labels) : '';

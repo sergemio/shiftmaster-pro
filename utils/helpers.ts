@@ -568,6 +568,30 @@ export const EXTRA_COLOR = '#94a3b8';
  * identifiee, une alerte de repos a son sujet ne voudrait rien dire. Des qu'il
  * est nomme, les regles s'appliquent a lui comme a n'importe qui.
  */
+/**
+ * Fiche supprimee (23/09/2026, recette sur une copie des donnees de Sezam) :
+ * l'ancienne appli permettait d'effacer une fiche, ses shifts restaient en base
+ * — 93 shifts et 609 h de dec. 2025 a avr. 2026, invisibles dans le planning,
+ * les totaux et la paie. Chaque personne inconnue recoit une ligne grise, pour
+ * qu'aucune heure ne disparaisse sans le dire. `isPool` : pas d'alerte de duree
+ * du travail sur une personne qu'on ne sait plus nommer.
+ */
+export const missingStaffRows = (
+  shifts: { staffId: string; coverageBy?: string | null; extraName?: string }[],
+  known: { id: string }[],
+  label: string,
+): Staff[] => {
+  const ids = new Set(known.map(s => s.id));
+  const rows = new Map<string, Staff>();
+  for (const s of shifts) {
+    for (const id of [s.extraName ? null : s.staffId, s.coverageBy]) {
+      if (!id || ids.has(id) || rows.has(id)) continue;
+      rows.set(id, { id, name: `${label} · ${id.slice(0, 4)}`, email: '', color: EXTRA_COLOR, role: 'staff', isPool: true, missing: true });
+    }
+  }
+  return [...rows.values()];
+};
+
 export const extraStaffRows = (
   shifts: { staffId: string; extraName?: string }[],
   extras: Record<string, { firstName?: string; filledAt?: string | null }> = {},

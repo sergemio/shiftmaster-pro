@@ -96,7 +96,10 @@
      que classe par classe : un bouton ajouté demain en hérite sans y penser.
      Les cartes de shift ne sont pas des <button> : leur hauteur reste
      proportionnelle à la durée, elle n'est pas touchée. */
-  button,
+  /* Sauf les interrupteurs : forces a 44px de haut ils devenaient des ovales
+     sur iPhone (recette du 23/09/2026). Leur zone de toucher est agrandie
+     autrement, sans changer leur dessin (voir Switch). */
+  button:not([role="switch"]),
   select,
   [role="button"] {
     min-height: 44px;
