@@ -276,7 +276,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <aside className={`
         fixed md:relative top-0 right-0 h-full bg-white z-[110] md:z-auto
         w-[min(320px,85vw)] sm:w-[320px] md:w-[320px] lg:w-[340px] border-l flex flex-col gap-3.5 px-4 py-4 overflow-y-auto hide-scrollbar
-        transition-[transform,margin] duration-300 ease-in-out flex-none
+        transition-[transform,margin] duration-300 md:duration-500 ease-in-out flex-none
         ${isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
         ${pushedOut ? 'md:-mr-[320px] lg:-mr-[340px]' : ''}
       `}>
@@ -306,8 +306,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
           
           <div className="flex items-center gap-1.5 ml-auto">
+            {/* Sur ordinateur, annuler / retablir sont dans l'en-tete (App.tsx). */}
             {!isReadOnly && (
-              <div className="flex gap-1.5">
+              <div className="flex gap-1.5 md:hidden">
                 <button 
                   onClick={onUndo}
                   disabled={!canUndo}

@@ -44,6 +44,8 @@ with sync_playwright() as pw:
     check("Les 7 jours tiennent dans l'ecran (dimanche visible)", ok, bb)
 
     # --- barre de selection -------------------------------------------------------
+    # Lundi : la demo y a toujours des shifts, quel que soit le jour du test.
+    p.locator("button:visible", has_text="LUN").first.click(); p.wait_for_timeout(500)
     pt = p.evaluate(r"() => { const e = [...document.querySelectorAll('*')].find(e => e.childElementCount === 0 && /^\d{2}:\d{2} - \d{2}:\d{2}$/.test(e.textContent.trim()) && e.getBoundingClientRect().x > 0 && e.getBoundingClientRect().x < innerWidth); const r = e.getBoundingClientRect(); return [r.x + 10, r.y + 5]; }")
     p.keyboard.down("Meta"); p.mouse.click(pt[0], pt[1]); p.keyboard.up("Meta"); p.wait_for_timeout(500)
     bar_ok = all(inside(p, p.get_by_role("button", name=n, exact=True))[0] for n in ["−30", "+30", "Déplacer vers", "Supprimer"])

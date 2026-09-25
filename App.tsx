@@ -2215,7 +2215,7 @@ const App: React.FC = () => {
           des stats sort par la droite, de la meme largeur — le planning glisse
           sans changer de taille. Son contenu n'existe que tiroir ouvert (et le
           temps qu'il se referme) : ferme, rien n'y est cliquable ni lisible. */}
-      <div className={`hidden md:block flex-none h-full overflow-hidden transition-[width] duration-300 ease-in-out ${isSettingsDrawerOpen ? 'w-[320px] lg:w-[340px] border-r border-slate-200' : 'w-0'}`}
+      <div className={`hidden md:block flex-none h-full overflow-hidden transition-[width] duration-500 ease-in-out ${isSettingsDrawerOpen ? 'w-[320px] lg:w-[340px] border-r border-slate-200' : 'w-0'}`}
         data-testid="settings-drawer-slot"
         onTransitionEnd={() => { if (!isSettingsDrawerOpen) setDrawerMounted(false); }}>
         {(isSettingsDrawerOpen || drawerMounted) && <SettingsModal asDrawer isOpen={isSettingsDrawerOpen} {...settingsProps} />}
@@ -2243,11 +2243,23 @@ const App: React.FC = () => {
               aria-label={t('settings')}
               aria-expanded={isSettingsDrawerOpen}
               title={t('settings')}
-              className={`hidden md:flex -ml-2 w-10 h-10 flex-none items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 active:scale-95 transition-all ${isSettingsDrawerOpen ? 'bg-slate-100' : ''}`}
+              className={`hidden md:flex -ml-2 w-10 h-10 flex-none items-center justify-center rounded-full active:scale-95 transition-all duration-700 ease-in-out ${isSettingsDrawerOpen ? 'bg-violet-100 text-violet-600 hover:bg-violet-200' : 'text-slate-600 hover:bg-slate-100'}`}
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
+              {/* Burger qui devient une croix en tournant (un demi-tour), et redevient
+                  burger en tournant dans l'autre sens a la fermeture (demande de
+                  Serge, 25/09/2026). Pendant la rotation (0,7 s), les traits du haut
+                  et du bas se croisent, celui du milieu s'efface, et le bouton passe
+                  au violet : ouvert se voit d'un coup d'oeil. */}
+              <span className={`relative block w-[18px] h-[14px] transition-[rotate] duration-700 ease-in-out motion-reduce:transition-none ${isSettingsDrawerOpen ? 'rotate-180' : 'rotate-0'}`}
+                aria-hidden="true" data-testid="burger-icon" data-open={isSettingsDrawerOpen}>
+                {[
+                  isSettingsDrawerOpen ? 'top-[6px] rotate-45' : 'top-0',
+                  isSettingsDrawerOpen ? 'top-[6px] opacity-0' : 'top-[6px]',
+                  isSettingsDrawerOpen ? 'top-[6px] -rotate-45' : 'top-[12px]',
+                ].map((pos, n) => (
+                  <span key={n} className={`absolute left-0 w-full h-[2px] rounded-full bg-current transition-all duration-700 ease-in-out motion-reduce:transition-none ${pos}`} />
+                ))}
+              </span>
             </button>
             <button
               onClick={handleJumpToToday}
@@ -2302,7 +2314,31 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
-          
+
+          {/* Annuler / retablir au centre de l'en-tete, a portee de la souris
+              (retour de Serge du 24/09/2026 : dans le coin de la colonne des
+              stats, ils etaient trop loin). Ils occupent l'espace libre entre
+              les deux groupes, donc ne chevauchent jamais le selecteur de
+              semaine. Sur telephone ils restent dans la colonne des stats. */}
+          {/* Nom accessible = le titre, « Annuler (Ctrl+Z) » : un simple « Annuler »
+              se confondait avec le bouton Annuler des fenetres. */}
+          {!isReadOnly && (
+            <div className="hidden md:flex flex-1 justify-center min-w-0" data-testid="header-history">
+              <div className="flex items-stretch h-10 border border-slate-300 rounded-xl bg-white shadow-sm overflow-hidden">
+                <button type="button" onClick={undo} disabled={past.length === 0}
+                  title={`${t('undo')} (Ctrl+Z)`}
+                  className="w-10 grid place-items-center text-slate-700 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+                </button>
+                <button type="button" onClick={redo} disabled={future.length === 0}
+                  title={`${t('redo')} (Ctrl+Shift+Z)`}
+                  className="w-10 grid place-items-center text-slate-700 border-l border-slate-200 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" /></svg>
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 md:gap-3 relative">
             {orgIds.length > 1 ? (
               <select

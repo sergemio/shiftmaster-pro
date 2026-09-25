@@ -5,6 +5,16 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-25 — En-tete : annuler / retablir, burger anime, tiroir plus lent (en ligne)
+
+Demandes de Serge (24-25/09/2026), validees en local :
+- Annuler / retablir quittent le coin de la colonne des stats pour le centre de l'en-tete, a droite du
+  choix de semaine (ordinateur). Sur telephone ils restent dans la colonne des stats (`App.tsx`, `Sidebar.tsx`).
+- Bouton menu : le burger fait un demi-tour en 0,7 s et devient une croix violette sur fond violet clair
+  tiroir ouvert, puis revient en burger gris en tournant dans l'autre sens (`App.tsx`).
+- Tiroir des reglages : glissement en 0,5 s au lieu de 0,3 s, colonne des stats comprise (ordinateur seulement).
+- Tests : `drawer_test.py` (+3 : position des boutons, burger ferme, croix ouverte).
+
 ## 2026-09-23 (soir, 8) — Recette iPhone + shifts des fiches supprimees (en ligne)
 
 Retour de Serge (captures iPhone, « no scroll ») puis recette sur iPhone 13 simule (moteur Safari) :

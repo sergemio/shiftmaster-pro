@@ -36,7 +36,13 @@ with sync_playwright() as pw:
     shown = lambda: p.get_by_test_id("settings-drawer-slot").bounding_box()["width"] if p.get_by_test_id("settings-drawer-slot").bounding_box() else 0
     check("Tiroir ferme au depart : largeur nulle", shown() == 0, shown())
     check("Roue dentee cachee sur ordinateur", p.locator("header button[title='Paramètres']").filter(has=p.locator("svg path[d^='M10.325']")).is_hidden())
-    p.get_by_test_id("settings-menu").click(); p.wait_for_timeout(600)
+    hist = p.get_by_test_id("header-history")
+    check("En-tete : annuler / retablir au centre, a droite du choix de semaine",
+          hist.is_visible() and hist.bounding_box()["x"] > p.get_by_test_id("week-nav").bounding_box()["x"] + p.get_by_test_id("week-nav").bounding_box()["width"])
+    check("Burger : pas de croix tiroir ferme", p.get_by_test_id("burger-icon").get_attribute("data-open") == "false")
+    p.get_by_test_id("settings-menu").click(); p.wait_for_timeout(1000)
+    check("Burger : devient une croix (demi-tour) tiroir ouvert",
+          p.get_by_test_id("burger-icon").get_attribute("data-open") == "true" and p.evaluate("getComputedStyle(document.querySelector('[data-testid=burger-icon]')).rotate") == "180deg")
     if SHOTS: p.screenshot(path=os.path.join(SHOTS, "drawer-open.png"))
     box = drawer.bounding_box()
     check("Menu : le tiroir s'ouvre a gauche", box is not None and abs(box["x"]) < 2 and box["width"] > 300, box)
@@ -56,9 +62,9 @@ with sync_playwright() as pw:
     check("Reglage applique depuis le tiroir (langue anglaise)", "Display" in drawer.inner_text() and "MONDAY" in p.locator("body").inner_text().upper())
     drawer.get_by_role("radio", name="Français").click(); p.wait_for_timeout(300)
     check("Pas de croix dans le tiroir : le bouton menu suffit", drawer.get_by_role("button", name="Fermer").count() == 0)
-    p.get_by_test_id("settings-menu").click(); p.wait_for_timeout(600)
+    p.get_by_test_id("settings-menu").click(); p.wait_for_timeout(1000)
     check("Bouton menu : un second clic ferme le tiroir", drawer.count() == 0)
-    open_settings(p, expand_all=False); p.keyboard.press("Escape"); p.wait_for_timeout(600)
+    open_settings(p, expand_all=False); p.keyboard.press("Escape"); p.wait_for_timeout(1000)
     check("Echap ferme aussi le tiroir", drawer.count() == 0)
     check("Fermer : le planning et les stats reviennent", shown() == 0 and stats.bounding_box()["x"] < 1440 and abs(day.bounding_box()["width"] - w_before) < 2)
     check("Ordinateur : aucune erreur JavaScript", not errs, errs[:2])
