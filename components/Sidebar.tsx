@@ -272,9 +272,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* La colonne tient TOUJOURS dans la hauteur de l'ecran (retour de Serge le
           13/09/2026 : « Manage Staff » disparaissait sous le bord, et une equipe plus
           grande aurait aggrave le probleme). Les elements fixes ne retrecissent pas
-          (`flex-none`) ; seul le bloc ouvert cede de la place et defile en interne. */}
+          (`flex-none`) ; seul le bloc ouvert cede de la place et defile en interne.
+          Fond blanc teinte #fcfcfd (29/09/2026, repris de la page vitrine) : le
+          panneau se detache du planning en blanc pur, et ses encadres blancs
+          ressortent legerement du fond. */}
       <aside className={`
-        fixed md:relative top-0 right-0 h-full bg-white z-[110] md:z-auto
+        fixed md:relative top-0 right-0 h-full bg-[#fcfcfd] z-[110] md:z-auto
         w-[min(320px,85vw)] sm:w-[320px] md:w-[320px] lg:w-[340px] border-l flex flex-col gap-3.5 px-4 py-4 overflow-y-auto hide-scrollbar
         transition-[transform,margin] duration-300 md:duration-500 ease-in-out flex-none
         ${isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}

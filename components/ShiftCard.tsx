@@ -119,7 +119,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
 
   return (
     <div 
-      className={`@container rounded-md px-2 py-1.5 md:px-2 md:py-1.5 @max-[64px]:px-1 shadow-sm flex flex-col overflow-hidden border-l-4 group relative transition-transform ${isReadOnly ? '' : 'active:scale-[0.98]'} ${shift.coverageBy ? 'opacity-90' : ''}`}
+      className={`@container rounded-[10px] px-2 py-1.5 md:px-2 md:py-1.5 @max-[64px]:px-1 shadow-sm flex flex-col overflow-hidden border-l-4 group relative transition-transform ${isReadOnly ? '' : 'active:scale-[0.98]'} `}
       onMouseDown={(e) => {
         if (isReadOnly) return;
         // Ctrl/Cmd+clic coche au lieu de deplacer : sans ca le geste de selection
@@ -157,8 +157,14 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
       }}
       style={{
         ...style,
-        backgroundColor: shift.coverageBy ? '#f1f5f9' : staff.color + '15',
-        borderColor: shift.coverageBy ? '#94a3b8' : staff.color,
+        // Fond OPAQUE (29/09/2026, demande de Serge) : les lignes de la grille ne
+        // se voient plus a travers la carte. Meme teinte qu'avant : l'ancien fond
+        // etait la couleur a 8 % d'opacite (suffixe hexa « 15 ») pose sur du blanc,
+        // on le calcule donc en couleur pleine, 8 % de couleur et 92 % de blanc.
+        // Idem pour le shift couvert, qui etait gris a 90 % d'opacite : ses
+        // couleurs sont aplaties sur du blanc au lieu d'etre transparentes.
+        backgroundColor: shift.coverageBy ? '#f2f6fa' : `color-mix(in srgb, ${staff.color} 8.2%, white)`,
+        borderColor: shift.coverageBy ? '#9facbf' : staff.color,
         borderWidth: '0 0 0 4px',
         // Brouillon : rayures legeres et bordure en pointilles, sur la couleur de
         // la personne. Neutre, jamais rouge : un essai n'est pas une erreur.
@@ -176,7 +182,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
         // cocher une carte ne decale pas ses voisines dans la colonne.
         outline: isSelected ? '2px solid #4f46e5' : undefined,
         outlineOffset: isSelected ? '1px' : undefined,
-        color: '#1e293b',
+        color: shift.coverageBy ? '#333e4e' : '#1e293b',
         cursor: isReadOnly ? 'default' : 'grab'
       }}
     >
@@ -302,8 +308,10 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
         )}
 
         {typeof cost === 'number' && (
-          /* Neutre, jamais rouge ni ambre : un cout n'est ni une alerte ni une
-             infraction, c'est un fait (R5.3).
+          /* Couleur : celle de la carte, 25 % plus foncee (regle de Serge du
+             29/09/2026, reprise de la page vitrine). Elle remplace l'ancienne regle
+             « toujours gris neutre ». Un shift couvert garde sa carte grise, donc
+             un cout gris.
              En bas de la carte, sans cadre : le 16/09/2026 Serge a signale qu'a
              cote de la duree, en badge, les deux se confondaient. La duree reste un
              badge en haut, le prix est une ligne de pied de carte. Pas de filet
@@ -311,6 +319,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
              Masque sous 64 px (trois personnes a la fois) : l'horaire prime. */
           <span
             title={`${staff.name} · coût chargé de ce service`}
+            style={shift.coverageBy ? undefined : { color: `color-mix(in srgb, ${staff.color} 75%, black)` }}
             className="mt-auto pt-1 pb-1 text-xs font-semibold text-slate-500 tabular-nums whitespace-nowrap @max-[64px]:hidden"
           >
             {/* Arrondi a l'euro (16/09/2026) : un repere, pas une fiche de paie —

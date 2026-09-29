@@ -7,6 +7,7 @@ import PauseField, { PauseValue, pauseFields, shiftStartOptions, shiftEndOptions
 import { clampBreak, autoBreak } from '../utils/worktime';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
+import { useDismiss } from './useDismiss';
 
 interface ShiftModalProps {
   isOpen: boolean;
@@ -44,6 +45,8 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
   if (!isOpen) return null;
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
   const t = getTranslation(language as Language);
+  // Clic sur le fond ou Echap : comme « Annuler » (29/09/2026).
+  const backdrop = useDismiss(onClose);
 
   const [selectedStaff, setSelectedStaff] = useState(
     (initialStaffId && staff.some(s => s.id === initialStaffId) ? initialStaffId : staff[0]?.id) || '');
@@ -114,16 +117,17 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div {...backdrop} className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
-        <div className="flex-none p-6 md:p-8 pb-3 md:pb-3 flex justify-between items-start">
-          <h2 className="text-xl md:text-2xl font-bold text-slate-800">{t('createShift')}</h2>
-          <button onClick={onClose} className="text-slate-300 hover:text-slate-500 transition-colors p-1">
-            <svg className="w-6 h-6 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        {/* Memes espacements que « Modifier le shift » (29/09/2026). */}
+        <div className="flex-none px-6 pt-6 pb-2 flex justify-between items-center">
+          <h2 className="text-xl font-bold text-slate-800">{t('createShift')}</h2>
+          <button type="button" onClick={onClose} aria-label={t('close')} className="text-slate-300 hover:text-slate-500 transition-colors p-2 -mr-2">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 md:p-8 pt-2 md:pt-2 space-y-4 md:space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto px-6 pt-2 pb-6 space-y-4">
           {/* Equipe ou extra. Le reste de la fenetre est identique : un extra a
               un horaire et des jours comme tout le monde. */}
           {onAddExtra && (
@@ -287,18 +291,18 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
             </div>
           )}
 
-          <div className="pt-4 flex gap-4">
+          <div className="pt-2 flex gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-6 py-4 border border-slate-200 text-slate-500 font-bold rounded-xl hover:bg-slate-50 transition-all text-base shadow-sm active:scale-95"
+              className="flex-1 h-12 px-6 border border-slate-200 text-slate-500 font-bold rounded-xl hover:bg-slate-50 transition-all text-base shadow-sm active:scale-95"
             >
               {t('cancel')}
             </button>
             <button
               type="submit"
               disabled={employment.errors.length > 0}
-              className="flex-1 px-6 py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 text-base active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
+              className="flex-1 h-12 px-6 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 text-base active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
             >
               {t('addShift')}
             </button>

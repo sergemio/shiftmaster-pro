@@ -5,6 +5,53 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-29 — Fenetres de shift : clic a l'exterieur, Echap, espacements, francais (en local)
+
+- « Modifier le shift » et « Créer un shift » se ferment au clic sur le fond sombre et a la touche Echap, comme « Annuler ». Le clic ne ferme que s'il commence ET finit sur le fond : selectionner du texte en glissant hors de la fenetre ne la ferme plus. Nouveau crochet partage `components/useDismiss.ts`.
+- Espacements resserres sur la grille de 4 px : marges 24 px, 16 px entre les champs, notes sur 2 lignes, boutons de 48 px, sous-titre « Detailed configuration » retire. Sur un telephone de 390 x 844, « Modifier le shift » fait 772 px de haut et ne defile plus ; sur ordinateur 746 px.
+- Libelles anglais en dur passes par les traductions : titre, « Employé », remplacement, notes, message de remplacement. Nouvelles cles : assignedTo, notesPlaceholder, noNotes, coverNote.
+- Verifie en local (telephone et ordinateur) : clic sur le fond, Echap, glisser-sortir, zero erreur. Tests unitaires 17/17 ; suites navigateur overlap_ui, pause, extras_browser, recette_fixes, recette_fixes2, mobile : toutes passent.
+- Fichiers : `components/EditShiftModal.tsx`, `components/ShiftModal.tsx`, `components/useDismiss.ts`, `utils/translations.ts`. Non commite, non pousse.
+
+## 2026-09-29 — Cartes de shift opaques et coins plus arrondis (en local)
+
+- Fond de carte OPAQUE : les lignes de la grille ne se voient plus a travers. Meme teinte qu'avant : l'ancien fond (couleur a 8 % d'opacite sur blanc) est calcule en couleur pleine (`color-mix`, 8,2 % de couleur, reste de blanc).
+- Shift couvert : l'opacite 90 % de toute la carte est remplacee par les memes couleurs aplaties sur blanc (fond #f2f6fa, bordure #9facbf, texte #333e4e).
+- Coins : 6 px (rounded-md) a 10 px.
+- Effets connus : dans la colonne du jour, la carte n'est plus teintee par le fond bleute ; deux shifts qui se chevauchent ne se voient plus l'un a travers l'autre.
+- Suite navigateur complete lancee avant ce changement (apres cout colore, ligne d'effectif retiree, fond du panneau) : 26 suites sur 29 passent, 423 controles. Echecs lies au calendrier (semaine du 28/09 au 04/10 a cheval sur deux mois) et a une base de test deja remplie, pas aux changements : checklist passe apres remise a zero de la base ; expected_hours et payroll_requests restent en echec sur les controles « du mois ».
+- Fichier : `components/ShiftCard.tsx`. Non commite, non pousse.
+
+## 2026-09-29 — Panneau Stats Hebdo : fond blanc teinte (en local)
+
+- Le fond du panneau de droite passe du blanc pur a `#fcfcfd`, comme sur la page vitrine : il se detache du planning, et ses encadres blancs ressortent legerement. Meme fond dans le volet mobile.
+- Verifie en local : fond rgb(252, 252, 253), zero erreur.
+- Fichier : `components/Sidebar.tsx`. Non commite, non pousse.
+
+## 2026-09-29 — Vue semaine : ligne « effectif par heure » supprimee (en local)
+
+- La bande de petites barres (personnes en poste par demi-heure) sous les jours disparait, sur ordinateur et sur mobile. Serge : information pas importante, la page vitrine s'en passe tres bien.
+- La ligne « Coût » reste.
+- Code mort retire avec elle : la fonction `staffingPerSlot` (utils/helpers.ts), son test `scripts/test-coverage.mjs`, la constante `COVERAGE_SLOT`, la prop `showCoverage`, les textes `coverageShort`, `coverageTitle`, `peak`.
+- Verifie en local : ligne absente, zero erreur. Tests unitaires : 17 fichiers passent (un de moins, le test supprime).
+- Fichiers : `components/Calendar.tsx`, `utils/helpers.ts`, `utils/translations.ts`. Non commite, non pousse.
+
+## 2026-09-29 — Carte de shift : le cout prend la couleur de la carte (en local)
+
+- Le cout en bas de chaque carte (« 74 € ») n'est plus gris : il prend la couleur de l'employe, 25 % plus foncee (`color-mix` avec le noir), comme sur la page vitrine.
+- Nouvelle regle de Serge : elle remplace l'ancienne « cout toujours gris neutre, jamais rouge ni ambre » (16/09/2026).
+- Un shift couvert par un collegue garde sa carte grise, donc un cout gris.
+- Verifie en local sur le jeu de demo Sezam : Omar vert fonce, Double ambre fonce, zero erreur. Tests unitaires : 18 fichiers passent.
+- Fichier : `components/ShiftCard.tsx`. Non commite, non pousse.
+
+## 2026-09-28 — Site vitrine (maquette) : page des prix, feuille commune, controle qualite
+
+- Nouvelle page `maquettes/landing/prix.html` : forfait 59 € tout compris (2 managers, 10 employes), curseur 1 a 60 employes (+4 € par employe au-dela de 10), economie estimee qui defile (hypothese 2 000 € charges par employe, 15 %), silhouettes homme / femme / chef, encart multi-restaurants.
+- Nouvelle feuille commune `maquettes/landing/site.css` : jetons de couleur, 6 tailles de police, en-tete, boutons, pied de page, transition entre pages (en-tete fixe, contenu en fondu). Pourquoi : l'en-tete changeait de largeur d'une page a l'autre (1 180 contre 1 080 px).
+- Accueil : trois cartes et sur-titres violets retires, paie en miroir, logos Sezam et Grand Liban, CSS mort supprime (bandeau, cartes), echelles alignees.
+- Controle sur 6 largeurs (360 a 1 440 px) : en-tete identique, zero erreur, zero defilement horizontal, cibles tactiles de 44 px, scene des regles adaptee aux telephones.
+- Non commite (`maquettes/` reste hors depot). Vue en local : `python -m http.server 5178` dans `maquettes/landing`.
+
 ## 2026-09-25 — En-tete : annuler / retablir, burger anime, tiroir plus lent (en ligne)
 
 Demandes de Serge (24-25/09/2026), validees en local :

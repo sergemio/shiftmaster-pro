@@ -5,6 +5,7 @@ import PauseField, { PauseValue, pauseFields, shiftStartOptions, shiftEndOptions
 import { clampBreak, withAutoBreak } from '../utils/worktime';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
+import { useDismiss } from './useDismiss';
 
 interface EditShiftModalProps {
   isOpen: boolean;
@@ -44,6 +45,8 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
   // Jours sur lesquels recopier ce shift, en plus du sien.
   const [repeatOn, setRepeatOn] = useState<number[]>([]);
   const t = getTranslation((language || 'en') as Language);
+  // Clic sur le fond ou Echap : comme « Annuler » (29/09/2026).
+  const backdrop = useDismiss(onClose);
 
   useEffect(() => {
     if (shift) {
@@ -136,23 +139,25 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
   }, [assignableStaff, staffList, shift.staffId]);
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div {...backdrop} className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl w-full max-w-md max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
-        <div className="flex-none p-6 md:p-8 pb-3 md:pb-3 flex justify-between items-start border-b border-slate-50">
-          <div>
-            <h2 className="text-xl md:text-2xl font-bold text-slate-800">{isReadOnly ? 'View Shift' : 'Edit Shift'}</h2>
-            <p className="text-xs md:text-sm text-slate-400 font-medium">{isReadOnly ? 'Details' : 'Detailed configuration'}</p>
-          </div>
-          <button onClick={onClose} className="text-slate-300 hover:text-slate-500 transition-colors p-1">
-            <svg className="w-6 h-6 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        {/* Espacements resserres le 29/09/2026 (grille de 4 px) : marges 24 px,
+            16 px entre les champs, notes sur 2 lignes, boutons de 48 px. La
+            fenetre depassait l'ecran d'un telephone et se mettait a defiler
+            pour une poignee de champs. Le sous-titre « Detailed configuration »
+            n'apportait rien : retire. */}
+        <div className="flex-none px-6 pt-6 pb-2 flex justify-between items-center">
+          <h2 className="text-xl font-bold text-slate-800">{t(isReadOnly ? 'viewShift' : 'editShift')}</h2>
+          <button type="button" onClick={onClose} aria-label={t('close')} className="text-slate-300 hover:text-slate-500 transition-colors p-2 -mr-2">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 md:p-8 pt-4 md:pt-4 space-y-4 md:space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto px-6 pt-2 pb-6 space-y-4">
           {!isConfirmingDelete ? (
             <>
               <div>
-                <label className="block text-sm font-bold text-slate-600 mb-2">Assigned To</label>
+                <label className="block text-sm font-bold text-slate-600 mb-2">{t('assignedTo')}</label>
                 <div className="relative">
                   <select 
                     disabled={isReadOnly}
@@ -208,7 +213,7 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
               <PauseField start={startTime} end={endTime} value={pause} onChange={setPause} language={(language || 'en') as Language} disabled={isReadOnly} />
 
               <div>
-                <label className="block text-sm font-bold text-slate-600 mb-2">Coverage (Heures Sup)</label>
+                <label className="block text-sm font-bold text-slate-600 mb-2">{t('coverageHoursSup')}</label>
                 <div className="relative">
                    <select 
                     disabled={isReadOnly}
@@ -216,27 +221,28 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                     onChange={(e) => setCoverageBy(e.target.value)}
                     className={`w-full bg-slate-50/50 border rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all disabled:opacity-80 ${coverageBy ? 'border-indigo-300 bg-indigo-50/30 text-indigo-900' : 'border-slate-200'}`}
                   >
-                    <option value="">No coverage (Normal shift)</option>
+                    <option value="">{t('noCoverageOption')}</option>
                     {pickable.filter(s => s.id !== staffId).map(s => (
-                      <option key={s.id} value={s.id}>Covered by {s.name}</option>
+                      <option key={s.id} value={s.id}>{t('coveredBy')} {s.name}</option>
                     ))}
                   </select>
                 </div>
                 {coverageBy && (
                   <p className="mt-3 text-xs text-indigo-600 font-semibold leading-relaxed">
-                    ℹ️ {assignedStaff?.name} will be on leave. The covering person will gain extra hours.
+                    ℹ️ {t('coverNote').replace('{name}', assignedStaff?.name || '')}
                   </p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-600 mb-2">Notes</label>
+                <label className="block text-sm font-bold text-slate-600 mb-2">{t('notes')}</label>
                 <textarea 
                   readOnly={isReadOnly}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder={isReadOnly ? "No notes" : "Add details about this shift..."}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none h-24 resize-none transition-all placeholder:text-slate-300"
+                  rows={2}
+                  placeholder={t(isReadOnly ? 'noNotes' : 'notesPlaceholder')}
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-base font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none resize-none transition-all placeholder:text-slate-300"
                 />
               </div>
 
@@ -274,12 +280,12 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                 </div>
               )}
 
-              <div className="pt-4 space-y-4">
-                <div className="flex gap-4">
+              <div className="pt-2 space-y-2">
+                <div className="flex gap-3">
                   <button 
                     type="button"
                     onClick={onClose}
-                    className="flex-1 px-6 py-4 border border-slate-200 text-slate-500 font-bold rounded-2xl hover:bg-slate-50 transition-all text-base shadow-sm active:scale-95"
+                    className="flex-1 h-12 px-6 border border-slate-200 text-slate-500 font-bold rounded-2xl hover:bg-slate-50 transition-all text-base shadow-sm active:scale-95"
                   >
                     {isReadOnly ? t('close') : t('cancel')}
                   </button>
@@ -287,18 +293,18 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
                     <button 
                       type="submit"
                       disabled={employment.errors.length > 0}
-                      className="flex-1 px-6 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 text-base active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
+                      className="flex-1 h-12 px-6 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 text-base active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
                     >
                       {t('saveChanges')}
                     </button>
                   )}
                 </div>
                 {!isReadOnly && (
-                  <div className="flex justify-center pt-2">
+                  <div className="flex justify-center">
                     <button 
                       type="button"
                       onClick={() => setIsConfirmingDelete(true)}
-                      className="text-red-500 hover:text-red-600 font-black text-xs uppercase tracking-widest transition-colors py-2 flex items-center gap-2 group"
+                      className="text-red-500 hover:text-red-600 font-black text-xs uppercase tracking-widest transition-colors h-11 px-3 flex items-center gap-2 group"
                     >
                       <svg className="w-4 h-4 transition-transform group-hover:rotate-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

@@ -7,15 +7,12 @@ import EmployeeView from './EmployeeView';
 import MyWeekView from './MyWeekView';
 import { getTranslation } from '../utils/translations';
 import { datedWeek, workCost, shiftWorkCost, clampBreak, withAutoBreak, BREAK_STEP } from '../utils/worktime';
-import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, formatMoney, staffingPerSlot, formatTime, getWeekRangeLong, getIsoWeekNumber, AbsenceDeduction, visibleAbsenceKind } from '../utils/helpers';
+import { getIsoDateString, getNowInTimezone, getWeekStart, getShiftIsoDate, getOrphanReason, findOverlappingShiftIds, formatMoney, formatTime, getWeekRangeLong, getIsoWeekNumber, AbsenceDeduction, visibleAbsenceKind } from '../utils/helpers';
 
 // Header stamped on top of the grid in the PNG export only: the restaurant's
 // name, never a hardcoded brand (every client exports its own schedule).
 // Fixed height so it can be added to the capture container's height.
 const EXPORT_HEADER_HEIGHT = 76;
-
-/** Pas de la bande d'effectif, en heures. Cale sur le pas des horaires saisis. */
-const COVERAGE_SLOT = 0.5;
 
 /**
  * Un motif d'absence = une couleur qui veut dire quelque chose (R5.2).
@@ -42,7 +39,6 @@ interface CalendarProps {
   orgName?: string;
   /** Sous « ma semaine » : la demande de conge du salarie. */
   myWeekFooter?: React.ReactNode;
-  showCoverage?: boolean;
   /** La semaine affichee est un brouillon : les cartes le montrent. */
   isDraft?: boolean;
   /** Couts horaires charges, par identifiant. Vide pour un non-admin : l'app ne
@@ -158,7 +154,6 @@ const Calendar: React.FC<CalendarProps> = ({
   onRemoveAbsence,
   orgName = '',
   myWeekFooter = null,
-  showCoverage = true,
   isDraft = false,
   rates = {},
   hourRange = { start: START_HOUR, end: END_HOUR },
@@ -592,55 +587,6 @@ const Calendar: React.FC<CalendarProps> = ({
                     </button>
                   );
                 })}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* -------------------------------------------------------------------
-          Effectif par heure. On voyait les heures PAR EMPLOYE, jamais la
-          couverture du service : un trou a 20h un samedi restait invisible.
-          Une barre par DEMI-HEURE — pas par heure : tous les horaires tombent sur
-          :00 ou :30, donc une barre horaire fusionnait deux realites (une personne
-          a 17h00, trois a 17h30 -> affichait 3) et effacait le creux qu'on veut
-          justement voir. Hauteur proportionnelle au nombre de presents.
-          Les heures sans personne sont laissees en creux plutot que colorees en
-          rouge : un service ferme n'est pas une anomalie (R5.3), c'est le vide
-          qui doit sauter aux yeux, pas une alerte.
-          ------------------------------------------------------------------- */}
-      {showCoverage && shifts.length > 0 && (
-        <div className="flex border-b bg-white">
-          {/* Icone plutot que le mot : « EFFECTIF » ne tenait pas dans les 54-60 px
-              de la colonne et s'affichait coupe (signale par Serge le 16/09/2026).
-              Le mot reste dans l'infobulle et pour les lecteurs d'ecran. */}
-          <div
-            className="w-[54px] md:w-[60px] flex-shrink-0 border-r bg-slate-50/50 flex items-center justify-end pr-1 md:pr-2 text-slate-400"
-            title={t('coverageTitle')}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" role="img" aria-label={t('coverageShort')}>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-          </div>
-          {localizedDays.map((_, i) => {
-            const counts = staffingPerSlot(shifts, i, startHour, endHour, COVERAGE_SLOT * 60);
-            const peak = Math.max(1, ...counts);
-            return (
-              <div
-                key={i}
-                className={`flex-1 border-r last:border-r-0 px-0.5 py-1 min-w-0 ${i === activeDayIndex ? 'block' : 'hidden md:block'}`}
-                title={`${t('coverageTitle')} — ${t('peak')} ${peak}`}
-              >
-                <div className="flex items-end gap-px h-6">
-                  {counts.map((n, h) => (
-                    <div
-                      key={h}
-                      className="flex-1 rounded-sm bg-indigo-200"
-                      style={{ height: `${Math.max(6, (n / peak) * 100)}%`, opacity: n === 0 ? 0.25 : 1 }}
-                      title={`${formatTime(startHour + h * COVERAGE_SLOT)} — ${n}`}
-                    />
-                  ))}
-                </div>
               </div>
             );
           })}
