@@ -5,6 +5,12 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-29 — Mise en ligne des retouches du planning et des fenetres de shift
+
+- Commit 2250b53 pousse sur `saas`, puis deploye sur saas-planning-resto.web.app. Verifie sur le site servi (index-B-MyZcVM.js) : fond du panneau, textes francais des fenetres, ancien sous-titre absent.
+- Contenu : cout en couleur, ligne d'effectif retiree, fond du panneau, cartes opaques a coins de 10 px, fenetres de shift (clic sur le fond, Echap, espacements, francais).
+- Reste a faire : expected_hours_test et payroll_requests_test ne gerent pas une semaine a cheval sur deux mois.
+
 ## 2026-09-29 — Fenetres de shift : clic a l'exterieur, Echap, espacements, francais (en local)
 
 - « Modifier le shift » et « Créer un shift » se ferment au clic sur le fond sombre et a la touche Echap, comme « Annuler ». Le clic ne ferme que s'il commence ET finit sur le fond : selectionner du texte en glissant hors de la fenetre ne la ferme plus. Nouveau crochet partage `components/useDismiss.ts`.
