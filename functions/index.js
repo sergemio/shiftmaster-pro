@@ -25,7 +25,8 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import firestoreLib from '@google-cloud/firestore';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
+import { BRAND, verifyEmailMail, resetPasswordMail, inviteMail } from './emails.js';
 
 initializeApp();
 setGlobalOptions({ region: 'europe-west1', maxInstances: 5 });
@@ -180,6 +181,142 @@ export const acceptInvite = onCall(async (request) => {
 
   await syncClaims(caller.uid);
   return { orgId, role };
+});
+
+// --- mails ----------------------------------------------------------------------
+
+/**
+ * Nos propres mails, en HTML a nos couleurs (functions/emails.js), a la place
+ * des modeles de Firebase : Google refuse de les modifier sur ce projet
+ * (EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED, 29/09/2026). Trois cas :
+ *   - emulateurs : le mail est range dans `mailOutbox` au lieu de partir (tests) ;
+ *   - en ligne, avec RESEND_API_KEY et MAIL_FROM dans functions/.env (hors git) :
+ *     envoi par Resend ;
+ *   - en ligne sans ces reglages : { sent: false }, et l'app fait envoyer a
+ *     Firebase son mail standard. Aucun mail ne se perd.
+ */
+const EMULATOR = process.env.FUNCTIONS_EMULATOR === 'true';
+const mailReady = () => EMULATOR || !!(process.env.RESEND_API_KEY && process.env.MAIL_FROM);
+
+// Les liens des mails ne menent qu'a nos adresses, jamais a un site tiers.
+const APP_ORIGINS = ['https://saas-planning-resto.web.app', 'https://saas-planning-resto.firebaseapp.com'];
+const appUrl = (v) => {
+  try {
+    const u = new URL(v);
+    if (APP_ORIGINS.includes(u.origin) || (EMULATOR && u.hostname === 'localhost')) return u;
+  } catch { /* adresse abimee */ }
+  throw new HttpsError('invalid-argument', 'Adresse de l\'application invalide.');
+};
+
+const cleanLang = (v) => (v === 'en' ? 'en' : 'fr');
+const firstName = (n) => String(n || '').trim().split(/\s+/)[0];
+
+const sendMail = async ({ to, subject, html, text, replyTo, fromName = BRAND }) => {
+  subject = subject.replace(/[\r\n]+/g, ' ');
+  if (EMULATOR) {
+    await db.collection('mailOutbox').add({ to, subject, html, text, replyTo: replyTo || null, fromName, at: nowIso() });
+    return;
+  }
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      from: `${fromName.replace(/["<>\r\n]/g, '')} <${process.env.MAIL_FROM}>`,
+      to: [to], subject, html, text, ...(replyTo ? { reply_to: replyTo } : {}),
+    }),
+  });
+  if (!res.ok) throw new HttpsError('unavailable', `Envoi du mail refuse (${res.status}).`);
+};
+
+/** Un mail par adresse et par sorte toutes les 60 s : le bouton ne sert pas a bombarder quelqu'un. */
+const THROTTLE_MS = 60 * 1000;
+const throttled = (kind, key) => {
+  const ref = db.doc(`mailThrottle/${createHash('sha256').update(`${kind}:${key}`).digest('hex')}`);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists && Date.now() - snap.data().at < THROTTLE_MS) return true;
+    tx.set(ref, { at: Date.now() });
+    return false;
+  });
+};
+
+/**
+ * Le lien fabrique par Firebase ouvre sa page generique, en anglais. On garde
+ * son code a usage unique et on l'envoie sur la page de l'app (AuthActionPage).
+ */
+const ownActionLink = (firebaseLink, app, lang) => {
+  const f = new URL(firebaseLink);
+  const out = new URL(app.origin + app.pathname);
+  out.searchParams.set('mode', f.searchParams.get('mode'));
+  out.searchParams.set('oobCode', f.searchParams.get('oobCode'));
+  out.searchParams.set('continueUrl', app.href);
+  out.searchParams.set('lang', lang);
+  return out.href;
+};
+
+/**
+ * Confirmation d'adresse (compte connecte) ou mot de passe oublie (sans
+ * connexion). Pour une adresse sans compte, on repond comme si le mail etait
+ * parti : la reponse ne doit pas dire qui a un compte.
+ */
+export const sendAuthEmail = onCall(async (request) => {
+  if (!mailReady()) return { sent: false };
+  const lang = cleanLang(request.data?.lang);
+  const app = appUrl(request.data?.continueUrl);
+  const settings = { url: app.href };
+
+  if (request.data?.type === 'verify') {
+    const user = await auth.getUser(requireAuth(request).uid);
+    if (!user.email || user.emailVerified) return { sent: true };
+    if (await throttled('verify', user.email.toLowerCase())) return { sent: true };
+    const link = ownActionLink(await auth.generateEmailVerificationLink(user.email, settings), app, lang);
+    await sendMail({ to: user.email, ...verifyEmailMail({ lang, name: firstName(user.displayName), link }) });
+    return { sent: true };
+  }
+  if (request.data?.type === 'reset') {
+    const email = cleanString(request.data?.email, 'Email', 320).toLowerCase();
+    if (await throttled('reset', email)) return { sent: true };
+    try { await auth.getUserByEmail(email); } catch { return { sent: true }; }
+    const link = ownActionLink(await auth.generatePasswordResetLink(email, settings), app, lang);
+    await sendMail({ to: email, ...resetPasswordMail({ lang, email, link }) });
+    return { sent: true };
+  }
+  throw new HttpsError('invalid-argument', 'Sorte de mail inconnue.');
+});
+
+/**
+ * Invitation d'un employe, envoyee au nom du gerant : « Serge via ShiftMaster »,
+ * et une reponse au mail arrive chez lui. L'invitation elle-meme est creee avant
+ * par l'app (createInvite) ; ici on ne fait que l'envoyer.
+ */
+export const sendInviteEmail = onCall(async (request) => {
+  const caller = requireAuth(request);
+  const orgId = cleanOrgId(request.data?.orgId);
+  const token = cleanString(request.data?.token, 'Invitation', 100);
+  requireOrgAdmin(caller, orgId);
+  if (!mailReady()) return { sent: false };
+  const app = appUrl(request.data?.appUrl);
+
+  const [org, invite, staff, inviter] = await Promise.all([
+    db.doc(`orgs/${orgId}`).get(), db.doc(`orgs/${orgId}/invites/${token}`).get(),
+    db.doc(`orgs/${orgId}/settings/staff`).get(), auth.getUser(caller.uid),
+  ]);
+  if (!org.exists || !invite.exists) throw new HttpsError('not-found', 'Invitation introuvable ou deja utilisee.');
+  if (await throttled('invite', token)) return { sent: true };
+
+  const inv = invite.data(), orgName = org.data().name;
+  const person = inv.staffId && staff.exists ? (staff.data().list || []).find(s => s.id === inv.staffId) : null;
+  const from = firstName(inviter.displayName) || orgName;
+  const link = new URL(app.origin + app.pathname);
+  link.searchParams.set('org', orgId);
+  link.searchParams.set('invite', token);
+  link.searchParams.set('r', orgName);
+  await sendMail({
+    to: inv.email, replyTo: inviter.email || null, fromName: `${from} via ${BRAND}`,
+    ...inviteMail({ lang: org.data().settings?.language, inviter: from, org: orgName, name: firstName(person?.name), email: inv.email, link: link.href }),
+  });
+  await invite.ref.update({ emailedAt: nowIso() });
+  return { sent: true };
 });
 
 // --- setMemberRole ------------------------------------------------------------

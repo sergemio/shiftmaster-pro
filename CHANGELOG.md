@@ -5,6 +5,41 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-09-30 — Mails refaits en HTML, envoyes par nos fonctions
+
+Pourquoi : les mails de Firebase etaient en texte brut, signes « Votre equipe saas-planning-resto »,
+avec un lien brut de 250 caracteres vers une page en anglais ; l'invitation n'etait que du texte pre-rempli
+dans la messagerie du gerant. Google refuse de modifier ses modeles sur ce projet : on envoie donc nous-memes.
+Maquette validee par Serge le 30/09 : `maquettes/emails/apercu.html` (hors git).
+
+- `functions/emails.js` (nouveau) : les 3 mails (confirmation d'adresse, mot de passe oublie, invitation),
+  HTML compatible messageries + version texte, francais et anglais. Nom de marque provisoire en un seul endroit (BRAND).
+- `functions/index.js` : `sendAuthEmail` (confirmation, mot de passe) et `sendInviteEmail` (au nom du gerant :
+  « Serge via ShiftMaster », reponse chez lui). Le lien mene a la page de l'app, en francais, plus a celle de Firebase.
+  Un mail par adresse et par sorte toutes les 60 s. Adresse sans compte : meme reponse, aucun mail (on ne revele pas qui a un compte).
+- Envoi : Resend si `RESEND_API_KEY` et `MAIL_FROM` sont dans `functions/.env` (hors git). Sans eux, la fonction
+  repond « pas envoye » et l'app fait envoyer a Firebase son mail standard (invitation : la messagerie du gerant s'ouvre).
+  **Donc rien ne change en ligne tant que le domaine et la cle n'existent pas.** Aux emulateurs, les mails sont ranges dans `mailOutbox`.
+- App : `firebaseService.ts` (appels + repli), bouton « Envoyer par email » dans l'equipe (`StaffModal.tsx`, affiche « Envoye »),
+  langue du lien respectee (`AuthActionPage.tsx`), cle ignoree par git (`.gitignore`).
+- Tests : `emails_test.py` (nouveau, 20 controles), `invite_test.py` adapte. Suite complete : 28/30, seuls echecs
+  les deux tests de dates connus (semaine a cheval sur septembre et octobre).
+- Pour brancher : acheter le domaine, le declarer dans Resend (enregistrements DNS), ecrire les 2 lignes dans
+  `functions/.env`, deployer les fonctions.
+
+## 2026-09-30 — Liens recus par email : verifies en ligne, ils marchent
+
+- Changer l'adresse des liens (modeles d'email) reste refuse par Google : console « an error occurred »,
+  API EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED (comme le 22/09). Cause non documentee par Google.
+- Mais la page generique de Firebase marche desormais : le lien contient la cle, la page demande un clic
+  « Complete verification », valide l'adresse, et « Continuer » ramene sur l'app. Le blocage du 22/09
+  (« mode invalide, cle absente ») ne se reproduit plus.
+- Verifie sur le site EN LIGNE avec de vrais emails (Gmail) : confirmation d'adresse, mot de passe oublie
+  (nouveau mot de passe enregistre, connexion reussie), invitation de bout en bout (proprietaire cree un
+  restaurant, invite une adresse ; l'invitee s'inscrit, confirme par le vrai lien, entre dans le restaurant ;
+  le proprietaire voit « Compte relie » ; zero erreur).
+- Nettoye : restaurant « Diagnostic 0930 » supprime par l'app, comptes sergemenassa+test0930 et +test0930b supprimes.
+
 ## 2026-09-29 — Mise en ligne des retouches du planning et des fenetres de shift
 
 - Commit 2250b53 pousse sur `saas`, puis deploye sur saas-planning-resto.web.app. Verifie sur le site servi (index-B-MyZcVM.js) : fond du panneau, textes francais des fenetres, ancien sous-titre absent.

@@ -36,6 +36,8 @@ interface StaffModalProps {
   /** Cree l'invitation d'une fiche ; renvoie le jeton du lien. */
   onInvite?: (staff: Staff) => Promise<string | null>;
   onCancelInvite?: (token: string) => void;
+  /** Envoie l'invitation par mail ; `false` = service d'envoi indisponible. */
+  onSendInvite?: (token: string) => Promise<boolean>;
   inviteUrl?: (token: string) => string;
   orgName?: string;
   /** L'admin connecte, quand il n'a pas de fiche d'equipier : on le lui dit, et on
@@ -61,6 +63,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
   invites = {},
   onInvite,
   onCancelInvite,
+  onSendInvite,
   inviteUrl,
   orgName = '',
   selfAdmin,
@@ -108,6 +111,19 @@ const StaffModal: React.FC<StaffModalProps> = ({
     if (!inviteUrl) return;
     try { await navigator.clipboard.writeText(inviteUrl(token)); setCopiedToken(token); setTimeout(() => setCopiedToken(null), 2000); }
     catch { window.prompt(t('smInviteCopyPrompt'), inviteUrl(token)); }
+  };
+
+  // Le mail part de nos serveurs (HTML, au nom de l'admin, reponse chez lui).
+  // Service d'envoi pas encore branche : la messagerie de l'admin s'ouvre, texte pre-rempli.
+  const [sentToken, setSentToken] = useState<string | null>(null);
+  const [sendingToken, setSendingToken] = useState<string | null>(null);
+  const emailInvite = async (staff: Staff, token: string) => {
+    if (sendingToken) return;
+    setSendingToken(token);
+    const sent = onSendInvite ? await onSendInvite(token) : false;
+    setSendingToken(null);
+    if (!sent) { window.location.href = mailtoFor(staff, token); return; }
+    setSentToken(token); setTimeout(() => setSentToken(null), 2500);
   };
 
   // Email pre-rempli, envoye depuis la messagerie de l'admin : aucun service
@@ -361,7 +377,10 @@ const StaffModal: React.FC<StaffModalProps> = ({
                               <button type="button" onClick={() => copyLink(token)} className="font-bold text-indigo-600 hover:text-indigo-800">
                                 {copiedToken === token ? t('payrollCopied') : t('smInviteCopy')}
                               </button>
-                              <a href={mailtoFor(staff, token)} className="font-bold text-indigo-600 hover:text-indigo-800">{t('smInviteEmail')}</a>
+                              <button type="button" onClick={() => emailInvite(staff, token)} disabled={sendingToken === token}
+                                className="font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-60">
+                                {sentToken === token ? t('smInviteSent') : t('smInviteEmail')}
+                              </button>
                               <button type="button" onClick={() => onCancelInvite?.(token)} className="font-bold text-slate-400 hover:text-red-600">{t('smInviteCancel')}</button>
                             </div>
                           );

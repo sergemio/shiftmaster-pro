@@ -22,8 +22,11 @@ export const authActionFromUrl = (): { mode: string; code: string; next: string 
  * « The selected page mode is invalid » : une invitee ne pouvait pas entrer.
  */
 const AuthActionPage: React.FC<{ mode: string; code: string; next: string }> = ({ mode, code, next }) => {
+  // La langue du mail d'abord : le lien s'ouvre souvent sur un autre appareil.
   let lang: Language = 'fr';
+  const fromLink = new URLSearchParams(window.location.search).get('lang');
   try { lang = (localStorage.getItem('shiftmaster_lang') as Language) || 'fr'; } catch { /* navigation privee */ }
+  if (fromLink === 'en' || fromLink === 'fr') lang = fromLink;
   const t = getTranslation(lang);
   const [state, setState] = useState<'working' | 'done' | 'error' | 'form'>('working');
   const [email, setEmail] = useState('');

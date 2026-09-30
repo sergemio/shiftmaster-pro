@@ -26,6 +26,10 @@ dist-ssr
 # Firebase service account key
 scripts/service-account.json
 
+# Cle du service d'envoi des mails (RESEND_API_KEY, MAIL_FROM) : jamais dans git
+functions/.env
+functions/.env.*
+
 # Personal / HR documents — this repo is PUBLIC, never commit these
 attachments/
 

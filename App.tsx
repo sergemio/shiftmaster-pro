@@ -61,6 +61,7 @@ import {
   UiPrefs,
   subscribeToInvites,
   createInvite,
+  sendInviteEmailCall,
   deleteInvite,
   acceptInviteCall,
   refreshUser,
@@ -2531,6 +2532,7 @@ const App: React.FC = () => {
         invites={invites}
         onInvite={connected && !isReadOnly ? inviteStaff : undefined}
         onCancelInvite={cancelInvite}
+        onSendInvite={sendInviteEmailCall}
         inviteUrl={inviteUrl}
         orgName={org?.name || ''}
         selfAdmin={connected && isAdmin && !me && user?.email

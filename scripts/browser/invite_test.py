@@ -55,8 +55,9 @@ with sync_playwright() as pw:
     row.get_by_test_id("access-invite").click(); s.wait_for_timeout(1500)
     pend = row.get_by_test_id("access-pending")
     check("Invitation creee : « Invitation du … », copier, email, annuler", pend.count() == 1 and "Copier le lien" in pend.inner_text(), row.inner_text())
-    mail = pend.get_by_role("link", name="Envoyer par email").get_attribute("href")
-    check("Email pre-rempli adresse a Nora, avec le lien", mail.startswith("mailto:" + NORA.replace("@", "%40")) and "invite%3D" in mail, mail[:120])
+    # Le contenu du mail lui-meme est verifie par emails_test.py
+    pend.get_by_role("button", name="Envoyer par email").click(); s.wait_for_timeout(2500)
+    check("« Envoyer par email » : le mail part (« Envoyé »)", "Envoyé" in pend.inner_text(), pend.inner_text())
     pend.get_by_role("button", name="Copier le lien").click(); s.wait_for_timeout(400)
     link = s.evaluate("() => navigator.clipboard.readText()")
     check("Lien copie : ?org=…&invite=…", "?org=" in link and "&invite=" in link, link)

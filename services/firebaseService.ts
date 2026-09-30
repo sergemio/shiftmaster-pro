@@ -113,8 +113,9 @@ export const auth = getAuth(app);
  * langue de l'app, et avec un retour vers la page ou l'on etait (lien
  * d'invitation compris). Recette du 22/09/2026 : ils partaient en anglais.
  */
+const appLang = () => { try { return localStorage.getItem('shiftmaster_lang') || 'fr'; } catch { return 'fr'; } };
 const emailSettings = () => {
-  try { auth.languageCode = localStorage.getItem('shiftmaster_lang') || 'fr'; } catch { auth.languageCode = 'fr'; }
+  auth.languageCode = appLang();
   return { url: window.location.origin + window.location.pathname + window.location.search };
 };
 
@@ -354,7 +355,8 @@ export const signUpWithEmail = async (name: string, email: string, password: str
   try {
     const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
     if (name.trim()) await updateProfile(result.user, { displayName: name.trim() });
-    try { await sendEmailVerification(result.user, emailSettings()); } catch { /* l'envoi reessaiera depuis l'app */ }
+    // Sans attendre : l'inscription ne patiente pas derriere l'envoi du mail.
+    sendVerificationMail(result.user).catch(() => { /* l'envoi reessaiera depuis l'app */ });
     return { user: result.user };
   } catch (error: any) {
     return authError(error);
@@ -363,6 +365,7 @@ export const signUpWithEmail = async (name: string, email: string, password: str
 
 export const resetPassword = async (email: string): Promise<{ error?: string }> => {
   try {
+    if (await sendOwnAuthMail({ type: 'reset', email: email.trim() })) return {};
     await sendPasswordResetEmail(auth, email.trim(), emailSettings());
     return {};
   } catch (error: any) {
@@ -386,6 +389,22 @@ const callFunction = async <T,>(name: string, data: unknown): Promise<T> => {
   const { fns, httpsCallable } = await functionsPromise;
   const res = await httpsCallable(fns, name)(data);
   return res.data as T;
+};
+
+/**
+ * Mails de compte envoyes par nos fonctions, en HTML a nos couleurs. `false` :
+ * service d'envoi pas encore branche, ou en panne ; l'appelant fait alors
+ * envoyer a Firebase son mail standard.
+ */
+const sendOwnAuthMail = async (data: { type: 'verify' | 'reset'; email?: string }): Promise<boolean> => {
+  try {
+    const r = await callFunction<{ sent?: boolean }>('sendAuthEmail', { ...data, lang: appLang(), continueUrl: emailSettings().url });
+    return !!r?.sent;
+  } catch { return false; }
+};
+
+const sendVerificationMail = async (user: NonNullable<typeof auth.currentUser>) => {
+  if (!(await sendOwnAuthMail({ type: 'verify' }))) await sendEmailVerification(user, emailSettings());
 };
 
 /** Cree un restaurant dont la personne connectee devient proprietaire et admin. */
@@ -466,6 +485,18 @@ export const deleteInvite = async (token: string): Promise<void> => {
   }
 };
 
+/**
+ * Envoie l'invitation par mail, au nom du gerant. `false` : service d'envoi pas
+ * encore branche ou en panne ; l'app ouvre alors la messagerie du gerant.
+ */
+export const sendInviteEmailCall = async (token: string): Promise<boolean> => {
+  try {
+    const r = await callFunction<{ sent?: boolean }>('sendInviteEmail',
+      { orgId: requireOrg(), token, appUrl: window.location.origin + window.location.pathname });
+    return !!r?.sent;
+  } catch { return false; }
+};
+
 /** Accepte une invitation. `code` = code d'erreur de la function, pour un message clair. */
 export const acceptInviteCall = async (orgId: string, token: string): Promise<{ ok?: boolean; code?: string; message?: string }> => {
   try {
@@ -486,7 +517,7 @@ export const refreshUser = async (): Promise<boolean> => {
 };
 
 export const resendVerification = async (): Promise<void> => {
-  if (auth.currentUser) await sendEmailVerification(auth.currentUser, emailSettings());
+  if (auth.currentUser) await sendVerificationMail(auth.currentUser);
 };
 
 export const logout = async () => {
