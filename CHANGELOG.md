@@ -25,6 +25,8 @@ Pourquoi : après les retours d'Henry, Serge a demandé une grosse passe sur tou
 - Visuel : 44 px pour les boutons de l'en-tête et du tiroir sur téléphone, plus de texte à 11 px, « Déconnexion » en gris.
 - Tests : `signup_test`, `henry_feedback_test` (dirigeant sans contrat, chaque étape de la visite), noms de boutons mis à jour.
 - Hors code, à faire par Serge : activer Google dans la console Firebase.
+- Tests de dates réparés : `expected_hours_test` calcule l'attendu selon le mois du jeudi (semaine à cheval) ;
+  `semaine_entiere` exige le dimanche dans le même mois. Suite complète : 31/31.
 
 ## 2026-10-02 — Retours d'Henry (WhatsApp du 02/10, 11 h 52)
 

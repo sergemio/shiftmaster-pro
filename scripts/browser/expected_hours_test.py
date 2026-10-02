@@ -12,15 +12,24 @@ from playwright.sync_api import sync_playwright
 from settings_ui import open_settings
 from dates import MON, iso, fr
 
+# Le mois affiche par la vue « Mois » est celui du JEUDI de la semaine (regle ISO).
+# Une semaine a cheval (lun 28 sept - dim 4 oct) affiche donc octobre, et le conge
+# du lundi tombe en septembre : il ne compte pas dans le mois. Les attendus se
+# calculent ici selon le cas, au lieu de supposer que lundi et jeudi partagent
+# le meme mois (les 2 controles tombaient chaque semaine a cheval, 02/10/2026).
+MOIS_VU = (MON + timedelta(days=3)).month
+CONGE_DANS_LE_MOIS = MON.month == MOIS_VU
 # La semaine de l'arret maladie : une semaine voisine NON planifiee dont le
-# mercredi ET le jeudi tombent dans le mois de la semaine en cours. Sinon l'arret
-# serait coupe par un changement de mois et l'attendu ne serait plus 151,7 - 4,5 - 14.
+# mercredi ET le jeudi tombent dans le mois affiche.
 DECALAGE = next(
     (d for d in (7, -7, 14, -14)
-     if (MON + timedelta(days=d + 2)).month == MON.month
-     and (MON + timedelta(days=d + 3)).month == MON.month),
+     if (MON + timedelta(days=d + 2)).month == MOIS_VU
+     and (MON + timedelta(days=d + 3)).month == MOIS_VU),
     7,
 )
+ATTENDU_MOIS = round(round(35 * 52 / 12, 1) - (4.5 if CONGE_DANS_LE_MOIS else 0) - 14, 1)
+A_MOIS = f"{ATTENDU_MOIS:.1f}".replace(".", ",")          # « 133,2 » ou « 137,7 »
+JOURS_MOIS = 3 if CONGE_DANS_LE_MOIS else 2
 SEMAINES = abs(DECALAGE) // 7               # nombre de sauts de semaine a faire
 SENS = 1 if DECALAGE > 0 else -1
 ARRET_LUN = MON + timedelta(days=DECALAGE)  # lundi de cette semaine voisine
@@ -89,10 +98,11 @@ with sync_playwright() as pw:
     # --- 3. vue mois --------------------------------------------------------------
     p.get_by_role("button", name="Mois", exact=True).click(); p.wait_for_timeout(3000)
     txt = row(p, "Omar").inner_text()
-    check("Mois : attendu 151,7 - 4,5 - 14 = 133,2 h", "/ 133,2 h" in txt, txt)
-    check("Mois : motifs melanges -> « absence », 3 jours, le motif reste prive",
-          "133,2 h attendues (3 j d'absence)" in notes(p), notes(p))
-    check("Mois : l ecart se calcule sur l attendu reduit (5 - 133,2 = -128,2, soit 128 h 12)", "128 h 12" in txt, txt)
+    check(f"Mois : attendu 151,7 - absences = {A_MOIS} h", f"/ {A_MOIS} h" in txt, txt)
+    check(f"Mois : motif « absence », {JOURS_MOIS} jours, le motif reste prive",
+          f"{A_MOIS} h attendues ({JOURS_MOIS} j d'absence)" in notes(p), notes(p))
+    # Mois en cours : le manque d'heures ne s'affiche qu'une fois le mois termine (QA du 02/10/2026).
+    check("Mois en cours : aucun manque d'heures affiche", "−" not in txt, txt)
     p.screenshot(path=DIR + r"\lot3_month.png")
     p.get_by_role("button", name="Semaine", exact=True).click(); p.wait_for_timeout(800)
 
@@ -115,13 +125,13 @@ with sync_playwright() as pw:
     check("Omar (planning, barre laterale) voit son attendu : 30,5 h (1 j de congé)", "30,5 h attendues (1 j de congé)" in n2, n2)
     p2.get_by_role("button", name="Mois", exact=True).click(); p2.wait_for_timeout(3000)
     n2 = notes(p2)
-    check("Omar (barre laterale, mois) voit 133,2 h attendues", any("133,2 h attendues" in x for x in n2), n2)
+    check(f"Omar (barre laterale, mois) voit {A_MOIS} h attendues", any(f"{A_MOIS} h attendues" in x for x in n2), n2)
     open_settings(p2); p2.wait_for_timeout(500)
     p2.get_by_role("radio", name="Ma semaine").first.click(); p2.wait_for_timeout(600)
     p2.keyboard.press("Escape"); p2.wait_for_timeout(3000)
     n2 = [x for x in notes(p2)]
     check("« Ma semaine » : attendu de la semaine 30,5 h", "30,5 h attendues (1 j de congé)" in n2, n2)
-    check("« Ma semaine » : attendu du mois 133,2 h", "133,2 h attendues (3 j d'absence)" in n2, n2)
+    check(f"« Ma semaine » : attendu du mois {A_MOIS} h", f"{A_MOIS} h attendues ({JOURS_MOIS} j d'absence)" in n2, n2)
     p2.screenshot(path=DIR + r"\lot3_myweek.png")
     check("Employe : aucune erreur JavaScript", not err2, err2[:1])
     b.close()

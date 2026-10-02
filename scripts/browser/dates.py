@@ -83,13 +83,14 @@ def semaine_entiere(semaines=4):
     """Lundi d'une semaine entierement contenue dans un seul mois.
 
     Part de `semaines` apres la semaine en cours et avance jusqu'a en trouver une
-    dont le lundi et le samedi tombent dans le meme mois : les controles qui
+    dont le lundi et le DIMANCHE tombent dans le meme mois : les controles qui
     lisent une ligne de paie (« 6 j, 35 h ») ne supportent pas une semaine
-    coupee en deux par un changement de mois.
+    coupee en deux par un changement de mois. (Samedi seulement jusqu'au
+    02/10/2026 : le conge du 26 oct au 1er nov etait coupe au 31 oct dans l'export.)
     """
     lundi = MON + timedelta(days=7 * semaines)
     for _ in range(6):
-        if (lundi + timedelta(days=5)).month == lundi.month:
+        if (lundi + timedelta(days=6)).month == lundi.month:
             return lundi
         lundi += timedelta(days=7)
     return lundi
