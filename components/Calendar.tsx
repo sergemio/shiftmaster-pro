@@ -51,7 +51,9 @@ interface CalendarProps {
   currentWeek: Date;
   navDirection?: 'forward' | 'backward' | 'none';
   onUpdateShift: (shift: Shift) => void;
-  onAddShift: (staffId: string, dayIndex: number, start: number) => void;
+  /** Shift + glisser : la copie a poser (l'id est celui de l'original). */
+  onCopyShift?: (shift: Shift) => void;
+  onAddShift:(staffId: string, dayIndex: number, start: number) => void;
   onEditShift: (shiftId: string) => void;
   isReadOnly?: boolean;
   isLoading?: boolean;
@@ -160,7 +162,8 @@ const Calendar: React.FC<CalendarProps> = ({
   staff,
   currentWeek, 
   navDirection = 'none',
-  onUpdateShift, 
+  onUpdateShift,
+  onCopyShift,
   onAddShift, 
   onEditShift, 
   isReadOnly = false,
@@ -364,13 +367,15 @@ const Calendar: React.FC<CalendarProps> = ({
 
         if (finalDay !== dragState.originalDay || finalStart !== dragState.originalStart) {
           // La pause suit le shift : meme decalage.
-          onUpdateShift(clampBreak({
+          const placed = clampBreak({
             ...shift,
             dayIndex: finalDay,
             startTime: finalStart,
             endTime: finalEnd,
             ...(typeof shift.breakStart === 'number' ? { breakStart: shift.breakStart + (finalStart - shift.startTime) } : {}),
-          }));
+          });
+          if (dragState.copy) onCopyShift?.(placed);
+          else onUpdateShift(placed);
         }
       } else if (dragState.dragType === 'resize-top') {
         const finalStart = Math.max(startHour, Math.min(shift.endTime - 0.5, dragState.originalStart + snappedDelta));
@@ -501,7 +506,10 @@ const Calendar: React.FC<CalendarProps> = ({
           const dayNum = date.getDate();
           // Aujourd'hui a l'heure du restaurant, pas a celle de l'appareil.
           const isToday = idx === todayIndex;
-          const isActive = idx === activeDayIndex;
+          // Pastille pleine : aujourd'hui sur ordinateur, le jour affiche sur telephone
+          // (une seule colonne). Avant, le lundi de chaque autre semaine etait en
+          // couleur et passait pour aujourd'hui (Serge, 02/10/2026).
+          const isActive = isMobile ? idx === activeDayIndex : isToday;
 
           return (
             <button 
@@ -651,9 +659,10 @@ const Calendar: React.FC<CalendarProps> = ({
         <div className={`flex-1 flex calendar-grid relative transition-all duration-300 bg-white ${visualStateClass}`} key={weekId} style={{ backgroundSize: `100% ${hourHeight}px` }}>
           {localizedDays.map((_, i) => (
             <div key={i} data-testid={`day-column-${i}`}
-              // Clic sur un espace vide (retour d'Henry, 02/10/2026) : « Ajouter un
+              // Double-clic sur un espace vide (retour d'Henry, puis Serge le
+              // 02/10/2026 : un simple clic l'ouvrait par megarde) : « Ajouter un
               // shift » s'ouvre sur ce jour, a la demi-heure cliquee.
-              onClick={isExporting ? undefined : (e) => {
+              onDoubleClick={isExporting ? undefined : (e) => {
                 if (e.target !== e.currentTarget || dragState) return;
                 const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
                 const start = Math.floor((startHour + y / hourHeight) * 2) / 2;
@@ -700,6 +709,9 @@ const Calendar: React.FC<CalendarProps> = ({
             let previewStartTime = shift.startTime;
             let previewEndTime = shift.endTime;
             let previewBreak = shift.breakStart;
+            // Shift + glisser : l'original ne bouge pas, une copie suit la souris.
+            const isCopying = isDraggingThis && !!dragState?.copy;
+            const resting = { top, left, width, height };
 
             if (isDraggingThis && dragState) {
                const timeDelta = (dragState.currentY - dragState.initialY) / hourHeight;
@@ -733,10 +745,31 @@ const Calendar: React.FC<CalendarProps> = ({
             }
 
             const staggerClass = `stagger-${(index % 30) + 1}`;
+            const ghost = { top, left, width, height };
+            if (isCopying) ({ top, left, width, height } = resting);
 
             return (
-              <div 
-                key={`${shift.id}-${weekId}`} 
+              <React.Fragment key={`${shift.id}-${weekId}`}>
+              {isCopying && (
+                <div className="hidden md:block pointer-events-none" data-testid="shift-copy-ghost"
+                  style={{ position: 'absolute', ...ghost, zIndex: 40 }}>
+                  <ShiftCard
+                    shift={shift}
+                    staff={staffMember}
+                    allStaff={staff}
+                    isDraft={isDraft}
+                    isReadOnly
+                    onEdit={() => {}}
+                    onDragStart={() => {}}
+                    renderStartTime={previewStartTime}
+                    renderEndTime={previewEndTime}
+                    renderBreakStart={previewBreak}
+                    language={language}
+                    style={{ width: '100%', height: '100%', opacity: 0.7, transition: 'none', filter: 'none' }}
+                  />
+                </div>
+              )}
+              <div
                 className={`${isExporting ? '' : animationClass} ${isExporting ? '' : staggerClass} ${isVisibleOnMobile ? 'block' : 'hidden md:block'}`}
                 style={{
                   position: 'absolute',
@@ -744,7 +777,7 @@ const Calendar: React.FC<CalendarProps> = ({
                   left: isMobile ? mobileLeft : left,
                   width: isMobile ? mobileWidth : width,
                   height,
-                  zIndex: isDraggingThis ? 40 : 10,
+                  zIndex: isDraggingThis && !isCopying ? 40 : 10,
                   opacity: 1
                 }}
               >
@@ -768,14 +801,14 @@ const Calendar: React.FC<CalendarProps> = ({
                     const { breakStart: _b, breakMinutes: _m, ...base } = shift;
                     onUpdateShift(m > 0 ? clampBreak({ ...base, breakStart: shift.breakStart, breakMinutes: m }) : base);
                   }}
-                  renderStartTime={isDraggingThis ? previewStartTime : undefined}
-                  renderEndTime={isDraggingThis ? previewEndTime : undefined}
-                  renderBreakStart={isDraggingThis ? previewBreak : undefined}
+                  renderStartTime={isDraggingThis && !isCopying ? previewStartTime : undefined}
+                  renderEndTime={isDraggingThis && !isCopying ? previewEndTime : undefined}
+                  renderBreakStart={isDraggingThis && !isCopying ? previewBreak : undefined}
                   language={language}
                   style={{
                     width: '100%',
                     height: '100%',
-                    opacity: isDraggingThis ? 0.7 : 1,
+                    opacity: isDraggingThis && !isCopying ? 0.7 : 1,
                     transition: (isDraggingThis || isExporting) ? 'none' : 'opacity 0.2s ease-out',
                     filter: 'none'
                   }}
@@ -792,12 +825,14 @@ const Calendar: React.FC<CalendarProps> = ({
                         originalDay: shift.dayIndex,
                         originalStart: shift.startTime,
                         originalEnd: shift.endTime,
-                        dragType: type
+                        dragType: type,
+                        copy: type === 'move' && e.shiftKey && !!onCopyShift,
                       });
                     }
                   }}
                 />
               </div>
+              </React.Fragment>
             );
           })}
         </div>

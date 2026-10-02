@@ -1,3 +1,4 @@
+import MonthPicker from './MonthPicker';
 import React, { useState } from 'react';
 import { Language } from '../types';
 import { exportWeeksData, loadStaffFromFirebase } from '../services/firebaseService';
@@ -85,13 +86,8 @@ const ExportDataButton: React.FC<ExportDataButtonProps> = ({ language = 'en' }) 
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-[300px] space-y-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-slate-800">{language === 'fr' ? 'Exporter le planning du mois' : 'Export the month\'s schedule'}</h3>
             <div>
-              <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">{language === 'fr' ? 'Mois' : 'Month'}</label>
-              <input
-                type="month"
-                value={exportMonth}
-                onChange={e => setExportMonth(e.target.value)}
-                className="mt-1 w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              />
+              <label htmlFor="export-month" className="block mb-1 text-xs font-medium text-slate-500 uppercase tracking-wide">{language === 'fr' ? 'Mois' : 'Month'}</label>
+              <MonthPicker id="export-month" name={language === 'fr' ? 'Mois' : 'Month'} value={exportMonth} onChange={setExportMonth} language={language} />
             </div>
             <div className="flex gap-2">
               <button

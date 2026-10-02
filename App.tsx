@@ -319,6 +319,7 @@ const App: React.FC = () => {
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   // `saveError` sert aussi a des messages qui ne sont pas des echecs (« rien a
   // copier », periode d'emploi) : la pastille rouge ne suit que les vrais echecs.
   const [writeFailed, setWriteFailed] = useState(false);
@@ -1406,6 +1407,22 @@ const App: React.FC = () => {
     createLog('UPDATE STAFF', `Updated extra record for ${fiche.firstName}`, null);
   }, [isReadOnly, isGuest, extras, shifts, handleUpdateShifts]);
 
+  /**
+   * Copie d'un shift posee par Shift + glisser (demande de Serge, 02/10/2026).
+   * Meme personne, meme duree, meme pause ; le remplacement d'un absent ne suit
+   * pas, il vaut pour le jour d'origine seulement.
+   */
+  const copyShift = useCallback((copy: Shift) => {
+    if (isReadOnly) return;
+    const { errors } = employmentCheck(copy.staffId, [copy.dayIndex]);
+    if (errors.length > 0) { setSaveError(errors[0]); return; }
+    const { coverageBy: _c, ...rest } = copy;
+    const created: Shift = { ...rest, id: Math.random().toString(36).substr(2, 9) };
+    handleUpdateShifts([...shifts, created]);
+    const target = staffList.find(s => s.id === copy.staffId) || null;
+    createLog('CREATE SHIFT', `Duplicated a shift for ${target?.name || 'Unknown'} on ${getShiftDate(toWeekId(currentWeek), copy.dayIndex, language)} (${formatTime(copy.startTime)}-${formatTime(copy.endTime)})`, target);
+  }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language, employmentCheck]);
+
   const updateShift = useCallback((updatedShift: Shift) => {
     if (isReadOnly) return;
     const original = shifts.find(s => s.id === updatedShift.id);
@@ -2364,22 +2381,41 @@ const App: React.FC = () => {
               onClick={() => openSettings()}
               data-tour="settings"
               aria-label={t('settings')}
-              className="md:hidden w-11 h-11 flex items-center justify-center rounded-full bg-slate-50text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
+              className="md:hidden w-11 h-11 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
               title={t('settings')}
             >
               <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             </button>
 
-            {/* Tablette (768-1279 px) : la colonne des stats prend 320-340 px, l'en-tete
-                n'a plus la place — nom et deconnexion passent dans les reglages. */}
-            <div className="hidden sm:flex md:hidden xl:flex items-center gap-2 md:gap-3 pl-2 border-l">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-900 leading-none truncate max-w-[140px]">{user?.displayName || "User"}</p>
-                <button onClick={handleLogout} className="text-xs text-slate-500 hover:text-slate-800 hover:underline cursor-pointer whitespace-nowrap">{t('signOut')}</button>
-              </div>
-              <div className="w-8 h-8 md:w-9 md:h-9 rounded-full border-2 border-indigo-100 p-0.5 overflow-hidden">
-                <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'User')}&background=6366f1&color=fff`} className="w-full h-full rounded-full object-cover" alt="User" />
-              </div>
+            {/* Seulement la pastille (Serge, 02/10/2026) : le nom et la deconnexion
+                sont deja dans le tiroir des reglages. Un clic ouvre un petit menu.
+                Tablette (768-1279 px) : pas de place, tout passe par les reglages. */}
+            <div className="relative hidden sm:flex md:hidden xl:flex items-center pl-2 border-l">
+              <button
+                onClick={() => setAccountMenuOpen(o => !o)}
+                aria-label={t('accountMenu')}
+                aria-expanded={accountMenuOpen}
+                data-testid="account-button"
+                className="w-9 h-9 rounded-full border-2 border-indigo-100 p-0.5 overflow-hidden hover:border-indigo-300 transition-colors"
+              >
+                <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'User')}&background=6366f1&color=fff`} className="w-full h-full rounded-full object-cover" alt="" />
+              </button>
+              {accountMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setAccountMenuOpen(false)} />
+                  <div role="menu" data-testid="account-menu" className="absolute right-0 top-full mt-2 z-50 w-56 bg-white rounded-xl border border-slate-200 shadow-lg py-1.5"
+                    onKeyDown={e => { if (e.key === 'Escape') setAccountMenuOpen(false); }}>
+                    <div className="px-3 py-2 border-b border-slate-100">
+                      <p className="text-sm font-bold text-slate-900 truncate">{user?.displayName || user?.email}</p>
+                      {user?.email && <p className="text-xs text-slate-500 truncate">{user.email}</p>}
+                    </div>
+                    <button role="menuitem" onClick={() => { setAccountMenuOpen(false); openSettings(); }}
+                      className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">{t('settings')}</button>
+                    <button role="menuitem" onClick={() => { setAccountMenuOpen(false); handleLogout(); }}
+                      className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">{t('signOut')}</button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>
@@ -2441,7 +2477,8 @@ const App: React.FC = () => {
             staff={displayStaff} 
             currentWeek={currentWeek} 
             navDirection={navDirection}
-            onUpdateShift={updateShift} 
+            onUpdateShift={updateShift}
+            onCopyShift={copyShift}
             rates={shiftRates}
             hourRange={hourRange}
             onAddShift={(_staffId, day, start) => { if (isReadOnly) return; setShiftPreset({ day, start }); setIsShiftModalOpen(true); }} 
@@ -2567,7 +2604,7 @@ const App: React.FC = () => {
         language={language}
         isReadOnly={isReadOnly}
       />
-      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={displayStaff} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} onCheck={previewViolations} onEmployment={employmentCheck} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} hours={operatingHours} />
+      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={displayStaff} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} weekShifts={shifts} onCheck={previewViolations} onEmployment={employmentCheck} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} hours={operatingHours} />
       {/* La barre n'existe que pendant une selection : elle occupe le bas de
           l'ecran, et rien ne justifie de manger cette place le reste du temps. */}
       {selectedShiftIds.length > 0 && !isReadOnly && (

@@ -3,6 +3,7 @@
 Donnees : seed-emulator. Omar 35 h (shifts lun 14/09 4,5 h, mar 15/09 5 h),
 Double 20 h (mer 16/09 3 h). Lancer `node scripts/seed-emulator.mjs` avant.
 """
+from month_ui import choose_month
 from playwright.sync_api import sync_playwright
 from settings_ui import open_settings
 from datetime import date, timedelta
@@ -130,7 +131,7 @@ with sync_playwright() as pw:
 
     open_settings(serge); serge.wait_for_timeout(500)
     serge.get_by_role("button", name="Éléments variables de paie").click(); serge.wait_for_timeout(600)
-    serge.get_by_label("Mois").fill(MOIS_PAIE); serge.wait_for_timeout(2500)
+    choose_month(serge, MOIS_PAIE); serge.wait_for_timeout(2500)
     txt = serge.get_by_test_id("payroll-text").inner_text()
     print("   ---\n" + "\n".join("   " + l for l in txt.splitlines()) + "\n   ---")
     check("Export : titre du mois", txt.startswith(f"Éléments variables de paie — {mois_long(MON)}"), txt[:60])
@@ -154,7 +155,7 @@ with sync_playwright() as pw:
     check("CSV : BOM UTF-8 pour Excel", raw.startswith(b"\xef\xbb\xbf"))
     check("CSV : en-tete francais", csv.splitlines()[0] == "Salarié;Rubrique;Du;Au;Jours;Heures;Détail", csv.splitlines()[0])
     check("CSV : ligne de l'arret de Double", any(l.startswith(f"Double;Arrêt maladie;{iso(ARRET)};{iso(ARRET, 1)};2;8;") for l in csv.splitlines()), csv)
-    serge.get_by_label("Mois").fill(MOIS_CP); serge.wait_for_timeout(2500)
+    choose_month(serge, MOIS_CP); serge.wait_for_timeout(2500)
     txt10 = serge.get_by_test_id("payroll-text").inner_text()
     check("Mois du conge : le conge accepte d'Omar, 6 j, 35 h",
           f"Congés payés du {fr(CP)} au {fr(CP, 6)} : 6 j décomptés, 35 h d'absence — Vacances Liban" in txt10, txt10)

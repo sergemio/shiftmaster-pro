@@ -1,3 +1,4 @@
+import MonthPicker from './MonthPicker';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Staff, AbsencePeriod, LeaveUnit, Language, WeekData, Extra, Closure } from '../types';
 import { getTranslation } from '../utils/translations';
@@ -133,8 +134,7 @@ const PayrollModal: React.FC<PayrollModalProps> = ({
 <div className="flex flex-wrap items-end gap-3">
             <div>
               <label htmlFor="payroll-month" className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-1.5">{t('payrollMonth')}</label>
-              <input id="payroll-month" type="month" value={month} onChange={e => setMonth(e.target.value)}
-                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500" />
+              <MonthPicker id="payroll-month" name={t('payrollMonth')} value={month} onChange={setMonth} language={language} />
             </div>
             <div className="flex gap-2 ml-auto">
               <button type="button" onClick={copy} disabled={!result || empty}

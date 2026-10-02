@@ -8,6 +8,11 @@ interface DayPickerProps {
   onChange: (days: number[]) => void;
   /** Jour affiche coche et non decochable — le jour du shift qu'on modifie. */
   lockedDay?: number;
+  /** Jours ou la personne a deja un shift : affiches appuyes, non cliquables.
+   *  Sans eux, on recochait un jour deja tenu et on creait un doublon (Serge, 02/10/2026). */
+  takenDays?: number[];
+  /** Info-bulle des jours deja tenus. */
+  takenTitle?: string;
   language?: Language;
   disabled?: boolean;
 }
@@ -24,19 +29,20 @@ interface DayPickerProps {
  * rangee changerait de forme d'une fenetre a l'autre, et on ne verrait plus a
  * quel jour appartient le shift qu'on est en train de modifier.
  */
-const DayPicker: React.FC<DayPickerProps> = ({ value, onChange, lockedDay, language = 'en', disabled = false }) => {
+const DayPicker: React.FC<DayPickerProps> = ({ value, onChange, lockedDay, takenDays = [], takenTitle, language = 'en', disabled = false }) => {
   const full = language === 'fr' ? DAYS_FR : DAYS_EN;
   const short = language === 'fr' ? DAYS_FR_SHORT : DAYS_EN_SHORT;
 
   const toggle = (i: number) => {
-    if (disabled || i === lockedDay) return;
+    if (disabled || i === lockedDay || takenDays.includes(i)) return;
     onChange(value.includes(i) ? value.filter(d => d !== i) : [...value, i].sort((a, b) => a - b));
   };
 
   return (
     <div className="grid grid-cols-7 gap-1.5">
       {short.map((label, i) => {
-        const locked = i === lockedDay;
+        const taken = i !== lockedDay && takenDays.includes(i);
+        const locked = i === lockedDay || taken;
         const on = locked || value.includes(i);
         return (
           <button
@@ -46,7 +52,7 @@ const DayPicker: React.FC<DayPickerProps> = ({ value, onChange, lockedDay, langu
             disabled={disabled || locked}
             aria-pressed={on}
             aria-label={full[i]}
-            title={locked ? full[i] : undefined}
+            title={taken ? `${full[i]} : ${takenTitle || ''}` : locked ? full[i] : undefined}
             className={`py-3 rounded-xl text-xs font-bold uppercase tracking-wide border-2 transition-all
               ${on ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600'}
               ${locked ? 'opacity-70 cursor-default' : 'active:scale-95'}

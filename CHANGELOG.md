@@ -5,6 +5,26 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-10-02 (nuit) — Double-clic pour ajouter, Shift + glisser pour dupliquer
+
+Pourquoi : demande de Serge. Le simple clic sur une case vide ouvrait « Ajouter un shift » par mégarde.
+- Case vide : il faut maintenant un double-clic (`Calendar.tsx`, `onDoubleClick`). Le simple clic ne fait plus rien.
+- Shift + glisser un shift (ordinateur) : une copie suit la souris, l'original reste ; au relâchement la copie est
+  posée (même personne, durée et pause ; le remplacement d'un absent ne suit pas). Relâché sur place : rien.
+  `types.ts` (`DragState.copy`), `Calendar.tsx` (prop `onCopyShift`, fantôme `shift-copy-ghost`),
+  `App.tsx` (`copyShift`, même contrôle de période d'emploi qu'un déplacement), `ShiftCard.tsx`
+  (`data-testid="shift-card"`, pas de sélection de texte ni d'ouverture de fiche sur Shift+clic).
+- Test : `scripts/browser/henry_feedback_test.py` (simple clic sans effet, double-clic, duplication, déplacement sans Shift).
+- Barre latérale « Heures semaine » : compteur « 0↑ · 2↓ » et sa version longue retirés (incompris). `Sidebar.tsx`, clé `overUnder` supprimée.
+- En-tête : la pastille de profil seule ; un clic ouvre un menu (nom, e-mail, Paramètres, Déconnexion). `App.tsx`.
+  Classe collée « bg-slate-50text-slate-400 » du bouton réglages corrigée au passage.
+- « Modifier le shift » : les jours où la personne a déjà un shift sont appuyés et non cliquables dans « Répéter aussi sur »
+  (sinon on recréait un doublon). `DayPicker.tsx` (`takenDays`), `EditShiftModal.tsx` (`weekShifts`).
+- En-tête des jours : sur ordinateur, seul aujourd'hui est en couleur ; le lundi des autres semaines passait pour aujourd'hui.
+  `Calendar.tsx`.
+- Sélecteur de mois maison (`MonthPicker.tsx`) à la place de `<input type="month">` (calendrier du navigateur, en anglais) :
+  flèches mois précédent / suivant, grille des douze mois, « Ce mois-ci ». Paie et export. Tests : `month_ui.py`.
+
 ## 2026-10-02 (soir) — QA complet du parcours : corrections
 
 Pourquoi : après les retours d'Henry, Serge a demandé une grosse passe sur tout le parcours. Rapport : `QA-2026-10-02.md`.

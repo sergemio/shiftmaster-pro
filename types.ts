@@ -388,6 +388,8 @@ export interface DragState {
   originalStart: number;
   originalEnd: number;
   dragType: DragType;
+  /** Shift tenu au depart du glisser : on pose une copie, l'original reste. */
+  copy?: boolean;
 }
 
 export interface LogEntry {

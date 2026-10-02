@@ -125,6 +125,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
 
   return (
     <div
+      data-testid="shift-card"
       className={`@container rounded-[10px] px-2 py-1.5 md:px-2 md:py-1.5 @max-[64px]:px-1 shadow-sm flex flex-col overflow-hidden border-l-4 group relative transition-transform ${isReadOnly ? '' : 'active:scale-[0.98]'} `}
       onMouseDown={(e) => {
         downAt.current = { x: e.clientX, y: e.clientY };
@@ -134,6 +135,8 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
         if (e.ctrlKey || e.metaKey || selectionMode) return;
         // Prevent drag start on mobile to avoid accidental moves/deletions during tap
         if (window.innerWidth < 768) return;
+        // Shift + glisser duplique : sans ceci, Shift+clic etend la selection de texte.
+        if (e.shiftKey) e.preventDefault();
         onDragStart(e, 'move');
       }}
       onTouchStart={startLongPress}
@@ -156,6 +159,8 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
         // il fallait un double-clic que personne ne devine). Sauf apres un glisser.
         const d = downAt.current;
         if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
+        // Shift tenu : c'est un essai de duplication relache sur place, pas une ouverture.
+        if (e.shiftKey && window.innerWidth >= 768) return;
         onEdit();
       }}
       style={{

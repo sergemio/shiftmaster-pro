@@ -6,6 +6,7 @@ La fermeture est posee sur la semaine SUIVANTE (3 jours a partir de son lundi) :
 la semaine en cours sert de temoin, elle doit rester sans fermeture. Dates
 calculees a partir d'aujourd'hui — voir `dates.py`."""
 import re
+from month_ui import choose_month
 from playwright.sync_api import sync_playwright
 from settings_ui import open_settings
 from dates import NEXT_MON, MON, iso, fr, mois, jour_nom
@@ -69,13 +70,13 @@ with sync_playwright() as pw:
     # --- 3. export de paie --------------------------------------------------------------------
     settings(p)
     p.get_by_role("button", name="Éléments variables de paie").click(); p.wait_for_timeout(600)
-    p.get_by_label("Mois").fill(mois(NEXT_MON)); p.wait_for_timeout(2500)
+    choose_month(p, mois(NEXT_MON)); p.wait_for_timeout(2500)
     txt = p.get_by_test_id("payroll-text").inner_text()
     check("Export : la fermeture en tete, a voir avec l'employeur",
           "Fermeture décidée par le restaurant (à voir avec l’employeur : congés imposés ou jours payés) :" in txt
           and f"du {fr(NEXT_MON)} au {fr(NEXT_MON, 2)} — vacances d'été" in txt, txt[:300])
     check("Export : aucune absence creee pour les salaries", f"Congés payés du {fr(NEXT_MON)}" not in txt)
-    p.get_by_label("Mois").fill(mois(iso(NEXT_MON, -40))); p.wait_for_timeout(2500)
+    choose_month(p, mois(iso(NEXT_MON, -40))); p.wait_for_timeout(2500)
     check("Export du mois d'avant : pas de fermeture", "Fermeture" not in p.get_by_test_id("payroll-text").inner_text())
     p.keyboard.press("Escape"); p.wait_for_timeout(300)
 

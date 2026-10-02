@@ -17,6 +17,8 @@ interface EditShiftModalProps {
   onUpdate: (updatedShift: Shift) => void;
   /** Copie le shift (tel qu'edite) sur d'autres jours de la meme semaine. */
   onRepeat: (shift: Shift, dayIndexes: number[]) => void;
+  /** Shifts de la semaine affichee : les jours ou la personne travaille deja. */
+  weekShifts?: Shift[];
   onDelete: (id: string) => void;
   /** Ce que ce shift enfreindrait une fois modifie. `excludeShiftId` retire la
    *  version actuelle du calcul, sinon elle se comparerait a elle-meme. */
@@ -30,7 +32,7 @@ interface EditShiftModalProps {
   hours?: OperatingHours;
 }
 
-const EditShiftModalBody: React.FC<EditShiftModalProps & { shift: NonNullable<EditShiftModalProps['shift']> }> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, onDelete, onCheck, onEmployment, isReadOnly = false, language, hours = DEFAULT_OPERATING_HOURS }) => {
+const EditShiftModalBody: React.FC<EditShiftModalProps & { shift: NonNullable<EditShiftModalProps['shift']> }> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, weekShifts = [], onDelete, onCheck, onEmployment, isReadOnly = false, language, hours = DEFAULT_OPERATING_HOURS }) => {
 
   const [staffId, setStaffId] = useState(shift.staffId);
   const [startTime, setStartTime] = useState(shift.startTime);
@@ -59,6 +61,17 @@ const EditShiftModalBody: React.FC<EditShiftModalProps & { shift: NonNullable<Ed
       setRepeatOn([]);
     }
   }, [shift]);
+
+  // Jours ou la personne choisie a deja un shift (hors celui-ci) : affiches
+  // appuyes et non cliquables, sinon on recopie par-dessus et on cree un doublon.
+  const takenDays = useMemo(
+    () => [...new Set(weekShifts.filter(s => s.staffId === staffId && s.id !== shift.id && s.dayIndex !== shift.dayIndex).map(s => s.dayIndex))],
+    [weekShifts, staffId, shift.id, shift.dayIndex],
+  );
+  // Changer de personne peut rendre un jour coche deja tenu : on le retire.
+  useEffect(() => {
+    setRepeatOn(prev => prev.some(d => takenDays.includes(d)) ? prev.filter(d => !takenDays.includes(d)) : prev);
+  }, [takenDays]);
 
   const pauseRaw = pauseChosen ?? pauseFields(withAutoBreak(shift, { staffId: '', dayIndex: 0, startTime, endTime, ...pauseFields(shift) }));
   // La pause toujours ramenee dans le shift, meme si l'horaire vient de changer.
@@ -252,6 +265,8 @@ const EditShiftModalBody: React.FC<EditShiftModalProps & { shift: NonNullable<Ed
                     value={repeatOn}
                     onChange={setRepeatOn}
                     lockedDay={shift.dayIndex}
+                    takenDays={takenDays}
+                    takenTitle={t('dayAlreadyWorked')}
                     language={(language || 'en') as Language}
                   />
                   {repeatOn.length > 0 && (

@@ -260,16 +260,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     return { person, contractHours: expected, workedHours, extraHours, totalWorked, absenceLabel, note };
   });
 
-  // Resume du bloc ferme : combien de personnes au-dessus et en dessous de leur attendu.
-  // Un extra n'a pas de contrat : le compter « sous son contrat » serait faux,
-  // et ferait passer une semaine normale pour une semaine a rattraper.
-  const withContract = rows.filter(r => r.contractHours > 0 && !r.person.isExtra && !r.person.noContract);
-  const overCount = withContract.filter(r => r.totalWorked > r.contractHours).length;
   // Mois en cours (QA du 02/10/2026) : le 2 du mois, tout le monde est « en
   // dessous » de son contrat mensuel, ce qui ne veut rien dire. Le manque ne se
   // juge qu'une fois le mois termine ; le depassement, lui, se voit tout de suite.
   const monthDone = isMonth && getShiftIsoDate(currentWeek, 3).slice(0, 7) < todayIso().slice(0, 7);
-  const underCount = isMonth && !monthDone ? 0 : withContract.filter(r => r.totalWorked < r.contractHours).length;
 
   return (
     <>
@@ -453,11 +447,9 @@ const Sidebar: React.FC<SidebarProps> = ({
         open={openSection === 'hours'}
         onToggle={() => toggleSection('hours')}
         tone="plain"
+        // Plus de compteur « 0↑ · 2↓ » ni « au-dessus / en dessous du contrat »
+        // (Serge, 02/10/2026) : personne ne le comprenait, les barres disent deja tout.
         title={isMonth && monthLabel ? monthLabel : t('hoursWeek')}
-        summary={withContract.length > 0
-          ? t('overUnder').replace('{over}', String(overCount)).replace('{under}', String(underCount))
-          : undefined}
-        summaryShort={withContract.length > 0 ? `${overCount}↑ · ${underCount}↓` : undefined}
       >
         <div className="space-y-2.5">
           {isMonth && monthLoading && (
