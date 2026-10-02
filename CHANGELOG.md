@@ -5,6 +5,48 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-10-02 (soir) — QA complet du parcours : corrections
+
+Pourquoi : après les retours d'Henry, Serge a demandé une grosse passe sur tout le parcours. Rapport : `QA-2026-10-02.md`.
+- Bugs : clé brute « tourShiftBody » dans la visite ; hooks React appelés après une sortie anticipée dans
+  `ShiftModal`, `StaffModal`, `EditShiftModal` et `ShiftCard` (React signalait une erreur interne) ; « Inviter dans
+  l'app » sur sa propre ligne ; un simple clic ouvre maintenant un shift (sauf après un glisser) ; le manque d'heures du
+  mois ne s'affiche plus avant la fin du mois ; bouton « + » flottant et « Personne ce jour-là » sur téléphone.
+- Salarié ou dirigeant (décision de Serge) : nouveau champ `noContract` (`types.ts`). « M'ajouter comme équipier »
+  demande s'il y a un contrat ; sans contrat : pas d'heures, pas de date d'entrée, pas d'alertes de durée du travail,
+  absent de l'export de paie (`payroll.ts`), case dans la fiche.
+- Équipe : fiche raccourcie (avenants repliés, bouton Enregistrer collé en bas, mêmes champs que l'ajout), plus de
+  bulles du navigateur ni d'`alert`, création sans « Dernier jour » ni couleur, « Ajouté ✓ », admins hors équipe renommés.
+- Création du restaurant : bouton actif, message sous le champ manquant ; phrases évidentes retirées.
+- Barre latérale : « Paie du mois » (admins), « Demander un congé » (employés) à la place de « STATUS » ; « Vider la
+  semaine » seulement si la semaine a des shifts ; journal derrière une horloge « Historique des changements ».
+- Textes : « Ajouter un shift » partout, « Heures de la semaine / du mois », « Enregistrer en image », pluriels des
+  jours d'absence, fuseaux en noms de villes, sections de réglages « Paie et exports » et « Compte et suppression ».
+- Visuel : 44 px pour les boutons de l'en-tête et du tiroir sur téléphone, plus de texte à 11 px, « Déconnexion » en gris.
+- Tests : `signup_test`, `henry_feedback_test` (dirigeant sans contrat, chaque étape de la visite), noms de boutons mis à jour.
+- Hors code, à faire par Serge : activer Google dans la console Firebase.
+
+## 2026-10-02 — Retours d'Henry (WhatsApp du 02/10, 11 h 52)
+
+Pourquoi : 19 retours d'Henry sur l'app ; 16 jugés valides et appliqués ici, 3 laissés à la décision de Serge
+(heures du contrat facultatives, « Annuler / Rétablir » au-dessus du planning, « Stats du mois » et journal).
+- Main au survol sur tous les boutons (Tailwind v4 l'avait retirée) : `index.css`.
+- Visite guidée raccourcie : 3 puces à l'accueil, plus de phrase d'explication sur « Ajouter un shift » et
+  « Changer de semaine » : `translations.ts`, `GuidedTour.tsx` (corps vide masqué, retours à la ligne).
+- « M'ajouter comme équipier » crée la fiche en un clic (avant : formulaire pré-rempli hors de vue) : `StaffModal.tsx`.
+- « Garder ces horaires » dans Heures d'ouverture : l'étape de démarrage se cochait seulement après une modification :
+  `SettingsModal.tsx`, `App.tsx`.
+- Fuseau horaire : liste courte (14 fuseaux + celui de l'appareil et celui choisi) et « Autre fuseau… » :
+  nouveau `TimeZoneSelect.tsx`, `commonTimeZones` dans `helpers.ts`, `OnboardingScreen.tsx`, `SettingsModal.tsx`.
+- Libellés : « Autres administrateurs », « Ligne pour plusieurs personnes » ; « Inviter dans l'app » a un vrai style de bouton.
+- Coût horaire chargé modifiable dans la fiche employé (il reste stocké dans `settings/rates`, lisible des seuls admins).
+- Les 6 confirmations du navigateur remplacées par une fenêtre de l'app : nouveau `ConfirmDialog.tsx`
+  (`askConfirm`, hôte monté dans `index.tsx`), `App.tsx`, `Sidebar.tsx`, `StaffModal.tsx`.
+- Clic sur un espace vide du planning : « Ajouter un shift » s'ouvre sur ce jour, à la demi-heure cliquée :
+  `Calendar.tsx`, `ShiftModal.tsx` (`initialDayIndex`, `initialStart`), `App.tsx`.
+- Tests : nouveau `scripts/browser/henry_feedback_test.py` (13 contrôles) ; `signup_test.py` adapté.
+- Reste hors code : activer la connexion Google dans la console Firebase (erreur `auth/operation-not-allowed`).
+
 ## 2026-09-30 — Mails refaits en HTML, envoyes par nos fonctions
 
 Pourquoi : les mails de Firebase etaient en texte brut, signes « Votre equipe saas-planning-resto »,

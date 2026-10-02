@@ -53,7 +53,7 @@ with sync_playwright() as pw:
     sel = p.locator("form select").first
     check("Apres l'ajout, le formulaire de shift s'ouvre sur Karim",
           sel.count() == 1 and sel.evaluate("s => s.options[s.selectedIndex].text") == "Karim Pas")
-    p.locator("form").get_by_role("button", name="Ajouter Shift").click(); p.wait_for_timeout(1500)
+    p.locator("form").get_by_role("button", name="Ajouter un shift").click(); p.wait_for_timeout(1500)
     txt = card(p).inner_text() if card(p).count() else ""
     check("Equipier et shift faits : 2 / 3", "2 / 3" in txt, txt)
 

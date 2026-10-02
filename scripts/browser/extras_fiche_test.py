@@ -21,7 +21,7 @@ with sync_playwright() as pw:
     login(p, "serge@test.fr")
 
     # 1. creer un extra depuis un shift, sans nom -> "Extra 1"
-    p.get_by_role("button", name="Ajouter Shift").first.click()
+    p.get_by_role("button", name="Ajouter un shift").first.click()
     p.wait_for_timeout(500)
     p.get_by_role("button", name="Extra", exact=True).click()
     p.wait_for_timeout(300)
@@ -52,7 +52,7 @@ with sync_playwright() as pw:
     p.get_by_label("Numéro de sécurité sociale").fill("2 88 05 75 116 001")
     p.get_by_label("Nationalité").fill("Française")
     p.screenshot(path=DIR + r"\extra_fiche.png")
-    p.get_by_role("button", name="Enregistrer").click()
+    p.get_by_role("button", name="Enregistrer", exact=True).click()
     p.wait_for_timeout(1500)
 
     # 4. revenir a la liste : plus d etiquette "a completer", telephone visible
@@ -81,7 +81,7 @@ with sync_playwright() as pw:
 
     # 6. vider le taux l efface vraiment
     p.get_by_label("Coût horaire chargé (facultatif)").fill("")
-    p.get_by_role("button", name="Enregistrer").click()
+    p.get_by_role("button", name="Enregistrer", exact=True).click()
     p.wait_for_timeout(1500)
     p.reload(); p.wait_for_timeout(4000)
     p.get_by_role("button", name="Extras", exact=True).last.click()

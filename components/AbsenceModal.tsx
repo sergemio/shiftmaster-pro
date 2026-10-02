@@ -511,8 +511,7 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
                 onChange={v => { setReturnOn(v); setHoursEdited(false); setTouched(true); }}
                 labelClassName={`${label} block mb-2`} className={field} />
             </div>
-            {kind === 'cp' && <p className="-mt-2 text-xs text-slate-400 font-medium">{t('absFirstDayHint')}</p>}
-            {start && returnOn && !validRange && <p className="-mt-2 text-xs font-semibold text-red-700">{t('absReturnBeforeStart')}</p>}
+{start && returnOn && !validRange && <p className="-mt-2 text-xs font-semibold text-red-700">{t('absReturnBeforeStart')}</p>}
             {tooLong && <p className="-mt-2 text-xs font-semibold text-red-700">{t('absTooLong')}</p>}
 
             {halfAllowed && (
@@ -563,7 +562,7 @@ const AbsenceModal: React.FC<AbsenceModalProps> = ({
             {validRange && !tooLong && (
               <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 flex flex-col gap-3">
                 <p className="text-sm font-bold text-slate-800" data-testid="abs-days">
-                  {t(leaveUnit === 'ouvres' ? 'absDaysOuvres' : 'absDays').replace('{n}', String(daysCounted).replace('.', ','))}
+                  {t((leaveUnit === 'ouvres' ? 'absDaysOuvres' : 'absDays') + (daysCounted <= 1 ? 'One' : '')).replace('{n}', String(daysCounted).replace('.', ','))}
                 </p>
                 {balanceAfter !== null && (
                   <p data-testid="abs-balance-after" className={`-mt-2 text-xs font-semibold ${balanceAfter < 0 ? 'text-amber-700' : 'text-slate-500'}`}>

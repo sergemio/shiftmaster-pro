@@ -350,6 +350,22 @@ export const timeZoneChoices = (): string[] => {
 };
 
 /**
+ * Liste courte (retour d'Henry, 02/10/2026 : ~400 fuseaux, c'est trop) : les
+ * fuseaux de nos restaurants, celui de l'appareil et celui deja choisi. Les
+ * autres restent accessibles par « Autre fuseau… ».
+ */
+const COMMON_TIME_ZONES = [
+  'Europe/Paris', 'Europe/Brussels', 'Europe/Zurich', 'Europe/Luxembourg', 'Europe/London',
+  'Europe/Lisbon', 'Europe/Madrid', 'Asia/Beirut', 'Asia/Dubai', 'Africa/Casablanca',
+  'America/Toronto', 'America/New_York', 'Indian/Reunion', 'America/Martinique',
+];
+export const commonTimeZones = (current?: string): string[] => {
+  let device = '';
+  try { device = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* rien */ }
+  return Array.from(new Set([...(current ? [current] : []), ...(device ? [device] : []), ...COMMON_TIME_ZONES]));
+};
+
+/**
  * Heures contractuelles applicables A UNE DATE donnee.
  *
  * Un salarie peut signer un avenant en cours d'annee : 24h jusqu'en septembre,

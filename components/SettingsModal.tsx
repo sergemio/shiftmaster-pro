@@ -5,7 +5,8 @@ import AccountDataSection from './AccountDataSection';
 import ExportDataButton from './ExportDataButton';
 import HourlyRatesEditor from './HourlyRatesEditor';
 import { getTranslation } from '../utils/translations';
-import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours, frenchPublicHolidays, formatShortDate, todayIso, timeZoneChoices } from '../utils/helpers';
+import { formatTime, halfHourSteps, DEFAULT_OPERATING_HOURS, OperatingHours, frenchPublicHolidays, formatShortDate, todayIso } from '../utils/helpers';
+import TimeZoneSelect from './TimeZoneSelect';
 import { CONVENTIONS, conventionLabel } from '../utils/laborRules';
 
 interface SettingsModalProps {
@@ -26,6 +27,8 @@ interface SettingsModalProps {
    *  absent = pas admin, la section n'apparait pas. */
   hours?: OperatingHours;
   onHoursChange?: (hours: OperatingHours) => void;
+  /** « Garder ces horaires » : present tant que l'etape de demarrage n'est pas cochee. */
+  onHoursConfirm?: () => void;
   /** Feries ou le restaurant ferme. `onClosedHolidaysChange` absent = pas admin. */
   closedHolidays?: string[];
   onClosedHolidaysChange?: (keys: string[]) => void;
@@ -200,6 +203,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   orgData,
   hours = DEFAULT_OPERATING_HOURS,
   onHoursChange,
+  onHoursConfirm,
   closedHolidays = [],
   onClosedHolidaysChange,
   closures = [],
@@ -259,6 +263,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               {halfHourSteps(hours.start + 1, 24).map(v => <option key={v} value={v}>{formatTime(v)}</option>)}
             </select>
           </label>
+          {/* Les horaires par defaut peuvent etre les bons (retour d'Henry,
+              02/10/2026) : sans ce bouton, l'etape de demarrage ne se cochait
+              qu'apres une modification. */}
+          {onHoursConfirm && (
+            <button type="button" onClick={onHoursConfirm}
+              className="self-start h-9 px-3 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors">
+              {t('hoursKeep')}
+            </button>
+          )}
         </Section>
       )}
 
@@ -267,10 +280,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       {onTimezoneChange && (
         <Section id="timezone" icon={ICONS.globe} title={t('tzTitle')} open={openSet} onToggle={toggle}>
           <p className={hint}>{t('tzHint')}</p>
-          <select value={timezone} onChange={e => onTimezoneChange(e.target.value)} aria-label={t('tzTitle')}
-            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none">
-            {timeZoneChoices().map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
-          </select>
+          <TimeZoneSelect value={timezone} onChange={onTimezoneChange} ariaLabel={t('tzTitle')} language={language}
+            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none" />
           <p className="text-xs text-slate-600" data-testid="tz-now">
             {t('tzNow')} <b>{new Date().toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit' })}</b>
             {' · '}{formatShortDate(todayIso(timezone), language)}
@@ -373,7 +384,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             <span className="block text-xs text-slate-500 truncate">{[account.orgName, account.email].filter(Boolean).join(' · ')}</span>
           </span>
           <button type="button" onClick={account.onLogout}
-            className="flex-none text-sm font-semibold text-red-600 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50">
+            className="flex-none text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 h-10 rounded-lg hover:bg-slate-100">
             {t('signOut')}
           </button>
         </div>

@@ -30,8 +30,7 @@ interface EditShiftModalProps {
   hours?: OperatingHours;
 }
 
-const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, onDelete, onCheck, onEmployment, isReadOnly = false, language, hours = DEFAULT_OPERATING_HOURS }) => {
-  if (!isOpen || !shift) return null;
+const EditShiftModalBody: React.FC<EditShiftModalProps & { shift: NonNullable<EditShiftModalProps['shift']> }> = ({ isOpen, onClose, shift, staffList, assignableStaff, onUpdate, onRepeat, onDelete, onCheck, onEmployment, isReadOnly = false, language, hours = DEFAULT_OPERATING_HOURS }) => {
 
   const [staffId, setStaffId] = useState(shift.staffId);
   const [startTime, setStartTime] = useState(shift.startTime);
@@ -352,5 +351,10 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ isOpen, onClose, shift,
     </div>
   );
 };
+
+// Meme correction que ShiftModal (QA du 02/10/2026) : sortir avant les hooks
+// faisait varier leur nombre d'un rendu a l'autre.
+const EditShiftModal: React.FC<EditShiftModalProps> = (props) =>
+  (props.isOpen && props.shift ? <EditShiftModalBody {...props} shift={props.shift} /> : null);
 
 export default EditShiftModal;

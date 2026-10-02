@@ -39,7 +39,7 @@ with sync_playwright() as pw:
 
     # --- admin : cree un shift d'extra nomme, puis un anonyme
     ctx, p, err = login(b, "serge@test.fr")
-    p.get_by_role("button", name="Ajouter Shift").first.click()
+    p.get_by_role("button", name="Ajouter un shift").first.click()
     p.wait_for_timeout(500)
     check("Le modal propose « Salarié » et « Extra »",
           p.get_by_role("button", name="Extra", exact=True).count() == 1 and p.get_by_role("button", name="Salarié").count() == 1)
@@ -68,7 +68,7 @@ with sync_playwright() as pw:
           and fiche["extraShifts"][0]["staffId"] == e0.get("id"), json.dumps(fiche["extraShifts"]))
 
     # un extra anonyme : « Extra 1 »
-    p.get_by_role("button", name="Ajouter Shift").first.click()
+    p.get_by_role("button", name="Ajouter un shift").first.click()
     p.wait_for_timeout(500)
     p.get_by_role("button", name="Extra", exact=True).click()
     p.wait_for_timeout(300)
@@ -77,7 +77,7 @@ with sync_playwright() as pw:
     check("Sans prénom, le shift s appelle « Extra 1 »", "Extra 1" in p.inner_text("body"))
 
     # reprendre quelqu'un du vivier, sans retaper
-    p.get_by_role("button", name="Ajouter Shift").first.click()
+    p.get_by_role("button", name="Ajouter un shift").first.click()
     p.wait_for_timeout(500)
     p.get_by_role("button", name="Extra", exact=True).click()
     p.wait_for_timeout(300)

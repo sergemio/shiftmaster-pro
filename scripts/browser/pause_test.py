@@ -34,7 +34,7 @@ with sync_playwright() as pw:
     p.locator("#shift-break-minutes").select_option("30"); p.wait_for_timeout(300)
     check("Pause proposee au milieu du shift (13 h 45)", p.locator("#shift-break-start option:checked").inner_text() == "13:45",
           p.locator("#shift-break-start option:checked").inner_text())
-    f.get_by_role("button", name="Ajouter Shift").click(); p.wait_for_timeout(1800)
+    f.get_by_role("button", name="Ajouter un shift").click(); p.wait_for_timeout(1800)
     card = lambda: p.locator(CARD).filter(has_text="10:00 - 18:00").first
     def title():
         # Lu dans la fiche du shift : la bulle d'aide de l'app retire l'attribut
@@ -84,7 +84,7 @@ with sync_playwright() as pw:
     f.get_by_role("button", name="Lundi", exact=True).click()
     f.get_by_role("button", name="Vendredi", exact=True).click()
     sels = f.locator("select"); sels.nth(1).select_option(label="09:00"); sels.nth(2).select_option(label="14:00")
-    f.get_by_role("button", name="Ajouter Shift").click(); p.wait_for_timeout(1800)
+    f.get_by_role("button", name="Ajouter un shift").click(); p.wait_for_timeout(1800)
     short = lambda: p.locator(CARD).filter(has_text="09:00 - 14:00").first
     check("Shift de 5 h : pas de pause, 5 h", "Pause" not in short().inner_text() and "5 h" in short().inner_text(), short().inner_text())
     short().dblclick(force=True, position={"x": 12, "y": 8}); p.wait_for_timeout(800)

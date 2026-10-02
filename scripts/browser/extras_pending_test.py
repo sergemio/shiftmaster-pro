@@ -16,7 +16,7 @@ def login(p, email):
     p.wait_for_timeout(3800)
 
 def add_extra_shift(p, name):
-    p.get_by_role("button", name="Ajouter Shift").first.click()
+    p.get_by_role("button", name="Ajouter un shift").first.click()
     p.wait_for_timeout(500)
     p.get_by_role("button", name="Extra", exact=True).click()
     p.wait_for_timeout(300)
@@ -57,7 +57,7 @@ with sync_playwright() as pw:
     p.wait_for_timeout(400)
     p.get_by_label("Prénom").fill("Nadia")
     p.get_by_label("Téléphone").fill("0655443322")
-    p.get_by_role("button", name="Enregistrer").click()
+    p.get_by_role("button", name="Enregistrer", exact=True).click()
     p.wait_for_timeout(1500)
     p.get_by_role("button", name="Fermer", exact=True).last.click()
     p.wait_for_timeout(2500)

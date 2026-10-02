@@ -650,8 +650,23 @@ const Calendar: React.FC<CalendarProps> = ({
             d'heure, sinon elles se decaleraient des etiquettes. */}
         <div className={`flex-1 flex calendar-grid relative transition-all duration-300 bg-white ${visualStateClass}`} key={weekId} style={{ backgroundSize: `100% ${hourHeight}px` }}>
           {localizedDays.map((_, i) => (
-            <div key={i} className={`flex-1 border-r last:border-r-0 h-full relative ${holidays.some(h => h.dayIndex === i && h.closed) ? 'bg-violet-50/60' : 'bg-transparent'} ${i === activeDayIndex ? 'block' : 'hidden md:block'}`}>
+            <div key={i} data-testid={`day-column-${i}`}
+              // Clic sur un espace vide (retour d'Henry, 02/10/2026) : « Ajouter un
+              // shift » s'ouvre sur ce jour, a la demi-heure cliquee.
+              onClick={isExporting ? undefined : (e) => {
+                if (e.target !== e.currentTarget || dragState) return;
+                const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+                const start = Math.floor((startHour + y / hourHeight) * 2) / 2;
+                onAddShift('', i, Math.max(startHour, Math.min(start, endHour - 1)));
+              }}
+              className={`flex-1 border-r last:border-r-0 h-full relative ${holidays.some(h => h.dayIndex === i && h.closed) ? 'bg-violet-50/60' : 'bg-transparent'} ${i === activeDayIndex ? 'block' : 'hidden md:block'}`}>
               {i === todayIndex && !isExporting && <CurrentTimeIndicator timezone={timezone} startHour={startHour} endHour={endHour} hourHeight={hourHeight} />}
+              {/* Telephone : une seule journee a l'ecran ; vide, elle le dit (QA du 02/10/2026). */}
+              {isMobile && i === activeDayIndex && !isExporting && !processedShifts.some(s => s.dayIndex === i) && (
+                <p className="md:hidden absolute top-16 inset-x-0 text-center text-sm font-medium text-slate-400 pointer-events-none" data-testid="empty-day">
+                  {t('noShiftThisDay')}
+                </p>
+              )}
             </div>
           ))}
           

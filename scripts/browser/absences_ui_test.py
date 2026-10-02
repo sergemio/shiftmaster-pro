@@ -72,7 +72,7 @@ with sync_playwright() as pw:
     check("Le motif affiche est « Congés payés »", "Congés payés" in omar_band.first.inner_text())
 
     # --- 2. impossible de planifier Omar pendant son conge ---------------------
-    p.get_by_role("button", name="Ajouter Shift").first.click(); p.wait_for_timeout(500)
+    p.get_by_role("button", name="Ajouter un shift").first.click(); p.wait_for_timeout(500)
     p.locator("select").first.select_option(label="Omar")
     p.get_by_role("button", name="Mercredi", exact=True).click()
     p.wait_for_timeout(300)

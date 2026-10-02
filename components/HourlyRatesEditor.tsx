@@ -145,14 +145,7 @@ const HourlyRatesEditor: React.FC<HourlyRatesEditorProps> = ({ staff, rates, onC
         </p>
       )}
 
-      {/* Un exemple chiffre vaut mieux qu'une explication : il dit d'un coup
-          l'unite attendue et ce que le chiffre produira sur le planning. */}
-      <p className="text-xs text-slate-400 leading-snug">
-        {fr
-          ? `Exemple : 18 € de l'heure, un service de 6 h coûte ${formatMoney(108, 'fr')}.`
-          : `Example: at €18/hour, a 6-hour shift costs ${formatMoney(108, 'en')}.`}
-      </p>
-    </div>
+</div>
   );
 };
 

@@ -46,7 +46,7 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Se connecter", exact=True).click(); p.wait_for_timeout(4000)
 
     # --- 1. le journal s'ouvre sur 7 jours, et ne lit que 7 jours ---------------------
-    p.get_by_role("button", name="Logs Système").first.click(); p.wait_for_timeout(2500)
+    p.get_by_role("button", name="Historique des changements").first.click(); p.wait_for_timeout(2500)
     sel7 = p.get_by_role("button", name="7 jours")
     sel30 = p.get_by_role("button", name="30 jours")
     check("Journal : « 7 jours » est la periode active a l'ouverture",
@@ -75,7 +75,7 @@ with sync_playwright() as pw:
           re.search(r"\d+ h( \d\d)? / [\d,]+ h", before) is not None, before[-300:])
 
     # un shift de plus dans la semaine affichee
-    p.get_by_role("button", name="Ajouter Shift").first.click(); p.wait_for_timeout(700)
+    p.get_by_role("button", name="Ajouter un shift").first.click(); p.wait_for_timeout(700)
     p.locator("select").first.select_option(label="Omar")
     p.get_by_role("button", name="Jeudi", exact=True).click(); p.wait_for_timeout(300)
     sels = p.locator("form select")

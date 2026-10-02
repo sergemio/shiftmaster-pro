@@ -88,7 +88,7 @@ with sync_playwright() as pw:
     check("Le calendrier affiche « Fermé · Armistice »", "Fermé · Armistice" in chip(p).inner_text(), chip(p).inner_text())
 
     # --- 4. effets : shifts bloques, decompte des conges -----------------------------
-    p.get_by_role("button", name="Ajouter Shift").first.click(); p.wait_for_timeout(500)
+    p.get_by_role("button", name="Ajouter un shift").first.click(); p.wait_for_timeout(500)
     p.locator("select").first.select_option(label="Omar")
     p.get_by_role("button", name="Mercredi", exact=True).click(); p.wait_for_timeout(300)
     check("Poser un shift le 11/11 est bloque : restaurant ferme",

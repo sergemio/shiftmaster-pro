@@ -4,6 +4,7 @@ import { getTranslation } from '../utils/translations';
 import LeaveCard from './LeaveCard';
 import { isFormerStaff, todayIso, currentContractHours, formatShortDate } from '../utils/helpers';
 import DateField from './DateField';
+import { askConfirm } from './ConfirmDialog';
 
 /**
  * Une couleur par personne sur le planning. Avant (recette du 22/09/2026),
@@ -43,9 +44,15 @@ interface StaffModalProps {
   /** L'admin connecte, quand il n'a pas de fiche d'equipier : on le lui dit, et on
    *  lui propose de s'ajouter (nom et email pre-remplis). */
   selfAdmin?: { name: string; email: string };
+  /** Couts horaires charges (admins seulement). Ils restent dans leur propre
+   *  document, lisible par les seuls admins : la fiche ne fait que les saisir. */
+  rates?: Record<string, number>;
+  onRatesChange?: (rates: Record<string, number>) => void;
+  /** Adresse du compte connecte : on ne propose pas de s'inviter soi-meme. */
+  currentEmail?: string;
 }
 
-const StaffModal: React.FC<StaffModalProps> = ({
+const StaffModalBody: React.FC<StaffModalProps> = ({
   isOpen,
   onClose,
   staffList,
@@ -67,8 +74,10 @@ const StaffModal: React.FC<StaffModalProps> = ({
   inviteUrl,
   orgName = '',
   selfAdmin,
+  rates = {},
+  onRatesChange,
+  currentEmail = '',
 }) => {
-  if (!isOpen) return null;
 
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -85,6 +94,9 @@ const StaffModal: React.FC<StaffModalProps> = ({
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContractHours, setEditContractHours] = useState(0);
+  // Cout horaire saisi dans la fiche (retour d'Henry, 02/10/2026) ; texte brut
+  // pour accepter « 16,5 ». Vide = inconnu, jamais zero.
+  const [editRate, setEditRate] = useState('');
   // Avenants en cours d'edition. On travaille sur une copie : tant que Serge n'a
   // pas enregistre, la fiche d'origine n'est pas touchee.
   const [editChanges, setEditChanges] = useState<{ from: string; weeklyHours: number }[]>([]);
@@ -98,7 +110,18 @@ const StaffModal: React.FC<StaffModalProps> = ({
   const [editEndDate, setEditEndDate] = useState('');
   const [editIsPool, setEditIsPool] = useState(false);
   const [editWorkDays, setEditWorkDays] = useState(5);
-  const t = getTranslation(language as Language);
+  const [editNoContract, setEditNoContract] = useState(false);
+  // « M'ajouter comme equipier » (decision de Serge, 02/10/2026) : l'app demande
+  // d'abord s'il y a un contrat de travail. Salarie : date d'entree et heures.
+  // Dirigeant ou associe : pas de contrat, pas de date, pas d'alertes.
+  const [selfStep, setSelfStep] = useState<'idle' | 'choose' | 'contract'>('idle');
+  const [selfStart, setSelfStart] = useState('');
+  const [selfHours, setSelfHours] = useState(35);
+  const [selfError, setSelfError] = useState('');
+  const [addedId, setAddedId] = useState<string | null>(null);
+  // Erreurs du formulaire d'ajout, sous chaque champ (plus de bulle du navigateur).
+  const [addError, setAddError] = useState<{ name?: string; start?: string }>({});
+const t = getTranslation(language as Language);
   const [showSavedId, setShowSavedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ staff: Staff; action: 'leave' | 'reinstate' } | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
@@ -155,19 +178,43 @@ const StaffModal: React.FC<StaffModalProps> = ({
     setConfirming(null);
   };
 
+  // Un clic suffit (retour d'Henry, 02/10/2026) : avant, le bouton remplissait
+  // le formulaire du bas, hors de vue, et rien ne semblait se passer. La fiche
+  // est creee tout de suite, « Ajouté » s'affiche sur sa ligne, et elle se
+  // modifie ensuite comme les autres.
+  const addMyself = (noContract: boolean) => {
+    if (!selfAdmin) return;
+    if (!noContract && !selfStart) { setSelfError(t('smStartRequired')); return; }
+    const me: Staff = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: selfAdmin.name,
+      email: selfAdmin.email,
+      color: nextStaffColor(staffList),
+      contractHours: noContract ? 0 : selfHours,
+      role: 'admin',
+      jobTitle: '',
+      ...(noContract ? { noContract: true } : { startDate: selfStart }),
+      endDate: null,
+    };
+    onAdd(me);
+    setIsAddingNew(false);
+    setEditingId(null);
+    setSelfStep('idle');
+    setSelfError('');
+    setAddedId(me.id);
+    setTimeout(() => setAddedId(null), 2500);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // L'email est facultatif (recette du 22/09/2026) : un plongeur sans adresse
     // doit pouvoir etre planifie ; il ne sert qu'a inviter la personne dans l'app.
-    if (!newName.trim()) {
-      alert(t('smNameEmailRequired'));
-      return;
-    }
-    
-    if (!newStartDate) {
-      alert(t('smStartRequired'));
-      return;
-    }
+    const errors = {
+      ...(!newName.trim() ? { name: t('smNameEmailRequired') } : {}),
+      ...(!newStartDate ? { start: t('smStartRequired') } : {}),
+    };
+    setAddError(errors);
+    if (errors.name || errors.start) return;
 
     const newStaff: Staff = {
       id: Math.random().toString(36).substr(2, 9),
@@ -182,6 +229,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
     };
 
     onAdd(newStaff);
+    setAddedId(newStaff.id);
+    setTimeout(() => setAddedId(null), 2500);
     setNewName('');
     setNewEmail('');
     setNewContractHours(35);
@@ -207,6 +256,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
     setEditEndDate(staff.endDate || '');
     setEditIsPool(!!staff.isPool);
     setEditWorkDays(staff.workDaysPerWeek || 5);
+    setEditNoContract(!!staff.noContract);
+    setEditRate(rates[staff.id] ? (language === 'fr' ? String(rates[staff.id]).replace('.', ',') : String(rates[staff.id])) : '');
     setIsAddingNew(false); // Hide add form if we start editing someone
   };
 
@@ -215,14 +266,15 @@ const StaffModal: React.FC<StaffModalProps> = ({
     
     onUpdate({
       ...staff,
-      contractHours: editContractHours,
+      contractHours: editNoContract ? 0 : editContractHours,
+      noContract: editNoContract,
       // Toujours ecrit, meme vide : sans ca, supprimer le dernier avenant
       // laisserait l'ancien tableau en base et le contrat resterait fige dessus.
       contractChanges: editChanges,
       // L'ancien nom reste synchronise le temps que toutes les fiches soient
       // reenregistrees : une sauvegarde restauree ou un onglet pas rafraichi
       // continue de lire un chiffre juste.
-      targetHours: editContractHours,
+      targetHours: editNoContract ? 0 : editContractHours,
       email: (editEmail || '').trim().toLowerCase(),
       role: editRole,
       jobTitle: editJobTitle,
@@ -232,6 +284,13 @@ const StaffModal: React.FC<StaffModalProps> = ({
       isPool: editIsPool,
       workDaysPerWeek: editWorkDays,
     });
+    if (onRatesChange) {
+      const value = parseFloat(editRate.replace(',', '.'));
+      const next = { ...rates };
+      if (Number.isFinite(value) && value > 0) next[staff.id] = Math.round(value * 100) / 100;
+      else delete next[staff.id];
+      if (next[staff.id] !== rates[staff.id]) onRatesChange(next);
+    }
     
     setShowSavedId(staff.id);
     setEditingId(null);
@@ -284,7 +343,6 @@ const StaffModal: React.FC<StaffModalProps> = ({
         <div className="p-4 md:p-6 border-b border-slate-100 flex justify-between items-center">
           <div>
             <h2 className="text-lg md:text-xl font-bold text-slate-800">{t('smTitle')}</h2>
-            <p className="text-xs text-slate-400 font-medium uppercase tracking-widest">{t('smSubtitle')}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors p-2">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -295,22 +353,59 @@ const StaffModal: React.FC<StaffModalProps> = ({
           {/* Le createur du restaurant est admin sans etre equipier : sans cette
               ligne, il ouvrirait « Equipe » et ne s'y trouverait nulle part. */}
           {selfAdmin && (
-            <div data-testid="self-admin" className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 flex flex-col gap-2">
-              <p className="text-sm font-bold text-slate-800">{t('smYouAdminTitle')}</p>
-              <p className="text-xs text-slate-600 leading-snug">{t('smYouAdminBody').replace('{email}', selfAdmin.email)}</p>
-              <button
-                  type="button"
-                  onClick={() => {
-                    setNewName(selfAdmin.name);
-                    setNewEmail(selfAdmin.email);
-                    setNewRole('admin');
-                    setIsAddingNew(true);
-                    setEditingId(null);
-                  }}
-                  className="self-start h-9 px-3 rounded-lg bg-white border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-50 transition-colors"
-                >
+            <div data-testid="self-admin" className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 flex flex-col gap-3">
+              <p className="text-sm text-slate-700"><b className="text-slate-800">{t('smYouAdminTitle')}</b> {t('smYouAdminBody')}</p>
+              {selfStep === 'idle' && (
+                <button type="button" onClick={() => setSelfStep('choose')}
+                  className="self-start h-10 px-4 rounded-lg bg-white border border-indigo-200 text-indigo-700 text-sm font-bold hover:bg-indigo-50 transition-colors">
                   {t('smAddMyself')}
                 </button>
+              )}
+              {selfStep === 'choose' && (
+                <div className="flex flex-col gap-2" data-testid="self-choose">
+                  <p className="text-sm font-bold text-slate-800">{t('smSelfQuestion')}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setSelfStep('contract')}
+                      className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors">
+                      {t('smSelfContract')}
+                    </button>
+                    <button type="button" onClick={() => addMyself(true)}
+                      className="h-10 px-4 rounded-lg bg-white border border-indigo-200 text-indigo-700 text-sm font-bold hover:bg-indigo-50 transition-colors">
+                      {t('smSelfOwner')}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {selfStep === 'contract' && (
+                <div className="flex flex-col gap-2" data-testid="self-contract">
+                  <div className="grid grid-cols-2 gap-3">
+                    <DateField
+                      label={t('smSelfStart')}
+                      labelClassName="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1"
+                      value={selfStart}
+                      onChange={(v) => { setSelfStart(v); setSelfError(''); }}
+                      language={language as Language}
+                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <div>
+                      <label htmlFor="self-hours" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{t('smContractHours')}</label>
+                      <input id="self-hours" type="number" value={selfHours} onChange={(e) => setSelfHours(parseInt(e.target.value) || 0)}
+                        className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+                    </div>
+                  </div>
+                  {selfError && <p role="alert" className="text-xs font-semibold text-red-700">{selfError}</p>}
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => addMyself(false)}
+                      className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors">
+                      {t('smSelfAdd')}
+                    </button>
+                    <button type="button" onClick={() => setSelfStep('choose')}
+                      className="h-10 px-3 rounded-lg text-slate-500 text-sm font-bold hover:bg-slate-100 transition-colors">
+                      {t('cancel')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <h3 className="text-xs md:text-xs font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
@@ -367,6 +462,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
                           erreur, donc invisible en septembre, sans rien pour l'expliquer. */}
                       {/* Acces a l'app : compte relie, invitation en attente, ou a inviter. */}
                       {onInvite && !isFormer && !staff.isPool && (() => {
+                        // Le compte connecte a deja acces : « Inviter » sur sa propre ligne n'a pas de sens.
+                        if (currentEmail && (staff.email || '').toLowerCase() === currentEmail.toLowerCase()) return null;
                         if (staff.uid) return <p className="text-xs font-bold text-emerald-700 mt-0.5" data-testid="access-linked">{t('smAccessLinked')}</p>;
                         const pending = inviteOf(staff);
                         if (pending) {
@@ -388,7 +485,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         if (!staff.email) return <p className="text-xs text-slate-400 mt-0.5">{t('smInviteNoEmail')}</p>;
                         return (
                           <button type="button" onClick={async (e) => { e.stopPropagation(); await onInvite(staff); }}
-                            className="mt-1 text-xs font-bold text-indigo-600 hover:text-indigo-800" data-testid="access-invite">
+                            className="mt-1.5 h-7 px-2.5 inline-flex items-center rounded-lg border border-indigo-200 bg-white text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition-colors" data-testid="access-invite">
                             {t('smInvite')}
                           </button>
                         );
@@ -403,8 +500,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
                   
                   {editingId !== staff.id && (
                     <div className="flex items-center gap-2">
-                      {showSavedId === staff.id && (
-                        <span className="text-xs font-bold text-green-600 animate-in fade-in slide-in-from-right-2">{t('smSaved')}</span>
+                      {(showSavedId === staff.id || addedId === staff.id) && (
+                        <span className="text-xs font-bold text-green-600 animate-in fade-in slide-in-from-right-2">{t(addedId === staff.id ? 'smAdded' : 'smSaved')}</span>
                       )}
                       {/* Nobody is ever deleted: an end date is set instead, so
                           their past shifts and hours stay usable for payroll. */}
@@ -430,42 +527,60 @@ const StaffModal: React.FC<StaffModalProps> = ({
                 </div>
 
                 {editingId === staff.id && (
-                  <div className="mt-3 pt-3 border-t border-indigo-100 animate-in slide-in-from-top-2 duration-200 space-y-3">
+                  <div className="mt-3 pt-3 border-t border-indigo-100 animate-in slide-in-from-top-2 duration-200 space-y-3" onClick={(e) => e.stopPropagation()}>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox" checked={editNoContract} onChange={(e) => setEditNoContract(e.target.checked)}
+                        className="w-4 h-4 accent-indigo-600 cursor-pointer" />
+                      <span className="text-sm font-semibold text-slate-700">{t('smNoContract')}</span>
+                    </label>
                     <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">{t('smContractHours')}</label>
+                      {!editNoContract && <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{t('smContractHours')}</label>
                         <input 
                           type="number"
                           value={editContractHours}
                           onChange={(e) => setEditContractHours(parseInt(e.target.value) || 0)}
-                          className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                         />
-                      </div>
+                      </div>}
                       <div>
-                        <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">{t('smAccessRole')}</label>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{t('smAccessRole')}</label>
                         <select 
                           value={editRole}
                           onChange={(e) => setEditRole(e.target.value as 'admin' | 'staff')}
-                          className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                         >
                           <option value="staff">{t('smRoleStaff')}</option>
                           <option value="admin">{t('smRoleAdmin')}</option>
                         </select>
                       </div>
                     </div>
+                    {onRatesChange && (
+                      <div>
+                        <label htmlFor={`rate-${staff.id}`} className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{t('smHourlyCost')}</label>
+                        <input
+                          id={`rate-${staff.id}`}
+                          type="text"
+                          inputMode="decimal"
+                          value={editRate}
+                          onChange={(e) => setEditRate(e.target.value)}
+                          placeholder={t('smHourlyCostPlaceholder')}
+                          className="w-32 h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    )}
                     {/* Jours travailles par semaine : estime les heures d'une
                         absence quand la semaine n'est pas encore planifiee
                         (contrat / jours travailles, par jour d'absence). */}
-                    <div>
-                      <label className="block text-xs font-bold text-indigo-700 uppercase mb-1" htmlFor={`workdays-${staff.id}`}>{t('workDaysPerWeek')}</label>
+                    {!editNoContract && <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor={`workdays-${staff.id}`}>{t('workDaysPerWeek')}</label>
                       <select id={`workdays-${staff.id}`} value={editWorkDays}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => setEditWorkDays(parseInt(e.target.value) || 5)}
-                        className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+                        className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
                         {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
-                      <p className="text-xs text-slate-500 mt-1 leading-snug">{t('workDaysHint')}</p>
-                    </div>
+                    </div>}
                     {/* --------------------------------------------------------
                         Avenants. Un salarie peut passer de 24h a 30h en cours
                         d'annee : sans dater le changement, le nouveau chiffre
@@ -475,8 +590,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
                         Une date future est acceptee : un avenant se signe avant
                         de prendre effet.
                         -------------------------------------------------------- */}
-                    <div className="pt-3 border-t border-indigo-100">
-                      <label className="block text-xs font-bold text-indigo-700 uppercase mb-1.5">{t('smAmendments')}</label>
+                    {!editNoContract && <details className="pt-3 border-t border-indigo-100" open={editChanges.length > 0 || undefined}>
+                      <summary className="text-xs font-bold text-indigo-700 uppercase mb-1.5 cursor-pointer select-none">{t('smAmendments')}</summary>
 
                       {editChanges.length > 0 && (
                         <ul className="flex flex-col gap-1 mb-2">
@@ -508,7 +623,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                             value={newChangeFrom}
                             onChange={setNewChangeFrom}
                             language={language as Language}
-                            className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                           />
                         </div>
                         <div className="w-16">
@@ -519,7 +634,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                             value={newChangeHours}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => setNewChangeHours(parseInt(e.target.value) || 0)}
-                            className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                           />
                         </div>
                         <button
@@ -543,41 +658,33 @@ const StaffModal: React.FC<StaffModalProps> = ({
                           {t('smAdd')}
                         </button>
                       </div>
-
-                      <p className="text-xs text-slate-500 mt-1.5 leading-snug">
-                        {editChanges.length > 0
-                          ? t('smAmendHintSome')
-                          : t('smAmendHintNone')}
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                    </div>
+                    </details>}
                     <div>
-                      <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">{t('smEmail')}</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{t('smEmail')}</label>
                       <input 
                         type="email"
                         value={editEmail}
                         onChange={(e) => setEditEmail(e.target.value)}
-                        className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                         placeholder={t('smEmailPlaceholder')}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <DateField
                         label={t('smFirstDay')}
-                        labelClassName="block text-xs font-bold text-indigo-700 uppercase mb-1"
+                        labelClassName="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1"
                         value={editStartDate}
                         onChange={setEditStartDate}
                         language={language as Language}
-                        className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                       <DateField
                         label={<>{t('smLastDay')} <span className="text-slate-400 normal-case font-medium">{t('smLastDayHint')}</span></>}
-                        labelClassName="block text-xs font-bold text-indigo-700 uppercase mb-1"
+                        labelClassName="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1"
                         value={editEndDate}
                         onChange={setEditEndDate}
                         language={language as Language}
-                        className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
                     {/* Une ligne partagee — « Extra » — n'est pas une personne :
@@ -598,7 +705,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       </span>
                     </label>
                     <div>
-                      <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">{t('smColor')}</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{t('smColor')}</label>
                       <div className="flex gap-2">
                         <input 
                           type="color" 
@@ -606,13 +713,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
                           onChange={(e) => setEditColor(e.target.value)}
                           className="w-10 h-8 p-1 bg-white border border-indigo-200 cursor-pointer rounded overflow-hidden shadow-sm"
                         />
-                        <input 
-                          type="text" 
-                          value={editColor}
-                          onChange={(e) => setEditColor(e.target.value)}
-                          className="flex-1 px-2 py-1 bg-white border border-indigo-200 rounded text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
+</div>
                     </div>
                     <LeaveCard
                       person={staff}
@@ -623,18 +724,19 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       closedHolidays={closedHolidays}
                       language={language as Language}
                     />
-                    <div className="flex gap-2 pt-1">
-                      <button 
+                    {/* Colle en bas de la liste : la fiche est longue, le bouton reste visible. */}
+                    <div className="flex gap-2 pt-2 pb-1 sticky bottom-0 bg-indigo-50">
+                      <button
                         type="button"
                         onClick={(e) => saveEdit(e, staff)}
-                        className="flex-1 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200 active:scale-95"
+                        className="flex-1 h-10 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200 active:scale-95"
                       >
                         {t('smApply')}
                       </button>
                       <button 
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setEditingId(null); }}
-                        className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 text-xs font-bold rounded-lg hover:bg-indigo-50 transition-colors"
+                        className="px-4 h-10 bg-white border border-indigo-200 text-indigo-600 text-sm font-bold rounded-lg hover:bg-indigo-50 transition-colors"
                       >
                         {t('cancel')}
                       </button>
@@ -649,9 +751,9 @@ const StaffModal: React.FC<StaffModalProps> = ({
 
           {/* Guest Admins Section */}
           <div className="pt-6 border-t border-slate-100 space-y-4">
-            <h3 className="text-xs md:text-xs font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
+            {guestEmails.length > 0 && <h3 className="text-xs md:text-xs font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
               <span>{t('smGuests').replace('{n}', String(guestEmails.length))}</span>
-            </h3>
+            </h3>}
             
             <div className="space-y-2">
               {guestEmails.map((email) => (
@@ -666,8 +768,8 @@ const StaffModal: React.FC<StaffModalProps> = ({
                     </div>
                   </div>
                   <button 
-                    onClick={() => {
-                      if (confirm(t('smRemoveGuest').replace('{email}', email))) onRemoveGuest(email);
+                    onClick={async () => {
+                      if (await askConfirm(t('smRemoveGuest').replace('{email}', email), { danger: true })) onRemoveGuest(email);
                     }}
                     className="p-2 text-amber-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                   >
@@ -725,7 +827,7 @@ const StaffModal: React.FC<StaffModalProps> = ({
           </div>
         </div>
 
-        <div className="p-6 border-t border-slate-100 bg-slate-50/50">
+        {editingId === null && <div className="p-6 border-t border-slate-100 bg-slate-50/50">
           {!isAddingNew ? (
             <button 
               onClick={() => {
@@ -750,19 +852,20 @@ const StaffModal: React.FC<StaffModalProps> = ({
                   {t('smHideForm')}
                 </button>
               </div>
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} noValidate className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-1">
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider" htmlFor="new-staff-name">{t('smFullName')}</label>
-                    <input 
+                    <input
                       id="new-staff-name"
-                      required
-                      type="text" 
+                      type="text"
                       value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+                      onChange={(e) => { setNewName(e.target.value); setAddError(x => ({ ...x, name: undefined })); }}
+                      aria-invalid={!!addError.name}
+                      className={`w-full px-3 py-2 bg-white border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm ${addError.name ? 'border-red-400' : 'border-slate-200'}`}
                       placeholder={t('smNamePlaceholder')}
                     />
+                    {addError.name && <p role="alert" className="text-xs font-semibold text-red-700 mt-1">{addError.name}</p>}
                   </div>
                   <div className="col-span-1">
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider" htmlFor="new-staff-email">{t('smEmailShort')}</label>
@@ -795,45 +898,24 @@ const StaffModal: React.FC<StaffModalProps> = ({
                       <option value="admin">{t('smRoleAdmin')}</option>
                     </select>
                   </div>
-                  <DateField
-                    label={t('smFirstDay')}
-                    labelClassName="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider"
-                    required
-                    value={newStartDate}
-                    onChange={setNewStartDate}
-                    language={language as Language}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
-                  />
-                  <DateField
-                    label={<>{t('smLastDay')} <span className="text-slate-400 normal-case font-medium">{t('smLastDayHint')}</span></>}
-                    labelClassName="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider"
-                    value={newEndDate}
-                    onChange={setNewEndDate}
-                    language={language as Language}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
-                  />
+                  {/* Creation : seulement l'essentiel (QA du 02/10/2026). Le dernier jour
+                      et la couleur se reglent ensuite dans la fiche. */}
                   <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">{t('smColor')}</label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="color" 
-                        value={newColor}
-                        onChange={(e) => setNewColor(e.target.value)}
-                        className="w-11 h-10 p-1 bg-white border border-slate-200 cursor-pointer rounded-xl overflow-hidden shadow-sm"
-                      />
-                      <input 
-                        type="text" 
-                        value={newColor}
-                        onChange={(e) => setNewColor(e.target.value)}
-                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                      />
-                    </div>
+                    <DateField
+                      label={t('smFirstDay')}
+                      labelClassName="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider"
+                      value={newStartDate}
+                      onChange={(v) => { setNewStartDate(v); setAddError(x => ({ ...x, start: undefined })); }}
+                      language={language as Language}
+                      className={`w-full px-3 py-2 bg-white border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm ${addError.start ? 'border-red-400' : 'border-slate-200'}`}
+                    />
+                    {addError.start && <p role="alert" className="text-xs font-semibold text-red-700 mt-1">{addError.start}</p>}
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-indigo-600 text-white font-black text-sm uppercase tracking-[0.15em] rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-[0.98]"
+                    className="flex-1 py-3 bg-indigo-600 text-white font-bold text-sm rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-[0.98]"
                   >
                     {t('smAddToTeam')}
                   </button>
@@ -848,10 +930,15 @@ const StaffModal: React.FC<StaffModalProps> = ({
               </form>
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );
 };
+
+// Fenetre fermee : rien n'est rendu, et les hooks du contenu ne tournent pas.
+// Sortir AVANT les hooks (ancienne version) faisait varier leur nombre d'un
+// rendu a l'autre : React le signalait comme une erreur interne (QA du 02/10/2026).
+const StaffModal: React.FC<StaffModalProps> = (props) => (props.isOpen ? <StaffModalBody {...props} /> : null);
 
 export default StaffModal;

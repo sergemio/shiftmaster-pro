@@ -80,6 +80,12 @@
   *, ::before, ::after, ::backdrop {
     border-color: var(--color-gray-200);
   }
+
+  /* Tailwind v4 a aussi retiré la main au survol des boutons (retour d'Henry,
+     02/10/2026) : on la remet partout, sauf sur un bouton désactivé. */
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
 }
 
 @media (pointer: coarse) {

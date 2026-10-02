@@ -69,7 +69,6 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
   selectionMode = false,
   onToggleSelect
 }) => {
-  if (!staff) return null;
 
   /**
    * Appui long = entrer en selection, sur telephone ou le clic droit et les
@@ -117,10 +116,18 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
     ? { top: ((shown.breakStart - startTime) / (endTime - startTime)) * 100, height: (shown.breakMinutes / 60 / (endTime - startTime)) * 100 }
     : null;
 
+  // Point d'appui de la souris : un clic qui a deplace la carte n'ouvre pas la fiche.
+  const downAt = useRef<{ x: number; y: number } | null>(null);
+
+  // Apres TOUS les hooks (02/10/2026) : sortir avant faisait varier leur nombre
+  // d'un rendu a l'autre, et React le signalait comme une erreur interne.
+  if (!staff) return null;
+
   return (
-    <div 
+    <div
       className={`@container rounded-[10px] px-2 py-1.5 md:px-2 md:py-1.5 @max-[64px]:px-1 shadow-sm flex flex-col overflow-hidden border-l-4 group relative transition-transform ${isReadOnly ? '' : 'active:scale-[0.98]'} `}
       onMouseDown={(e) => {
+        downAt.current = { x: e.clientX, y: e.clientY };
         if (isReadOnly) return;
         // Ctrl/Cmd+clic coche au lieu de deplacer : sans ca le geste de selection
         // du bureau demarrerait un glisser en meme temps.
@@ -145,14 +152,10 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
           onToggleSelect();
           return;
         }
-        // On mobile, single click to edit
-        if (window.innerWidth < 768) {
-          onEdit();
-        }
-      }}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        if (isReadOnly || selectionMode || window.innerWidth < 768) return;
+        // Un simple clic ouvre la fiche, partout (QA du 02/10/2026 : sur ordinateur
+        // il fallait un double-clic que personne ne devine). Sauf apres un glisser.
+        const d = downAt.current;
+        if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
         onEdit();
       }}
       style={{
@@ -361,6 +364,8 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             if (isReadOnly || selectionMode || window.innerWidth < 768) return;
             onDragStart(e, 'move-break');
           }}
+          // Un clic sur la pause ne doit pas ouvrir la fiche : le double-clic y regle la duree.
+          onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => {
             // Double-clic sur la pause : on change sa duree, sans ouvrir la fiche.
             e.stopPropagation();
@@ -368,7 +373,7 @@ const ShiftCard: React.FC<ShiftCardProps> = ({
             setBreakMenu({ x: e.clientX, y: e.clientY });
           }}
         >
-          <span className="text-[10px] font-bold text-slate-600 leading-none whitespace-nowrap pointer-events-none">
+          <span className="text-xs font-bold text-slate-600 leading-none whitespace-nowrap pointer-events-none">
             {t('breakLabel')} {shown.breakMinutes} min
           </span>
         </div>

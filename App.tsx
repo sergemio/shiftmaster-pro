@@ -18,6 +18,7 @@ import ExtrasModal from './components/ExtrasModal';
 import EditShiftModal from './components/EditShiftModal';
 import MonthYearPicker from './components/MonthYearPicker';
 import LogHistoryModal from './components/LogHistoryModal';
+import { askConfirm } from './components/ConfirmDialog';
 import SettingsModal from './components/SettingsModal';
 import AbsenceModal, { PlannedInfo } from './components/AbsenceModal';
 import PayrollModal from './components/PayrollModal';
@@ -1056,7 +1057,7 @@ const App: React.FC = () => {
     for (const [wid, data] of Object.entries(neighbourWeeks)) {
       push(new Date(wid + 'T00:00:00Z'), data.shifts || []);
     }
-    const pooled = displayStaff.filter(s => s.isPool).map(s => s.id);
+    const pooled = displayStaff.filter(s => s.isPool || s.noContract).map(s => s.id);
     return findViolations(flat, convention, {
       from: getShiftIsoDate(currentWeek, 0),
       to: getShiftIsoDate(currentWeek, 6),
@@ -1118,7 +1119,8 @@ const App: React.FC = () => {
     pause: { breakStart?: number; breakMinutes?: number } = {},
   ): string[] => {
     if (!staffId || end <= start || dayIndexes.length === 0) return [];
-    if (staffList.find(s => s.id === staffId)?.isPool) return [];
+    const who = staffList.find(s => s.id === staffId);
+    if (who?.isPool || who?.noContract) return [];
 
     const flat: DatedShift[] = [];
     const index = new Map<string, { shift: Shift; date: string }>();
@@ -1141,7 +1143,7 @@ const App: React.FC = () => {
       index.set(candidate.id, { shift: candidate, date });
     }
 
-    const pooled = displayStaff.filter(s => s.isPool).map(s => s.id);
+    const pooled = displayStaff.filter(s => s.isPool || s.noContract).map(s => s.id);
     return findViolations(flat, convention, {
       from: getShiftIsoDate(currentWeek, 0),
       to: getShiftIsoDate(currentWeek, 6),
@@ -1509,12 +1511,12 @@ const App: React.FC = () => {
     createLog('MOVE SHIFTS', `Moved ${chosen.length} shift(s) to ${dayLabel}`);
   }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, currentWeek, language, employmentCheck]);
 
-  const deleteSelected = useCallback(() => {
+  const deleteSelected = useCallback(async () => {
     if (isReadOnly || selectedShiftIds.length === 0) return;
     const question = selectedShiftIds.length > 1
       ? t('confirmDeleteSelectedPlural').replace('{n}', String(selectedShiftIds.length))
       : t('confirmDeleteSelected');
-    if (!window.confirm(question)) return;
+    if (!(await askConfirm(question, { danger: true, okLabel: t('confirmDelete') }))) return;
     handleUpdateShifts(shifts.filter(s => !selectedShiftIds.includes(s.id)));
     createLog('DELETE SHIFTS', `Removed ${selectedShiftIds.length} shift(s)`);
     setSelectedShiftIds([]);
@@ -1550,6 +1552,9 @@ const App: React.FC = () => {
   const resumeAfterStaffRef = useRef<'shift' | 'absence' | null>(null);
   const lastAddedStaffRef = useRef<string | null>(null);
   const [shiftPresetStaffId, setShiftPresetStaffId] = useState<string | undefined>(undefined);
+  // Jour et heure du clic sur une case vide ; oublies a la fermeture.
+  const [shiftPreset, setShiftPreset] = useState<{ day: number; start: number } | null>(null);
+  useEffect(() => { if (!isShiftModalOpen) setShiftPreset(null); }, [isShiftModalOpen]);
   const openStaffFrom = (resume: 'shift' | 'absence' | null) => {
     resumeAfterStaffRef.current = resume;
     lastAddedStaffRef.current = null;
@@ -1645,8 +1650,9 @@ const App: React.FC = () => {
   const tourSteps: TourStep[] = [
     { title: t('tourWelcomeTitle'), body: t('tourWelcomeBody'), prepare: inDrawer(false) },
     { target: '[data-tour="team"]', title: t('tourTeamTitle'), body: t('tourTeamBody'), prepare: inDrawer(true) },
-    { target: '[data-tour="shift"]', title: t('tourShiftTitle'), body: t('tourShiftBody'), prepare: inDrawer(true) },
-    { target: '[data-testid="week-nav"]', title: t('tourWeekTitle'), body: t('tourWeekBody'), prepare: inDrawer(false) },
+    // Titre seul (retour d'Henry, 02/10/2026) : le titre suffit, pas de phrase.
+    { target: '[data-tour="shift"]', title: t('tourShiftTitle'), body: '', prepare: inDrawer(true) },
+    { target: '[data-testid="week-nav"]', title: t('tourWeekTitle'), body: '', prepare: inDrawer(false) },
     { target: '[data-tour="absences"]', title: t('tourAbsTitle'), body: t('tourAbsBody'), prepare: inDrawer(true) },
     { target: '[data-tour="settings"]', title: t('tourSettingsTitle'), body: t('tourSettingsBody'), prepare: inDrawer(false) },
   ];
@@ -1906,7 +1912,7 @@ const App: React.FC = () => {
     }
     // Sur une semaine deja remplie on demande : l'ajout reste annulable, mais
     // mieux vaut ne pas surprendre.
-    if (shifts.length > 0 && !window.confirm(t('confirmCopyInto').replace('{n}', String(prevShifts.length)))) {
+    if (shifts.length > 0 && !(await askConfirm(t('confirmCopyInto').replace('{n}', String(prevShifts.length))))) {
       return;
     }
     const copied = prevShifts.map(s => ({ ...s, id: Math.random().toString(36).substr(2, 9) }));
@@ -1955,7 +1961,7 @@ const App: React.FC = () => {
     const online = connected;
     const stale = online && draft.baseUpdatedAt !== (weekVersion.current ?? null);
     const question = stale ? t('draftStale') : t('confirmDraftPublish').replace('{n}', String(week.shifts.length));
-    if (!window.confirm(question)) return;
+    if (!(await askConfirm(question))) return;
 
     if (online) {
       await writeQueue.current;
@@ -1986,7 +1992,7 @@ const App: React.FC = () => {
   }, [isReadOnly, draft, user, isGuest, orgId, weekId, currentWeek, t]);
 
   const discardDraft = useCallback(async () => {
-    if (isReadOnly || !window.confirm(t('confirmDraftDiscard'))) return;
+    if (isReadOnly || !(await askConfirm(t('confirmDraftDiscard'), { danger: true }))) return;
     setDraft(null);
     setDraftMode(false);
     if (connected) await deleteDraft(weekId);
@@ -2190,6 +2196,7 @@ const App: React.FC = () => {
     canSeeMyWeek: !!me, canSeeMoney: !isReadOnly, staff: staffList, rates, onRatesChange: updateRates,
     hours: operatingHours,
     onHoursChange: isReadOnly ? undefined : (h: OperatingHours) => { updateOperatingHours(h); markPrefs({ hoursSet: true }); },
+    onHoursConfirm: isReadOnly || stepHours ? undefined : () => markPrefs({ hoursSet: true }),
     closedHolidays, onClosedHolidaysChange: isReadOnly ? undefined : updateClosedHolidays,
     closures, onClosuresChange: isReadOnly ? undefined : updateClosures,
     leaveUnit, onLeaveUnitChange: isReadOnly ? undefined : updateLeaveUnit,
@@ -2286,8 +2293,8 @@ const App: React.FC = () => {
                 precedente, choix du mois, semaine suivante) — chaque zone se lit
                 comme cliquable sans survol. */}
             <div className="relative" ref={monthPickerRef}>
-              <div className="flex items-stretch h-10 border border-slate-300 rounded-xl bg-white shadow-sm overflow-hidden" data-testid="week-nav">
-                <button onClick={() => changeWeek(-1)} title={t('previousWeek')} aria-label={t('previousWeek')} className="w-8 sm:w-10 grid place-items-center text-slate-700 border-r border-slate-200 hover:bg-slate-100 active:bg-slate-200 transition-colors">
+              <div className="flex items-stretch h-11 md:h-10 border border-slate-300 rounded-xl bg-white shadow-sm overflow-hidden" data-testid="week-nav">
+                <button onClick={() => changeWeek(-1)} title={t('previousWeek')} aria-label={t('previousWeek')} className="w-11 sm:w-10 grid place-items-center text-slate-700 border-r border-slate-200 hover:bg-slate-100 active:bg-slate-200 transition-colors">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M15 18l-6-6 6-6" /></svg>
                 </button>
                 <button
@@ -2295,7 +2302,7 @@ const App: React.FC = () => {
                   aria-haspopup="dialog"
                   aria-expanded={isMonthPickerOpen}
                   title={t('selectMonth')}
-                  className={`flex items-center gap-1 sm:gap-2 px-1.5 sm:px-4 text-[15px] font-medium whitespace-nowrap transition-colors ${isMonthPickerOpen ? 'bg-indigo-50 text-indigo-700' : 'text-slate-800 hover:bg-slate-100 active:bg-slate-200'}`}
+                  className={`flex items-center gap-1 sm:gap-2 px-1.5 sm:px-4 text-sm font-medium whitespace-nowrap transition-colors ${isMonthPickerOpen ? 'bg-indigo-50 text-indigo-700' : 'text-slate-800 hover:bg-slate-100 active:bg-slate-200'}`}
                 >
                   <svg className={`hidden sm:block w-5 h-5 ${isMonthPickerOpen ? 'text-indigo-500' : 'text-slate-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" strokeWidth={2} /><path strokeLinecap="round" strokeWidth={2} d="M16 3v4M8 3v4M3 10h18" /></svg>
                   <span className="hidden sm:inline">{getWeekRangeCompact(currentWeek, language)}</span>
@@ -2304,7 +2311,7 @@ const App: React.FC = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 9l6 6 6-6" />
                   </svg>
                 </button>
-                <button onClick={() => changeWeek(1)} title={t('nextWeek')} aria-label={t('nextWeek')} className="w-8 sm:w-10 grid place-items-center text-slate-700 border-l border-slate-200 hover:bg-slate-100 active:bg-slate-200 transition-colors">
+                <button onClick={() => changeWeek(1)} title={t('nextWeek')} aria-label={t('nextWeek')} className="w-11 sm:w-10 grid place-items-center text-slate-700 border-l border-slate-200 hover:bg-slate-100 active:bg-slate-200 transition-colors">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M9 6l6 6-6 6" /></svg>
                 </button>
               </div>
@@ -2356,7 +2363,8 @@ const App: React.FC = () => {
             <button
               onClick={() => openSettings()}
               data-tour="settings"
-              className="md:hidden w-9 h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
+              aria-label={t('settings')}
+              className="md:hidden w-11 h-11 flex items-center justify-center rounded-full bg-slate-50text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all active:scale-95 border border-slate-100"
               title={t('settings')}
             >
               <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -2366,8 +2374,8 @@ const App: React.FC = () => {
                 n'a plus la place — nom et deconnexion passent dans les reglages. */}
             <div className="hidden sm:flex md:hidden xl:flex items-center gap-2 md:gap-3 pl-2 border-l">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-900 leading-none truncate max-w-[80px]">{user?.displayName || "User"}</p>
-                <button onClick={handleLogout} className="text-xs text-red-500 hover:underline cursor-pointer whitespace-nowrap">{t('signOut')}</button>
+                <p className="text-sm font-bold text-slate-900 leading-none truncate max-w-[140px]">{user?.displayName || "User"}</p>
+                <button onClick={handleLogout} className="text-xs text-slate-500 hover:text-slate-800 hover:underline cursor-pointer whitespace-nowrap">{t('signOut')}</button>
               </div>
               <div className="w-8 h-8 md:w-9 md:h-9 rounded-full border-2 border-indigo-100 p-0.5 overflow-hidden">
                 <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'User')}&background=6366f1&color=fff`} className="w-full h-full rounded-full object-cover" alt="User" />
@@ -2436,7 +2444,7 @@ const App: React.FC = () => {
             onUpdateShift={updateShift} 
             rates={shiftRates}
             hourRange={hourRange}
-            onAddShift={() => !isReadOnly && setIsShiftModalOpen(true)} 
+            onAddShift={(_staffId, day, start) => { if (isReadOnly) return; setShiftPreset({ day, start }); setIsShiftModalOpen(true); }} 
             onEditShift={(id) => !isReadOnly && setEditingShiftId(id)} 
             isReadOnly={isReadOnly} 
             isLoading={isLoading} 
@@ -2503,6 +2511,8 @@ const App: React.FC = () => {
         onDeleteWeek={handleDeleteWeek}
         onOpenHistory={fromSidebar(() => setIsHistoryModalOpen(true))}
         onExportSnapshot={inDraft ? undefined : handleExportSnapshot}
+        onOpenPayroll={isAdmin && !isReadOnly ? fromSidebar(() => setIsPayrollOpen(true)) : undefined}
+        onRequestLeave={canRequestLeave ? fromSidebar(() => setViewType('me')) : undefined}
         isReadOnly={isReadOnly}
         isLoading={isLoading}
         onUndo={undo}
@@ -2513,7 +2523,14 @@ const App: React.FC = () => {
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
       />
-      <ShiftModal isOpen={isShiftModalOpen} onClose={() => setIsShiftModalOpen(false)} staff={assignableStaff} initialStaffId={shiftPresetStaffId} teamEmpty={staffList.length === 0} onAddStaff={() => openStaffFrom('shift')} onAdd={handleAddShift} onAddExtra={addExtraShift} extras={Object.values(extras)} onCheck={previewViolations} onEmployment={employmentCheck} language={language} hours={operatingHours} />
+      {/* Telephone : l'action principale a portee du pouce, pas cachee dans le menu (QA du 02/10/2026). */}
+      {!isReadOnly && effectiveViewType === 'day' && !isMobileSidebarOpen && !isShiftModalOpen && (
+        <button type="button" onClick={() => setIsShiftModalOpen(true)} aria-label={t('addShift')} data-testid="fab-add-shift"
+          className="md:hidden fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300 grid place-items-center active:scale-95 transition-transform">
+          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+        </button>
+      )}
+      <ShiftModal isOpen={isShiftModalOpen} onClose={() => { setIsShiftModalOpen(false); setShiftPreset(null); }} staff={assignableStaff} initialStaffId={shiftPresetStaffId} initialDayIndex={shiftPreset?.day} initialStart={shiftPreset?.start} teamEmpty={staffList.length === 0} onAddStaff={() => openStaffFrom('shift')} onAdd={handleAddShift} onAddExtra={addExtraShift} extras={Object.values(extras)} onCheck={previewViolations} onEmployment={employmentCheck} language={language} hours={operatingHours} />
       <StaffModal 
         isOpen={isStaffModalOpen} 
         onClose={closeStaffModal} 
@@ -2533,6 +2550,9 @@ const App: React.FC = () => {
         onInvite={connected && !isReadOnly ? inviteStaff : undefined}
         onCancelInvite={cancelInvite}
         onSendInvite={sendInviteEmailCall}
+        rates={rates}
+        onRatesChange={isReadOnly ? undefined : updateRates}
+        currentEmail={user?.email || ''}
         inviteUrl={inviteUrl}
         orgName={org?.name || ''}
         selfAdmin={connected && isAdmin && !me && user?.email

@@ -58,7 +58,7 @@ with sync_playwright() as pw:
     texts = chips(p).all_inner_texts()
     check("Semaine de la fermeture : trois jours « Fermé · vacances d'été »", len(texts) == 3 and all(t.upper() == "FERMÉ · VACANCES D'ÉTÉ" for t in texts), texts)
 
-    p.get_by_role("button", name="Ajouter Shift").first.click(); p.wait_for_timeout(500)
+    p.get_by_role("button", name="Ajouter un shift").first.click(); p.wait_for_timeout(500)
     p.locator("select").first.select_option(label="Omar")
     p.get_by_role("button", name=jour_nom(NEXT_MON, 1), exact=True).click(); p.wait_for_timeout(300)
     check("Shift bloque le 2e jour de la fermeture : restaurant ferme",

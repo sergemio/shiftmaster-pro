@@ -244,7 +244,9 @@ const LogHistoryModal: React.FC<LogHistoryModalProps> = ({ isOpen, onClose, lang
         <div className="flex-1 overflow-y-auto px-5 md:px-6 pb-6">
           {!loading && rows.length === 0 && (
             <p className="text-center text-sm text-slate-400 py-14">
-              {fr ? 'Rien ne correspond à cette recherche.' : 'Nothing matches this search.'}
+              {q
+                ? (fr ? 'Rien ne correspond à cette recherche.' : 'Nothing matches this search.')
+                : (fr ? 'Aucun changement sur cette période.' : 'No changes in this period.')}
             </p>
           )}
 

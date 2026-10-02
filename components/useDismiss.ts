@@ -13,6 +13,10 @@ import type React from 'react';
  */
 export function useDismiss(onClose: () => void) {
   const pressedOnBackdrop = useRef(false);
+  // Un shift s'ouvre d'un simple clic (02/10/2026) ; qui double-clique par
+  // habitude enverrait son second clic sur le fond et refermerait aussitot.
+  // Un clic sur le fond dans les 400 ms qui suivent l'ouverture est ignore.
+  const openedAt = useRef(Date.now());
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -23,7 +27,7 @@ export function useDismiss(onClose: () => void) {
   return {
     onMouseDown: (e: React.MouseEvent) => { pressedOnBackdrop.current = e.target === e.currentTarget; },
     onClick: (e: React.MouseEvent) => {
-      if (pressedOnBackdrop.current && e.target === e.currentTarget) onClose();
+      if (pressedOnBackdrop.current && e.target === e.currentTarget && Date.now() - openedAt.current > 400) onClose();
       pressedOnBackdrop.current = false;
     },
   };

@@ -48,7 +48,7 @@ with sync_playwright() as pw:
     check("Menu : le tiroir s'ouvre a gauche", box is not None and abs(box["x"]) < 2 and box["width"] > 300, box)
     heads = drawer.locator("button[aria-controls^='settings-']")
     check("Tiroir : reglages ranges en sections fermees (Affichage, Jours feries, Donnees...)",
-          all(s in drawer.inner_text() for s in ["Affichage", "Jours fériés", "Données du restaurant"])
+          all(s in drawer.inner_text() for s in ["Affichage", "Jours fériés", "Compte et suppression"])
           and all(h.get_attribute("aria-expanded") == "false" for h in heads.all()), drawer.inner_text()[:200])
     drawer.get_by_role("button", name="Jours fériés").click(); p.wait_for_timeout(300)
     check("Section depliee : les interrupteurs des feries apparaissent", drawer.get_by_role("switch").count() >= 10)

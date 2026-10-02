@@ -48,7 +48,7 @@ with sync_playwright() as pw:
     check("A l ecran, l admin voit le motif « Arrêt maladie »", "Arrêt maladie" in before)
 
     with p.expect_download() as dl:
-        p.get_by_role("button", name="Exporter PNG").click()
+        p.get_by_role("button", name="Enregistrer en image").click()
         p.wait_for_timeout(250)
         during = grid.inner_text()
     path = dl.value.path()

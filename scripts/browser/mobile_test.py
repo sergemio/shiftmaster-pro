@@ -66,10 +66,10 @@ with sync_playwright() as pw:
     p.locator("button:visible", has_text="quipe").first.click(); p.wait_for_timeout(800)
     add = p.get_by_role("button", name="Ajouter une personne")
     if add.count(): add.first.click(); p.wait_for_timeout(500)
+    # Depuis le QA du 02/10/2026, la creation ne demande que la date d'arrivee
+    # (le dernier jour se regle dans la fiche) : un seul champ, pleine largeur.
     dates = p.locator("input[type=date]:visible").all()
-    check("Equipe : les champs date restent dans l'ecran", len(dates) >= 2 and all(inside(p, d)[0] for d in dates), [inside(p, d)[1] for d in dates])
-    ys = [round(d.bounding_box()["y"]) for d in dates[:2]]
-    check("Equipe : les deux champs date sont alignes", len(ys) == 2 and abs(ys[0] - ys[1]) < 3, ys)
+    check("Equipe : le champ date reste dans l'ecran", len(dates) >= 1 and all(inside(p, d)[0] for d in dates), [inside(p, d)[1] for d in dates])
     check("Aucune erreur JavaScript", not errs, errs[:2])
     b.close()
 print("TOUT PASSE" if all(res) else f"{res.count(False)} ECHEC(S)")

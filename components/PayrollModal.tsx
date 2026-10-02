@@ -130,8 +130,7 @@ const PayrollModal: React.FC<PayrollModalProps> = ({
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5 flex flex-col gap-4">
-          <p className="text-sm text-slate-600">{t('payrollIntro')}</p>
-          <div className="flex flex-wrap items-end gap-3">
+<div className="flex flex-wrap items-end gap-3">
             <div>
               <label htmlFor="payroll-month" className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-1.5">{t('payrollMonth')}</label>
               <input id="payroll-month" type="month" value={month} onChange={e => setMonth(e.target.value)}

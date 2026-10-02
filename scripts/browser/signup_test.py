@@ -41,9 +41,15 @@ with sync_playwright() as pw:
     onb = p.get_by_test_id("onboarding")
     check("Compte cree sans restaurant : l'assistant s'ouvre", onb.count() == 1)
     create = onb.get_by_role("button", name="Créer mon restaurant")
-    check("Bouton inactif tant que nom et convention manquent", create.is_disabled())
+    # Bouton actif ; un clic dit ce qui manque (QA du 02/10/2026)
+    create.click(); p.wait_for_timeout(400)
+    txt = onb.inner_text()
+    check("Clic sans rien : « Indiquez le nom » et « Choisissez votre convention »",
+          "Indiquez le nom du restaurant." in txt and "Choisissez votre convention collective." in txt, txt[:300])
     onb.get_by_label("Nom du restaurant").fill("Chez Nina")
-    check("... toujours inactif sans convention", create.is_disabled())
+    create.click(); p.wait_for_timeout(400)
+    check("... nom rempli : il ne manque plus que la convention",
+          "Indiquez le nom" not in onb.inner_text() and "Choisissez votre convention" in onb.inner_text())
     onb.get_by_role("radio", name="Hôtels, cafés, restaurants (HCR) — IDCC 1979").click()
     check("Mention de l'essai de 14 jours sans carte", "14 jours" in onb.inner_text())
     create.click(); p.wait_for_timeout(6000)
@@ -66,10 +72,20 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Gérer l'équipe").first.click(); p.wait_for_timeout(700)
     me = p.get_by_test_id("self-admin")
     check("La fondatrice est presentee comme admin, sans fiche d'equipier",
-          me.count() == 1 and EMAIL.lower() in me.inner_text(), me.inner_text() if me.count() else "")
-    me.get_by_role("button", name="M'ajouter comme équipier").click(); p.wait_for_timeout(300)
-    check("« M'ajouter comme équipier » pre-remplit son nom",
-          p.locator("#new-staff-name").input_value() == "Nina Test", p.locator("#new-staff-name").input_value())
+          me.count() == 1 and "Vous n'êtes pas sur le planning." in me.inner_text(), me.inner_text() if me.count() else "")
+    me.get_by_role("button", name="M'ajouter comme équipier").click(); p.wait_for_timeout(400)
+    # L'app demande s'il y a un contrat de travail (decision de Serge, 02/10/2026)
+    check("« M'ajouter » : l'app demande s'il y a un contrat", "contrat de travail" in me.inner_text(), me.inner_text())
+    me.get_by_role("button", name="Oui, je suis salarié").click(); p.wait_for_timeout(300)
+    me.get_by_role("button", name="M'ajouter", exact=True).click(); p.wait_for_timeout(400)
+    check("Salariée sans date d'entrée : message clair", "La date d'arrivée est obligatoire" in me.inner_text(), me.inner_text())
+    me.get_by_label("Date d'entrée").fill("2025-03-01")
+    me.get_by_role("button", name="M'ajouter", exact=True).click(); p.wait_for_timeout(1500)
+    row = p.locator("div.cursor-pointer").filter(has_text="Nina Test").first
+    check("Sa fiche apparait dans l'equipe, avec « Ajouté »",
+          row.count() == 1 and "Ajouté" in row.inner_text(), row.inner_text() if row.count() else p.locator("body").inner_text()[:300])
+    check("Pas de bouton « Inviter dans l'app » sur sa propre ligne", row.get_by_test_id("access-invite").count() == 0)
+    check("... et la ligne « Vous gérez ce restaurant » disparait", p.get_by_test_id("self-admin").count() == 0)
     p.context.close()
 
     # --- 3. connexion : mauvais mot de passe, puis le bon ------------------------------------

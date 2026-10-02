@@ -126,11 +126,11 @@ const GuidedTour: React.FC<Props> = ({ steps, language, onClose, finishLabel }) 
         className="absolute w-[min(340px,calc(100vw-32px))] bg-white rounded-2xl shadow-2xl p-5 flex flex-col gap-2"
         style={pos ? { left: pos.left, top: pos.top } : { visibility: 'hidden' }}
       >
-        <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">
+        <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">
           {t('tourStep').replace('{n}', String(i + 1)).replace('{total}', String(steps.length))}
         </p>
         <h2 id="tour-title" className="text-base font-bold text-slate-900 text-balance">{step.title}</h2>
-        <p className="text-sm text-slate-600 leading-relaxed">{step.body}</p>
+        {step.body && <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{step.body}</p>}
         <div className="flex items-center gap-2 pt-2">
           {!last && (
             <button type="button" onClick={() => onClose(false)}

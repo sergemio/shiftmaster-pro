@@ -165,6 +165,13 @@ export interface Staff {
    * semaine. Le moteur exclut ces lignes.
    */
   isPool?: boolean;
+  /**
+   * Dirigeant ou associe qui travaille en service sans contrat de travail
+   * (president de SAS, gerant majoritaire...). Pas d'heures de contrat, pas de
+   * date d'entree obligatoire, pas d'alertes de duree du travail, et absent de
+   * l'export de paie : il n'a pas de bulletin. (Decision de Serge, 02/10/2026.)
+   */
+  noContract?: boolean;
   jobTitle?: string;
   startDate?: string; // YYYY-MM-DD, employment start
   endDate?: string | null; // YYYY-MM-DD or null = still employed (CDI)

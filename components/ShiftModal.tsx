@@ -34,6 +34,9 @@ interface ShiftModalProps {
   /** Heures d'ouverture reglees : les menus d'heures n'offrent que cette plage. */
   /** Equipier a preselectionner (celui qu'on vient d'ajouter depuis ce formulaire). */
   initialStaffId?: string;
+  /** Jour et heure de debut pre-remplis : clic sur une case vide du planning. */
+  initialDayIndex?: number;
+  initialStart?: number;
   /** Personne dans l'equipe (et non « personne en poste cette semaine »). */
   teamEmpty?: boolean;
   /** Mene a « Gerer l'equipe » quand il n'y a personne a placer. */
@@ -41,8 +44,7 @@ interface ShiftModalProps {
   hours?: OperatingHours;
 }
 
-const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, onAddExtra, extras = [], language = 'en', onCheck, onEmployment, hours = DEFAULT_OPERATING_HOURS, initialStaffId, teamEmpty = false, onAddStaff }) => {
-  if (!isOpen) return null;
+const ShiftModalBody: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, onAddExtra, extras = [], language = 'en', onCheck, onEmployment, hours = DEFAULT_OPERATING_HOURS, initialStaffId, initialDayIndex, initialStart, teamEmpty = false, onAddStaff }) => {
   // Fix: cast language to Language to avoid string assignability error during translation retrieval
   const t = getTranslation(language as Language);
   // Clic sur le fond ou Echap : comme « Annuler » (29/09/2026).
@@ -66,12 +68,14 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
   );
   // Plusieurs jours d'un coup : le meme service du lundi au vendredi se posait
   // en cinq ouvertures de cette fenetre.
-  const [selectedDays, setSelectedDays] = useState<number[]>([0]);
+  const [selectedDays, setSelectedDays] = useState<number[]>([initialDayIndex ?? 0]);
   // 11 h 30 - 17 h 30 par defaut, ramene dans les heures d'ouverture si elles
   // ne le contiennent pas. Les menus, eux, offrent toute la journee.
-  const defaultStart = Math.min(Math.max(11.5, hours.start), hours.end - 1);
+  const defaultStart = initialStart ?? Math.min(Math.max(11.5, hours.start), hours.end - 1);
   const [startTime, setStartTime] = useState(defaultStart);
-  const [endTime, setEndTime] = useState(Math.min(Math.max(17.5, defaultStart + 0.5), hours.end));
+  const [endTime, setEndTime] = useState(initialStart !== undefined
+    ? Math.min(initialStart + 4, Math.max(hours.end, initialStart + 0.5))
+    : Math.min(Math.max(17.5, defaultStart + 0.5), hours.end));
   // Tant que le manager n'a pas touche a la pause, elle suit l'horaire : 20 min
   // au milieu du shift s'il depasse 6 h, rien sinon (decision du 22/09/2026).
   const [pauseChosen, setPauseChosen] = useState<PauseValue | null>(null);
@@ -313,5 +317,10 @@ const ShiftModal: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onAdd, 
     </div>
   );
 };
+
+// Fenetre fermee : rien n'est rendu, et les hooks du contenu ne tournent pas.
+// Sortir AVANT les hooks (ancienne version) faisait varier leur nombre d'un
+// rendu a l'autre : React le signalait comme une erreur interne (QA du 02/10/2026).
+const ShiftModal: React.FC<ShiftModalProps> = (props) => (props.isOpen ? <ShiftModalBody {...props} /> : null);
 
 export default ShiftModal;

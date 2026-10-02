@@ -116,7 +116,7 @@ export const payrollVariables = (
   const byId = new Map(staff.map(s => [s.id, s]));
   const isContracted = (id: string) => {
     const s = byId.get(id);
-    return !!s && !s.isPool && !s.isExtra;
+    return !!s && !s.isPool && !s.isExtra && !s.noContract;
   };
 
   // Heures par personne et par jour, sur toutes les semaines chargees : le
@@ -149,7 +149,7 @@ export const payrollVariables = (
 
   const lines: PayrollLine[] = [];
   for (const s of staff) {
-    if (s.isPool || s.isExtra) continue;
+    if (s.isPool || s.isExtra || s.noContract) continue;
     if (s.startDate && s.startDate > last) continue;
     if (s.endDate && s.endDate < first) continue;
     const mins = minutesByPersonDate.get(s.id) || new Map<string, number>();
