@@ -7,6 +7,7 @@ import PauseField, { PauseValue, pauseFields, shiftStartOptions, shiftEndOptions
 import { clampBreak, autoBreak } from '../utils/worktime';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
+import { toast } from './Toast';
 import { useDismiss } from './useDismiss';
 
 interface ShiftModalProps {
@@ -104,11 +105,11 @@ const ShiftModalBody: React.FC<ShiftModalProps> = ({ isOpen, onClose, staff, onA
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (endTime <= startTime) {
-      alert(t('endBeforeStart'));
+      toast(t('endBeforeStart'), { kind: 'error' });
       return;
     }
     if (selectedDays.length === 0) {
-      alert(t('pickAtLeastOneDay'));
+      toast(t('pickAtLeastOneDay'), { kind: 'error' });
       return;
     }
     if (employment.errors.length > 0) return;

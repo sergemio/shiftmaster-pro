@@ -25,6 +25,7 @@ dist-ssr
 
 # Firebase service account key
 scripts/service-account.json
+scripts/service-account-saas.json
 
 # Cle du service d'envoi des mails (RESEND_API_KEY, MAIL_FROM) : jamais dans git
 functions/.env

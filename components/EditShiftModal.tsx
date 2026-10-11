@@ -6,6 +6,7 @@ import { clampBreak, withAutoBreak } from '../utils/worktime';
 import { getTranslation } from '../utils/translations';
 import DayPicker from './DayPicker';
 import { useDismiss } from './useDismiss';
+import { toast } from './Toast';
 
 interface EditShiftModalProps {
   isOpen: boolean;
@@ -96,22 +97,14 @@ const EditShiftModalBody: React.FC<EditShiftModalProps & { shift: NonNullable<Ed
     e.preventDefault();
     if (isReadOnly) return;
     if (endTime <= startTime) {
-      alert(t('endBeforeStart'));
+      toast(t('endBeforeStart'), { kind: 'error' });
       return;
     }
     if (employment.errors.length > 0) return;
 
-    // PREVENT REDUNDANT UPDATES: Compare form state with original shift
+    // Un shift inchange n'est pas reecrit : App (updateShift) le detecte.
     const sanitizedCoverage = coverageBy.trim() || null as any;
     const sanitizedNotes = notes.trim() || null as any;
-
-    const isUnchanged = staffId === shift.staffId &&
-                        startTime === shift.startTime &&
-                        endTime === shift.endTime &&
-                        pause.breakStart === shift.breakStart &&
-                        (pause.breakMinutes || 0) === (shift.breakMinutes || 0) &&
-                        (sanitizedCoverage || '') === (shift.coverageBy || '') &&
-                        (sanitizedNotes || '') === (shift.notes || '');
 
     // La pause remplace l'ancienne, ou disparait : jamais de champ `undefined`.
     const { breakStart: _b, breakMinutes: _m, ...base } = shift;
@@ -128,7 +121,9 @@ const EditShiftModalBody: React.FC<EditShiftModalProps & { shift: NonNullable<Ed
     // `onRepeat` porte aussi la mise a jour de l'original, pour n'avoir qu'un
     // seul commit : une ecriture, une etape d'annulation.
     if (repeatOn.length > 0) onRepeat(edited, repeatOn);
-    else if (!isUnchanged) onUpdate(edited);
+    // Meme sans changement : App ne reecrit rien, mais affiche « Shift enregistre »
+    // (06/10/2026) — un clic sur Enregistrer sans retour laissait dans le doute.
+    else onUpdate(edited);
 
     onClose();
   };

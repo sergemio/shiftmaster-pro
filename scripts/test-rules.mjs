@@ -300,6 +300,21 @@ await check('Support lit un profil',                     assertSucceeds(getDoc(d
 await check('Support NE CHANGE PAS un statut non plus',  assertFails(updateDoc(doc(SUPPORT, 'orgs/fini'), { status: 'active' })));
 await check('Un faux claim support (string) ne passe pas', assertFails(getDoc(doc(as('uid-faux', { support: 'true' }), W('sezam')))));
 
+console.log('\n--- remarques « Une remarque ? » (10/10/2026) ---');
+const FB = (id, org = 'sezam') => `orgs/${org}/feedback/${id}`;
+const fb = (uid, extra = {}) => ({ text: 'Le bouton ne marche pas', uid, role: 'staff', createdAt: '2026-10-10T20:00:00.000Z', screen: 'day', ...extra });
+await check('Omar (employe) envoie une remarque',             assertSucceeds(setDoc(doc(OMAR, FB('f1')), fb('uid-omar'))));
+await check('Lea (essai expire) envoie quand meme une remarque', assertSucceeds(setDoc(doc(LEA, FB('f2', 'fini')), fb('uid-lea', { role: 'admin' }))));
+await check('Remarque au nom d un autre refusee',             assertFails(setDoc(doc(OMAR, FB('f3')), fb('uid-serge'))));
+await check('Remarque chez un autre restaurant refusee',      assertFails(setDoc(doc(OMAR, FB('f4', 'bistro')), fb('uid-omar'))));
+await check('Remarque vide refusee',                          assertFails(setDoc(doc(OMAR, FB('f5')), fb('uid-omar', { text: '' }))));
+await check('Remarque de plus de 2000 caracteres refusee',    assertFails(setDoc(doc(OMAR, FB('f6')), fb('uid-omar', { text: 'x'.repeat(2001) }))));
+await check('Champ inconnu refuse',                           assertFails(setDoc(doc(OMAR, FB('f7')), fb('uid-omar', { status: 'lu' }))));
+await check('Omar NE RELIT PAS sa remarque',                  assertFails(getDoc(doc(OMAR, FB('f1')))));
+await check('Serge (admin) NE LIT PAS les remarques',         assertFails(getDoc(doc(SERGE, FB('f1')))));
+await check('Omar NE MODIFIE PAS sa remarque',                assertFails(setDoc(doc(OMAR, FB('f1')), fb('uid-omar', { text: 'autre' }))));
+await check('Le support lit les remarques',                   assertSucceeds(getDoc(doc(SUPPORT, FB('f1')))));
+
 await check('Collection inconnue fermee',        assertFails(getDoc(doc(SERGE, 'autre/doc'))));
 await check('Ancien chemin plat ferme (weeks/)', assertFails(getDoc(doc(SERGE, 'weeks/2026-08-09'))));
 

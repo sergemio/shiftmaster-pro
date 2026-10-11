@@ -1105,6 +1105,34 @@ export const subscribeToLeaveRequests = (
 };
 
 /** Cree la demande (salarie) ou enregistre la decision (admin) : meme document. */
+/**
+ * Remarque envoyee depuis « Une remarque ? » (10/10/2026). Renvoie false si
+ * l'ecriture a echoue : la fenetre garde alors le texte pour un nouvel essai.
+ */
+export const sendFeedback = async (feedback: {
+  text: string; role: 'admin' | 'staff' | 'support'; name?: string; email?: string;
+  screen?: string; weekId?: string; lang?: string;
+}): Promise<boolean> => {
+  if (!auth.currentUser || !currentOrgId) return false;
+  const { fs, db } = await firestore();
+  const orgId = requireOrg();
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const data = {
+    ...Object.fromEntries(Object.entries(feedback).filter(([, v]) => v !== undefined && v !== '')),
+    text: feedback.text.slice(0, 2000),
+    uid: auth.currentUser.uid,
+    userAgent: navigator.userAgent.slice(0, 400),
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    await fs.setDoc(fs.doc(db, 'orgs', orgId, 'feedback', id), data);
+    return true;
+  } catch (e) {
+    console.error('Feedback failed:', e);
+    return false;
+  }
+};
+
 export const saveLeaveRequest = async (request: LeaveRequest): Promise<void> => {
   if (!auth.currentUser || !currentOrgId) return;
   const { fs, db } = await firestore();

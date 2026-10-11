@@ -10,6 +10,11 @@ def check(label, ok, extra=""):
     res.append(ok); print(("OK     " if ok else "ECHEC  ") + label + (f"  [{extra}]" if not ok else ""))
 
 TS = int(time.time())
+
+def toast_text(p):
+    """Le message de retour affiche en haut (Toast), vide s'il n'y en a pas."""
+    t = p.get_by_test_id("toast")
+    return t.inner_text() if t.count() else ""
 EMAIL = f"henry{TS}@test.fr"
 
 with sync_playwright() as pw:
@@ -97,6 +102,7 @@ with sync_playwright() as pw:
     p.get_by_role("button", name="Ajouter un shift", exact=True).last.click(); p.wait_for_timeout(1500)
     cards = p.get_by_test_id("shift-card")
     check("Le shift est cree", cards.count() == 1, cards.count())
+    check("Message : « Shift ajouté · Henry Test, ... »", "Shift ajouté · Henry Test" in toast_text(p), toast_text(p))
 
     # --- 6 bis. Shift + glisser duplique ---------------------------------------------------
     c = cards.first.bounding_box()
@@ -112,6 +118,8 @@ with sync_playwright() as pw:
     check("Shift + glisser : deux shifts, l'original reste sur mercredi et la copie va sur jeudi",
           len(xs) == 2 and box["x"] <= xs[0] < box["x"] + box["width"] and thu["x"] <= xs[1] < thu["x"] + thu["width"], xs)
     check("Aucune fenetre ouverte apres la duplication", wed.count() == 0, wed.count())
+    check("Message : « Shift dupliqué sur ... » avec « Annuler »",
+          "Shift dupliqué sur" in toast_text(p) and "Annuler" in toast_text(p), toast_text(p))
     # Sans Shift, le meme geste deplace : toujours deux shifts
     c = cards.nth(1).bounding_box(); fri = p.get_by_test_id("day-column-4").bounding_box()
     sx, sy = c["x"] + c["width"] / 2, c["y"] + c["height"] / 2
@@ -120,6 +128,7 @@ with sync_playwright() as pw:
     xs = sorted(cards.nth(i).bounding_box()["x"] for i in range(cards.count()))
     check("Sans Shift, le glisser deplace la copie sur vendredi (toujours deux shifts)",
           len(xs) == 2 and fri["x"] <= xs[1] < fri["x"] + fri["width"], xs)
+    check("Un glisser simple n'affiche pas de message (le resultat se voit)", "enregistré" not in toast_text(p), toast_text(p))
 
     # --- 6 quater. jours deja tenus dans « Modifier le shift » (Serge, 02/10/2026) ------
     # Henry a maintenant un shift mercredi et un vendredi. On ouvre celui de mercredi.
@@ -151,6 +160,35 @@ with sync_playwright() as pw:
           menu.inner_text() if menu.count() else "pas de menu")
     p.mouse.click(700, 500); p.wait_for_timeout(300)
     check("Clic ailleurs : le menu se ferme", p.get_by_test_id("account-menu").count() == 0)
+
+    # --- 6 septies. « Une remarque ? » (10/10/2026) ---------------------------------------
+    p.wait_for_timeout(6000)  # les messages precedents ont disparu
+    p.get_by_test_id("account-button").click(); p.wait_for_timeout(300)
+    p.get_by_test_id("account-menu").get_by_role("menuitem", name="Une remarque ?").click(); p.wait_for_timeout(400)
+    m = p.get_by_test_id("feedback-modal")
+    check("« Une remarque ? » ouvre la fenetre", m.count() == 1)
+    check("« Envoyer » reste grise tant que rien n'est ecrit", m.get_by_role("button", name="Envoyer").is_disabled())
+    m.locator("#fb-text").fill("Test : le planning du dimanche est coupe en deux")
+    m.get_by_role("button", name="Envoyer").click(); p.wait_for_timeout(1500)
+    check("Remarque envoyee : message de remerciement, fenetre fermee",
+          "Merci, votre remarque est envoyée" in toast_text(p) and p.get_by_test_id("feedback-modal").count() == 0, toast_text(p))
+
+    # --- 6 sexies. supprimer un shift, puis « Annuler » dans le message (06/10/2026) ------
+    p.wait_for_timeout(6000)  # les messages precedents ont disparu
+    first = cards.first.bounding_box()
+    p.mouse.click(first["x"] + first["width"] / 2, first["y"] + 10); p.wait_for_timeout(700)
+    p.get_by_role("button", name="Supprimer le shift").click(); p.wait_for_timeout(300)
+    p.get_by_role("button", name="Oui, supprimer").click(); p.wait_for_timeout(1200)
+    check("Supprimer : un seul shift reste", cards.count() == 1, cards.count())
+    check("Message : « Shift supprimé » avec « Annuler »", "Shift supprimé" in toast_text(p) and "Annuler" in toast_text(p), toast_text(p))
+    p.get_by_test_id("toast").get_by_role("button", name="Annuler").click(); p.wait_for_timeout(1500)
+    check("« Annuler » dans le message : le shift revient", cards.count() == 2, cards.count())
+    check("Message : « Action annulée »", "Action annulée" in toast_text(p), toast_text(p))
+    # Enregistrer depuis la fiche : un message, meme si rien n'a change
+    first = cards.first.bounding_box()
+    p.mouse.click(first["x"] + first["width"] / 2, first["y"] + 10); p.wait_for_timeout(700)
+    p.get_by_role("button", name="Enregistrer", exact=True).last.click(); p.wait_for_timeout(800)
+    check("Message : « Shift enregistré »", "Shift enregistré" in toast_text(p), toast_text(p))
 
     # --- 7. confirmation dans le style de l'app -------------------------------------------
     p.get_by_title("Voulez-vous vraiment supprimer tous les shifts de cette semaine ?").first.click(); p.wait_for_timeout(500)

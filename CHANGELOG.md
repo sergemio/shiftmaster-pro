@@ -5,6 +5,51 @@ Format : date, ce qui a change, pourquoi, fichiers touches.
 
 ---
 
+## 2026-10-10 (soir) — « Une remarque ? », app installable, rapport d'usage
+
+Pourquoi : priorités 2 à 4 du 10/10 (`SAAS-PLAN.md`), pour voir ce que vivent les restaurants pilotes.
+- **Bouton « Une remarque ? »** : menu de la pastille de profil (ordinateur) et tiroir des réglages (tous
+  écrans). Fenêtre `components/FeedbackModal.tsx` ; écriture `sendFeedback` (`services/firebaseService.ts`)
+  dans `orgs/{orgId}/feedback/{id}` avec l'écran, la semaine, la langue, le navigateur. Règle Firestore :
+  tout membre écrit (même essai terminé), uniquement à son nom, 2 000 caractères maximum, personne ne
+  modifie, seul le support lit. 11 cas ajoutés à `scripts/test-rules.mjs`.
+- **App installable sur le téléphone** : `public/manifest.webmanifest` + icônes PNG (horloge du favicon,
+  dont une « maskable » pour Android) + balises Apple dans `index.html`. Chrome ne remonte aucune erreur
+  d'installabilité. Nom provisoire « ShiftMaster », à changer à deux endroits quand le nom sera choisi.
+- **Rapport d'usage** `scripts/usage-report.mjs` (lecture seule) : par restaurant, les 8 dernières semaines,
+  celle-ci et la suivante (planning ou vide), dernière écriture, état (actif, à surveiller, arrêté, jamais
+  démarré, nouveau), puis les remarques reçues. `--emulator` pour les émulateurs ; en production, il faut la
+  clé `scripts/service-account-saas.json` (ajoutée au `.gitignore`).
+- ⚠️ À la mise en ligne : publier aussi les règles Firestore (`firebase deploy --only firestore:rules`),
+  sinon l'envoi d'une remarque est refusé.
+- Test : `henry_feedback_test.py` (fenêtre, bouton grisé à vide, envoi, message de remerciement).
+
+## 2026-10-10 — Étude de concurrence France et priorités
+
+- `ETUDE-CONCURRENCE-FR.md` : Skello et Combo (prix, CGV, 308 avis classés par thème), ce que notre outil
+  fait déjà face à leurs reproches, promesse proposée, 7 décisions. Notes brutes : `research/skello.md`, `research/combo.md`.
+- `SAAS-PLAN.md` : priorités du 10/10 en tête (étude, Sentry, détecteur d'abandon, bouton « Une remarque ? »,
+  bascule de Sezam et pilotes, gel des nouvelles fonctions).
+
+## 2026-10-06 — Messages de retour après chaque action
+
+Pourquoi : Serge, « aujourd'hui on ne sait pas trop si ça marche ou pas ». Audit de 26 actions validé par Serge.
+- Nouveau `components/Toast.tsx` : `toast(message, { kind, undo, sticky })`, hôte monté dans `index.tsx` (comme `askConfirm`).
+  En haut au centre sous l'en-tête (ne cache pas les flèches de semaine). Succès 3,5 s ; avec « Annuler » 5,5 s ;
+  erreur rouge et hors ligne restent jusqu'à fermeture. Même message répété : prolongé, pas rejoué.
+- `App.tsx` : `say` / `sayN` (clé « ...One » pour 1). Messages sur shifts (ajout, fiche, copie, duplication, suppression,
+  sélection, semaine copiée ou vidée, publication, brouillon, annuler, rétablir, image), équipe (ajout, retrait, fiche,
+  extra), absences, demandes de congé, solde, réglages, changement de restaurant, hors ligne. « Annuler » dans le message
+  pour les suppressions et actions groupées (passe par `undoRef`, l'annulation du moment).
+  Pas de message sur un glisser ou un redimensionnement : le résultat se voit.
+- Le bandeau rouge sous l'en-tête devient un message rouge (même place). « Rien à copier » passe en message d'information.
+- `alert()` retirés : image du planning (en anglais), heure de fin avant le début, aucun jour choisi.
+- « Enregistrer » sans changement dans la fiche d'un shift : rien n'est réécrit, mais « Shift enregistré » s'affiche.
+- Paie : « Paie copiée », « Fichier téléchargé ». Export du mois : « Fichier téléchargé » ou message d'échec.
+- Pas d'« Annuler » pour la suppression d'une absence sur période ni le retrait d'un employé : ces écritures ne passent
+  pas par l'historique d'annulation de la semaine.
+- Test : `henry_feedback_test.py` (ajout, duplication, glisser sans message, suppression puis « Annuler », enregistrer).
+
 ## 2026-10-02 (nuit) — Double-clic pour ajouter, Shift + glisser pour dupliquer
 
 Pourquoi : demande de Serge. Le simple clic sur une case vide ouvrait « Ajouter un shift » par mégarde.

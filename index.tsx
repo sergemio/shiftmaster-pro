@@ -5,6 +5,7 @@ import AuthActionPage, { authActionFromUrl } from './components/AuthActionPage.t
 import ErrorBoundary from './components/ErrorBoundary.tsx';
 import Tooltip from './components/Tooltip.tsx';
 import ConfirmHost from './components/ConfirmDialog.tsx';
+import ToastHost from './components/Toast.tsx';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -21,6 +22,7 @@ root.render(
       {action ? <AuthActionPage {...action} /> : <App />}
       <Tooltip />
       <ConfirmHost />
+      <ToastHost />
     </ErrorBoundary>
   </React.StrictMode>
 );

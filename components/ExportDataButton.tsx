@@ -1,4 +1,5 @@
 import MonthPicker from './MonthPicker';
+import { toast } from './Toast';
 import React, { useState } from 'react';
 import { Language } from '../types';
 import { exportWeeksData, loadStaffFromFirebase } from '../services/firebaseService';
@@ -61,8 +62,10 @@ const ExportDataButton: React.FC<ExportDataButtonProps> = ({ language = 'en' }) 
       link.click();
       URL.revokeObjectURL(link.href);
       setShowExportModal(false);
+      toast(language === 'fr' ? 'Fichier téléchargé' : 'File downloaded');
     } catch (e) {
       console.error('Export failed:', e);
+      toast(language === 'fr' ? "L'export a échoué. Réessayez." : 'The export failed. Please try again.', { kind: 'error' });
     } finally {
       setIsExporting(false);
     }

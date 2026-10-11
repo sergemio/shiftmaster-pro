@@ -214,6 +214,21 @@ service cloud.firestore {
              && (!('absenceId' in d) || d.absenceId is string);
     }
 
+    // Remarque envoyee depuis le bouton « Une remarque ? » (10/10/2026).
+    function isValidFeedback(d) {
+      return d.keys().hasOnly(['text', 'uid', 'name', 'email', 'role', 'screen', 'weekId', 'userAgent', 'lang', 'createdAt'])
+             && d.text is string && d.text.size() > 0 && d.text.size() <= 2000
+             && d.uid is string
+             && d.createdAt is string
+             && d.role in ['admin', 'staff', 'support']
+             && (!('name' in d) || (d.name is string && d.name.size() <= 200))
+             && (!('email' in d) || (d.email is string && d.email.size() <= 200))
+             && (!('screen' in d) || (d.screen is string && d.screen.size() <= 100))
+             && (!('weekId' in d) || (d.weekId is string && d.weekId.size() <= 20))
+             && (!('userAgent' in d) || (d.userAgent is string && d.userAgent.size() <= 400))
+             && (!('lang' in d) || (d.lang is string && d.lang.size() <= 5));
+    }
+
     function isValidInvite(data) {
       return data.email is string
              && data.email.size() >= 3 && data.email.size() <= 254
@@ -369,6 +384,16 @@ service cloud.firestore {
                     || (isOrgMember(orgId)
                         && resource.data.staffUid == request.auth.uid
                         && resource.data.status == 'pending');
+      }
+
+      // Remarques des utilisateurs : elles s'adressent a l'editeur, pas au
+      // restaurant. Tout membre en ecrit (meme essai termine : c'est la qu'on
+      // veut savoir pourquoi), personne ne les modifie, seul le support les lit.
+      match /feedback/{feedbackId} {
+        allow create: if isOrgMember(orgId)
+                    && isValidFeedback(request.resource.data)
+                    && request.resource.data.uid == request.auth.uid;
+        allow read: if isSupport();
       }
 
       // Invitations. L'id du document est le jeton du lien envoye par email ;

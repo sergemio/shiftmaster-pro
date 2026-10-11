@@ -43,7 +43,7 @@ interface SettingsModalProps {
   /** Rendu en tiroir lateral (ordinateur) plutot qu'en fenetre. */
   asDrawer?: boolean;
   /** Qui est connecte, a quel restaurant, et la deconnexion (absente de l'en-tete sur tablette et telephone). */
-  account?: { name: string; email: string; orgName: string; onLogout: () => void };
+  account?: { name: string; email: string; orgName: string; onLogout: () => void; onFeedback?: () => void };
   /** Fuseau horaire du restaurant. `onTimezoneChange` absent = pas admin. */
   timezone?: string;
   onTimezoneChange?: (tz: string) => void;
@@ -375,6 +375,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         <Section id="org" icon={ICONS.shield} title={t('orgDataTitle')} open={openSet} onToggle={toggle}>
           <AccountDataSection language={language as Language} {...orgData} />
         </Section>
+      )}
+
+      {account?.onFeedback && (
+        <button type="button" onClick={account.onFeedback} data-testid="settings-feedback"
+          className="mt-3 mx-2 flex items-center gap-2 h-11 px-3 rounded-xl text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors">
+          <svg className="w-5 h-5 flex-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+          {t('fbButton')}
+        </button>
       )}
 
       {account && (

@@ -2,6 +2,7 @@ import MonthPicker from './MonthPicker';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Staff, AbsencePeriod, LeaveUnit, Language, WeekData, Extra, Closure } from '../types';
 import { getTranslation } from '../utils/translations';
+import { toast } from './Toast';
 import { weekIdsForMonth, countLeaveDays, closedHolidayDates, formatShortDate, todayIso, missingStaffRows } from '../utils/helpers';
 import { payrollVariables, payrollText, payrollCsv, PayrollLabels } from '../utils/payroll';
 
@@ -102,6 +103,7 @@ const PayrollModal: React.FC<PayrollModalProps> = ({
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
+      toast(t('tPayrollCopied'));
       setTimeout(() => setCopied(false), 2000);
     } catch { /* presse-papiers refuse : le texte reste selectionnable a l'ecran */ }
   };
@@ -115,6 +117,7 @@ const PayrollModal: React.FC<PayrollModalProps> = ({
     link.href = URL.createObjectURL(blob);
     link.click();
     URL.revokeObjectURL(link.href);
+    toast(t('tFileDownloaded'));
   };
 
   return (

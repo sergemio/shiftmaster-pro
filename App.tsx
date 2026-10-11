@@ -19,6 +19,8 @@ import EditShiftModal from './components/EditShiftModal';
 import MonthYearPicker from './components/MonthYearPicker';
 import LogHistoryModal from './components/LogHistoryModal';
 import { askConfirm } from './components/ConfirmDialog';
+import { toast, ToastOptions } from './components/Toast';
+import FeedbackModal from './components/FeedbackModal';
 import SettingsModal from './components/SettingsModal';
 import AbsenceModal, { PlannedInfo } from './components/AbsenceModal';
 import PayrollModal from './components/PayrollModal';
@@ -74,8 +76,7 @@ import {
   loadShiftsFromFirebase,
   loadWeeks,
   setFirestoreErrorReporter,
-  WeekConflictError
-} from './services/firebaseService';
+  WeekConflictError, sendFeedback } from './services/firebaseService';
 
 const FloatingBackground: React.FC = () => {
   const items = useMemo(() => {
@@ -172,6 +173,12 @@ const App: React.FC = () => {
     return (localStorage.getItem('shiftmaster_view') as ViewType) || 'day';
   });
   const t = useMemo(() => getTranslation(language), [language]);
+  // Message de retour apres chaque action (Serge, 06/10/2026 : « on ne sait pas
+  // trop si ca marche »). `sayN` prend la cle « ...One » quand n vaut 1.
+  const say = (key: string, vars: Record<string, string | number> = {}, opts: ToastOptions = {}) =>
+    toast(Object.entries(vars).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), t(key)), opts);
+  const sayN = (key: string, n: number, vars: Record<string, string | number> = {}, opts: ToastOptions = {}) =>
+    say(n === 1 ? `${key}One` : key, { n, ...vars }, opts);
 
   const [currentWeek, setCurrentWeek] = useState<Date>(currentWeekStart);
   const [navDirection, setNavDirection] = useState<'forward' | 'backward' | 'none'>('none');
@@ -320,10 +327,25 @@ const App: React.FC = () => {
   const [showSyncSuccess, setShowSyncSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   // `saveError` sert aussi a des messages qui ne sont pas des echecs (« rien a
   // copier », periode d'emploi) : la pastille rouge ne suit que les vrais echecs.
   const [writeFailed, setWriteFailed] = useState(false);
+  // Le bandeau rouge sous l'en-tete est devenu un message rouge (06/10/2026) :
+  // meme place que les confirmations, reste affiche jusqu'a ce qu'on le ferme.
+  useEffect(() => {
+    if (!saveError) return;
+    toast(saveError, { kind: 'error' });
+    setSaveError(null);
+  }, [saveError]);
   const [online, setOnline] = useState(() => navigator.onLine);
+  // Hors ligne : on le dit, le message reste tant que le reseau n'est pas revenu.
+  const wasOffline = useRef(false);
+  useEffect(() => {
+    if (!online) { wasOffline.current = true; toast(t('tOffline'), { kind: 'info', sticky: true }); }
+    else if (wasOffline.current) { wasOffline.current = false; toast(t('tBackOnline')); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online]);
   /** La semaine affichee a ete confirmee par le serveur, pas seulement lue dans le cache. */
   const [serverConfirmed, setServerConfirmed] = useState(false);
   const [timezone, setTimezone] = useState('Europe/Paris');
@@ -473,9 +495,15 @@ const App: React.FC = () => {
   }, []);
 
   /** Changer de restaurant : on remet a zero ce qui appartient a l'ancien. */
+  const switchedOrg = useRef(false);
+  useEffect(() => {
+    if (switchedOrg.current && org?.name) { switchedOrg.current = false; say('tOrgSwitched', { name: org.name }); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [org?.name]);
   const switchOrg = useCallback((next: string) => {
     if (!memberships?.[next] || next === orgId) return;
     localStorage.setItem('shiftmaster_org', next);
+    switchedOrg.current = true;
     setCurrentOrg(next);
     setOrg(null);
     setStaffList([]);
@@ -630,12 +658,14 @@ const App: React.FC = () => {
       status: 'pending', createdAt: new Date().toISOString(),
     };
     storeRequest(req, req.id);
+    say('tLeaveRequested');
     createLog('REQUEST LEAVE', `${me.name} requested ${publicAbsenceKind(kind)} from ${start} to ${end}`, me);
   }, [me, user, storeRequest]);
 
   const withdrawLeaveRequest = useCallback((req: LeaveRequest) => {
     if (req.status !== 'pending') return;
     storeRequest(null, req.id);
+    say('tLeaveWithdrawn');
     if (me) createLog('WITHDRAW LEAVE REQUEST', `${me.name} withdrew a leave request from ${req.start} to ${req.end}`, me);
   }, [storeRequest, me]);
 
@@ -648,6 +678,7 @@ const App: React.FC = () => {
     };
     storeRequest(next, req.id);
     const who = staffList.find(s => s.id === req.staffId) || null;
+    say(status === 'accepted' ? 'tLeaveAccepted' : 'tLeaveRefused', { name: who?.name || '' });
     createLog(status === 'accepted' ? 'ACCEPT LEAVE REQUEST' : 'REFUSE LEAVE REQUEST',
       `${status === 'accepted' ? 'Accepted' : 'Declined'} leave request of ${who?.name || 'Unknown'} from ${req.start} to ${req.end}`, who);
   }, [isReadOnly, user, storeRequest, staffList]);
@@ -716,6 +747,7 @@ const App: React.FC = () => {
     } else {
       saveLeaveBalance(balance);
     }
+    say('tBalanceSaved', { name: person?.name || '' });
     createLog('UPDATE LEAVE BALANCE', `Paid-leave balance for ${person?.name || 'Unknown'} set from payslip of ${anchorDate}`, person || null);
   }, [isReadOnly, staffList, user, isGuest, leaveBalances]);
 
@@ -726,6 +758,7 @@ const App: React.FC = () => {
   const updateRates = useCallback((next: Record<string, number>) => {
     if (isReadOnly) return;
     setRates(next);
+    say('tSettingSaved');
     if (isGuest) { localStorage.setItem('sandbox_rates', JSON.stringify(next)); return; }
     saveRates(next);
   }, [isReadOnly, isGuest]);
@@ -800,6 +833,7 @@ const App: React.FC = () => {
   const updateTimezone = useCallback((next: string) => {
     if (isReadOnly) return;
     applyTimeZone(next);
+    say('tSettingSaved');
     if (isGuest) { localStorage.setItem('sandbox_timezone', next); return; }
     saveGlobalSettings({ timezone: next });
   }, [isReadOnly, isGuest, applyTimeZone]);
@@ -807,18 +841,21 @@ const App: React.FC = () => {
   const updateConvention = useCallback((next: string) => {
     if (isReadOnly) return;
     setConventionId(next);
+    say('tSettingSaved');
     if (isGuest) { localStorage.setItem('sandbox_convention', next); return; }
     saveGlobalSettings({ convention: next as LaborConvention });
   }, [isReadOnly, isGuest]);
 
   const updateLeaveUnit = useCallback((next: LeaveUnit) => {
     if (isReadOnly) return;
+    say('tSettingSaved');
     if (isGuest) { setSandboxLeaveUnit(next); localStorage.setItem('sandbox_leave_unit', next); return; }
     saveGlobalSettings({ leaveUnit: next });
   }, [isReadOnly, isGuest]);
 
   const updateClosedHolidays = useCallback((next: string[]) => {
     if (isReadOnly) return;
+    say('tSettingSaved');
     if (isGuest) {
       setSandboxClosedHolidays(next);
       localStorage.setItem('sandbox_closed_holidays', JSON.stringify(next));
@@ -829,6 +866,7 @@ const App: React.FC = () => {
 
   const updateClosures = useCallback((next: Closure[]) => {
     if (isReadOnly) return;
+    say('tSettingSaved');
     if (isGuest) {
       setSandboxClosures(next);
       localStorage.setItem('sandbox_closures', JSON.stringify(next));
@@ -840,6 +878,7 @@ const App: React.FC = () => {
   const updateOperatingHours = useCallback((next: OperatingHours) => {
     if (isReadOnly) return;
     setOperatingHours(next);
+    say('tSettingSaved');
     if (isGuest) { localStorage.setItem('sandbox_hours', JSON.stringify(next)); return; }
     saveGlobalSettings({ openHour: next.start, closeHour: next.end });
   }, [isReadOnly, isGuest]);
@@ -1299,6 +1338,7 @@ const App: React.FC = () => {
     setFuture(prev => [{ shifts, absences, holidays }, ...prev]);
     commitWeek(previous, true);
     setPast(past.slice(1));
+    say('tUndone');
     createLog('UNDO', 'Performed an undo action');
   }, [past, shifts, absences, holidays, commitWeek]);
 
@@ -1308,8 +1348,14 @@ const App: React.FC = () => {
     setPast(prev => [{ shifts, absences, holidays }, ...prev]);
     commitWeek(next, true);
     setFuture(future.slice(1));
+    say('tRedone');
     createLog('REDO', 'Performed a redo action');
   }, [future, shifts, absences, holidays, commitWeek]);
+  // Le bouton « Annuler » d'un message vise l'etat d'APRES l'action : la
+  // fonction d'annulation du moment ou le message a ete cree serait perimee.
+  const undoRef = useRef(undo);
+  undoRef.current = undo;
+  const withUndo: ToastOptions = { undo: () => undoRef.current() };
 
   /**
    * Un meme service sur plusieurs jours. Les shifts sont crees en UN SEUL
@@ -1329,6 +1375,8 @@ const App: React.FC = () => {
     const target = staffList.find(s => s.id === staffId) || null;
     const days = dayIndexes.map(d => getShiftDate(toWeekId(currentWeek), d, language)).join(', ');
     createLog('CREATE SHIFT', `Added ${created.length} shift(s) for ${target?.name || 'Unknown'} on ${days} (${formatTime(startTime)}-${formatTime(endTime)})`, target);
+    if (created.length === 1) say('tShiftAdded', { name: target?.name || '', day: days, hours: `${formatTime(startTime)}–${formatTime(endTime)}` });
+    else say('tShiftsAdded', { n: created.length, name: target?.name || '' });
   }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language, employmentCheck]);
 
   /**
@@ -1372,6 +1420,8 @@ const App: React.FC = () => {
     handleUpdateShifts([...shifts, ...created]);
     const days = dayIndexes.map(d => getShiftDate(toWeekId(currentWeek), d, language)).join(', ');
     createLog('CREATE SHIFT', `Added ${created.length} extra shift(s) for ${name} on ${days} (${formatTime(startTime)}-${formatTime(endTime)})`, null);
+    if (created.length === 1) say('tShiftAdded', { name, day: days, hours: `${formatTime(startTime)}–${formatTime(endTime)}` });
+    else say('tShiftsAdded', { n: created.length, name });
   }, [isReadOnly, shifts, handleUpdateShifts, extras, isGuest, currentWeek, language]);
 
   /**
@@ -1404,6 +1454,7 @@ const App: React.FC = () => {
         ? { ...sh, extraName: fiche.firstName, ...(fiche.filledAt ? { extraPending: false } : {}) }
         : sh)));
     }
+    say('tExtraSaved', { name: fiche.firstName });
     createLog('UPDATE STAFF', `Updated extra record for ${fiche.firstName}`, null);
   }, [isReadOnly, isGuest, extras, shifts, handleUpdateShifts]);
 
@@ -1421,10 +1472,11 @@ const App: React.FC = () => {
     handleUpdateShifts([...shifts, created]);
     const target = staffList.find(s => s.id === copy.staffId) || null;
     createLog('CREATE SHIFT', `Duplicated a shift for ${target?.name || 'Unknown'} on ${getShiftDate(toWeekId(currentWeek), copy.dayIndex, language)} (${formatTime(copy.startTime)}-${formatTime(copy.endTime)})`, target);
+    say('tShiftDuplicated', { day: getShiftDate(toWeekId(currentWeek), copy.dayIndex, language) }, withUndo);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language, employmentCheck]);
 
-  const updateShift = useCallback((updatedShift: Shift) => {
-    if (isReadOnly) return;
+  const updateShift = useCallback((updatedShift: Shift): boolean => {
+    if (isReadOnly) return false;
     const original = shifts.find(s => s.id === updatedShift.id);
     if (original) {
       const isUnchanged = original.staffId === updatedShift.staffId &&
@@ -1438,20 +1490,21 @@ const App: React.FC = () => {
                           // perdue (constate au relu du jeu de verite, 22/09/2026).
                           original.breakStart === updatedShift.breakStart &&
                           (original.breakMinutes || 0) === (updatedShift.breakMinutes || 0);
-      if (isUnchanged) return;
+      if (isUnchanged) return true;
       // Seulement quand le shift change de jour ou de personne (glisser vers un
       // autre jour, reassignation). Retoucher l'horaire d'un vieux shift deja
       // hors periode doit rester possible : ce sont des donnees passees.
       const moved = original.dayIndex !== updatedShift.dayIndex || original.staffId !== updatedShift.staffId;
       if (moved) {
         const { errors } = employmentCheck(updatedShift.staffId, [updatedShift.dayIndex]);
-        if (errors.length > 0) { setSaveError(errors[0]); return; }
+        if (errors.length > 0) { setSaveError(errors[0]); return false; }
       }
     }
     handleUpdateShifts(shifts.map(s => s.id === updatedShift.id ? updatedShift : s));
     const target = staffList.find(s => s.id === updatedShift.staffId) || null;
     const dayLabel = getShiftDate(toWeekId(currentWeek), updatedShift.dayIndex, language);
     createLog('UPDATE SHIFT', `Updated shift for ${target?.name || 'Unknown'} on ${dayLabel} (${formatTime(updatedShift.startTime)}-${formatTime(updatedShift.endTime)})`, target);
+    return true;
   }, [shifts, handleUpdateShifts, isReadOnly, staffList, employmentCheck]);
 
   /**
@@ -1478,6 +1531,7 @@ const App: React.FC = () => {
     const target = staffList.find(s => s.id === source.staffId) || null;
     const days = copies.map(c => getShiftDate(toWeekId(currentWeek), c.dayIndex, language)).join(', ');
     createLog('REPEAT SHIFT', `Copied shift for ${target?.name || 'Unknown'} onto ${days}`, target);
+    sayN('tShiftRepeated', copies.length);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList, currentWeek, language, employmentCheck]);
 
   // -------------------------------------------------------------- selection
@@ -1510,6 +1564,7 @@ const App: React.FC = () => {
       ? { ...s, startTime: s.startTime + delta, endTime: s.endTime + delta }
       : s));
     createLog('MOVE SHIFTS', `Moved ${chosen.length} shift(s) by ${delta > 0 ? '+' : ''}${delta * 60} min`);
+    sayN('tShiftsMoved', chosen.length, {}, withUndo);
   }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, t, hourRange]);
 
   const moveSelectedToDay = useCallback((dayIndex: number) => {
@@ -1526,6 +1581,7 @@ const App: React.FC = () => {
     handleUpdateShifts(shifts.map(s => selectedShiftIds.includes(s.id) ? { ...s, dayIndex } : s));
     const dayLabel = getShiftDate(toWeekId(currentWeek), dayIndex, language);
     createLog('MOVE SHIFTS', `Moved ${chosen.length} shift(s) to ${dayLabel}`);
+    sayN('tShiftsMovedTo', chosen.length, { day: dayLabel }, withUndo);
   }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, currentWeek, language, employmentCheck]);
 
   const deleteSelected = useCallback(async () => {
@@ -1536,6 +1592,7 @@ const App: React.FC = () => {
     if (!(await askConfirm(question, { danger: true, okLabel: t('confirmDelete') }))) return;
     handleUpdateShifts(shifts.filter(s => !selectedShiftIds.includes(s.id)));
     createLog('DELETE SHIFTS', `Removed ${selectedShiftIds.length} shift(s)`);
+    sayN('tShiftsDeleted', selectedShiftIds.length, {}, withUndo);
     setSelectedShiftIds([]);
   }, [shifts, selectedShiftIds, handleUpdateShifts, isReadOnly, t]);
 
@@ -1548,6 +1605,7 @@ const App: React.FC = () => {
     handleUpdateShifts(shifts.filter(s => s.id !== id));
     const dayLabel = getShiftDate(toWeekId(currentWeek), shift.dayIndex, language);
     createLog('DELETE SHIFT', `Removed shift for ${target?.name || 'Unknown'} on ${dayLabel}`, target);
+    say('tShiftDeleted', {}, withUndo);
   }, [shifts, handleUpdateShifts, isReadOnly, staffList]);
 
   /**
@@ -1761,6 +1819,17 @@ const App: React.FC = () => {
       else createLog(c.previous ? 'UPDATE ABSENCE' : 'CREATE ABSENCE',
         `${c.previous ? 'Updated' : 'Recorded'} ${motive} for ${who} from ${p.start} to ${p.end} (${p.daysCounted} days, ${p.hoursLost} h)`, target);
     }
+    // Le message suit la saisie (le premier changement) ; les conges qu'un arret
+    // raccourcit au passage n'en font pas un de plus.
+    const first = stamped[0];
+    if (!first.period) say('tAbsenceDeleted');
+    else {
+      const who = staffList.find(s => s.id === first.period!.staffId)?.name || '';
+      const range = first.period.start === first.period.end
+        ? formatShortDate(first.period.start, language)
+        : `${formatShortDate(first.period.start, language)} – ${formatShortDate(first.period.end, language)}`;
+      say('tAbsenceSaved', { name: who, range });
+    }
   }, [isReadOnly, user, staffList, isGuest, absencePeriods, weekId, shifts, absences, holidays, commitWeek]);
 
   const deletePeriod = useCallback((period: AbsencePeriod) =>
@@ -1781,10 +1850,18 @@ const App: React.FC = () => {
     commitWeek({ absences: absences.filter(a => a.id !== id) });
     const dayLabel = getShiftDate(toWeekId(currentWeek), gone.dayIndex, language);
     createLog('DELETE ABSENCE', `Removed ${visibleAbsenceKind(gone.kind, false)} for ${target?.name || 'Unknown'} on ${dayLabel}`, target);
+    say('tAbsenceDeleted', {}, withUndo);
   }, [absences, commitWeek, isReadOnly, staffList, currentWeek, language]);
 
 
   const handleUpdateStaffList = async (newList: Staff[], newGuests: string[] = guestEmails) => {
+    const added = newList.filter(s => !staffList.some(o => o.id === s.id));
+    const removed = staffList.filter(o => !newList.some(s => s.id === o.id));
+    const changed = newList.filter(s => { const o = staffList.find(x => x.id === s.id); return o && JSON.stringify(o) !== JSON.stringify(s); });
+    if (added.length === 1) say('tStaffAdded', { name: added[0].name });
+    else if (removed.length === 1) say('tStaffRemoved', { name: removed[0].name });
+    else if (changed.length === 1) say('tStaffSaved', { name: changed[0].name });
+    else say('tTeamSaved');
     setStaffList(newList);
     setGuestEmails(newGuests);
     if (connected) {
@@ -1924,7 +2001,7 @@ const App: React.FC = () => {
       prevShifts = cached ? (JSON.parse(cached).shifts || []) : [];
     }
     if (prevShifts.length === 0) {
-      setSaveError(t('nothingToCopy'));
+      toast(t('nothingToCopy'), { kind: 'info' });
       return;
     }
     // Sur une semaine deja remplie on demande : l'ajout reste annulable, mais
@@ -1935,13 +2012,16 @@ const App: React.FC = () => {
     const copied = prevShifts.map(s => ({ ...s, id: Math.random().toString(36).substr(2, 9) }));
     commitWeek({ shifts: [...shifts, ...copied] });
     createLog('COPY WEEK', `Copied ${copied.length} shifts from week ${getWeekRangeString(prevWeek)}`);
+    sayN('tWeekCopied', copied.length, {}, withUndo);
   };
 
   const handleDeleteWeek = useCallback(() => {
     if (isReadOnly) return;
+    const n = shifts.length;
     handleUpdateShifts([]);
     createLog('DELETE WEEK', `Removed all shifts for week ${getWeekRangeString(currentWeek)}`);
-  }, [handleUpdateShifts, isReadOnly, currentWeek]);
+    sayN('tWeekCleared', n, {}, withUndo);
+  }, [handleUpdateShifts, isReadOnly, currentWeek, shifts.length]);
 
   // Le brouillon n'existe qu'en vue jour. Ailleurs, un geste ecrirait dans une
   // semaine que l'ecran ne montre pas : on sort du mode plutot que de le risquer.
@@ -2005,6 +2085,7 @@ const App: React.FC = () => {
     setDraftMode(false);
     draftModeRef.current = false; // sinon createLog ignorerait CETTE ligne-ci
     createLog('PUBLISH DRAFT', `Published draft for week ${getWeekRangeString(currentWeek)} — ${week.shifts.length} shifts`);
+    say('tPublished');
     triggerSyncFeedback();
   }, [isReadOnly, draft, user, isGuest, orgId, weekId, currentWeek, t]);
 
@@ -2014,6 +2095,7 @@ const App: React.FC = () => {
     setDraftMode(false);
     if (connected) await deleteDraft(weekId);
     else localStorage.removeItem(`sandbox_draft_${weekId}`);
+    say('tDraftDiscarded');
   }, [isReadOnly, user, isGuest, orgId, weekId, t]);
 
 
@@ -2039,9 +2121,10 @@ const App: React.FC = () => {
       link.href = dataUrl;
       link.click();
       createLog('EXPORT SNAPSHOT', `Exported weekly snapshot image for ${getWeekRangeString(currentWeek)}`);
+      say('tImageDownloaded');
     } catch (err) {
       console.error('Export failed:', err);
-      alert('Unable to generate snapshot. Please try again.');
+      toast(t('tImageFailed'), { kind: 'error' });
     } finally {
       setIsExporting(false);
       setIsLoading(false);
@@ -2208,7 +2291,7 @@ const App: React.FC = () => {
   const settingsProps = {
     onClose: closeSettings,
     initialSection: settingsSection,
-    account: user && !isGuest ? { name: user.displayName || user.email || '', email: user.email || '', orgName: org?.name || '', onLogout: handleLogout } : undefined,
+    account: user && !isGuest ? { name: user.displayName || user.email || '', email: user.email || '', orgName: org?.name || '', onLogout: handleLogout, onFeedback: () => { closeSettings(); setFeedbackOpen(true); } } : undefined,
     language, onLanguageChange: setLanguage, viewType, onViewTypeChange: setViewType,
     canSeeMyWeek: !!me, canSeeMoney: !isReadOnly, staff: staffList, rates, onRatesChange: updateRates,
     hours: operatingHours,
@@ -2411,6 +2494,8 @@ const App: React.FC = () => {
                     </div>
                     <button role="menuitem" onClick={() => { setAccountMenuOpen(false); openSettings(); }}
                       className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">{t('settings')}</button>
+                    <button role="menuitem" onClick={() => { setAccountMenuOpen(false); setFeedbackOpen(true); }}
+                      className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">{t('fbButton')}</button>
                     <button role="menuitem" onClick={() => { setAccountMenuOpen(false); handleLogout(); }}
                       className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">{t('signOut')}</button>
                   </div>
@@ -2419,21 +2504,6 @@ const App: React.FC = () => {
             </div>
           </div>
         </header>
-        {saveError && (
-          <div className="bg-red-50 border-b-2 border-red-200 px-4 md:px-6 py-3 flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
-            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
-            <p className="flex-1 text-sm text-red-800 font-medium leading-snug">{saveError}</p>
-            <button
-              onClick={() => { setSaveError(null); setWriteFailed(false); }}
-              className="text-red-400 hover:text-red-700 transition-colors flex-shrink-0 p-1"
-              title="Dismiss"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
-        )}
         {isAdmin && missingThisWeek > 0 && (
           <p role="status" data-testid="missing-staff-banner" className="bg-slate-100 border-b border-slate-200 px-4 md:px-6 py-2 text-sm font-medium text-slate-700">
             {t('missingStaffBanner').replace('{n}', String(missingThisWeek))}
@@ -2604,7 +2674,7 @@ const App: React.FC = () => {
         language={language}
         isReadOnly={isReadOnly}
       />
-      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={displayStaff} assignableStaff={assignableStaff} onUpdate={updateShift} onRepeat={repeatShift} weekShifts={shifts} onCheck={previewViolations} onEmployment={employmentCheck} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} hours={operatingHours} />
+      <EditShiftModal isOpen={!!editingShiftId} onClose={() => setEditingShiftId(null)} shift={editingShift} staffList={displayStaff} assignableStaff={assignableStaff} onUpdate={(sh) => { if (updateShift(sh)) say('tShiftUpdated'); }} onRepeat={repeatShift} weekShifts={shifts} onCheck={previewViolations} onEmployment={employmentCheck} onDelete={deleteShift} isReadOnly={isReadOnly} language={language} hours={operatingHours} />
       {/* La barre n'existe que pendant une selection : elle occupe le bas de
           l'ecran, et rien ne justifie de manger cette place le reste du temps. */}
       {selectedShiftIds.length > 0 && !isReadOnly && (
@@ -2621,6 +2691,12 @@ const App: React.FC = () => {
         <GuidedTour steps={tourSteps} language={language} onClose={closeTour}
           finishLabel={staffList.length === 0 ? t('tourStartTeam') : undefined} />
       )}
+      <FeedbackModal isOpen={feedbackOpen} onClose={() => setFeedbackOpen(false)} language={language}
+        onSend={(text) => sendFeedback({
+          text, role: isAdmin ? 'admin' : 'staff',
+          name: user?.displayName || undefined, email: user?.email || undefined,
+          screen: effectiveViewType, weekId, lang: language,
+        })} />
       <LogHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} language={language} />
       <AbsenceModal
         isOpen={isAbsenceModalOpen}
